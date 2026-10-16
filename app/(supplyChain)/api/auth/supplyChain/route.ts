@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { createHash, randomBytes } from 'crypto';
 import { sendOTPEmail } from '../../../lib/email/sendOTP';
+import { createLoginChallenge } from '../../../lib/services/concurrentLoginService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -49,7 +50,7 @@ function maskEmail(email?: string | null): string {
 const roleRedirects: Record<string, string> = {
     'Superadmin': '/executive',
     'Executive': '/executive',
-    'Admin': '/procurement',
+    'Admin': '/inventory',
     'Purchase Officer': '/purchase-orders',
     'Operator': '/warehousing',
     'Supplier': '/suppliers_page/purchase-orders',
@@ -180,14 +181,14 @@ export async function POST(request: Request) {
         } else if (normRole === 'supplier') {
             effectiveRole = 'Supplier';
         }
-        const isOtpMandatory = normRole === 'superadmin' || normRole === 'super_admin' || normRole === 'executive' || normRole === 'admin' || normRole === 'supplier';
+        const isOtpMandatory = true; // All roles (Executive, Admin, Purchase Officer, Operator, Supplier) require OTP verification
 
-        // 3. Executive / Admin / Supplier Flow: ALWAYS send OTP
+        // 3. 2FA Email OTP Verification Flow
         if (isOtpMandatory) {
             const otp = generateOTP();
             const hashedOTP = hashOTP(otp);
             const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes validity
-            const userDisplayName = userRecord.display_name || userRecord.name || (normRole === 'supplier' ? 'Authorized Supplier' : 'Admin User');
+            const userDisplayName = userRecord.display_name || userRecord.name || effectiveRole;
 
             const [insertResult, emailResult] = await Promise.all([
                 supabaseAdmin
@@ -255,6 +256,50 @@ export async function POST(request: Request) {
             ? new Date(Date.now() + 15 * 24 * 3600000).toISOString() // 15 days
             : new Date(Date.now() + 24 * 3600000).toISOString();      // 24 hours
 
+        const { data: existingActiveSessions } = await supabaseAdmin
+            .from('sessions')
+            .select('id, user_agent, ip_address, session_token, expires_at')
+            .eq('user_id', userRecord.id)
+            .eq('is_active', true);
+
+        const currentActive = (existingActiveSessions || []).find(
+            s => !s.expires_at || new Date(s.expires_at).getTime() > now
+        );
+
+        const targetRedirect = roleRedirects[effectiveRole] || (normRole.includes('purchase') ? '/purchase-orders' : '/warehousing');
+
+        if (currentActive) {
+            // Another device is currently logged in! Create challenge and wait for active session approval
+            const challenge = await createLoginChallenge({
+                userId: userRecord.id,
+                email: userRecord.email,
+                displayName: userRecord.display_name || userRecord.name || 'User',
+                role: effectiveRole,
+                newDeviceUserAgent: userAgent,
+                newDeviceIp: ip,
+                sessionPayload: {
+                    sessionToken,
+                    expiresAt: sessionExpiresAt,
+                    rememberMe: isRememberAllowed,
+                    redirectUrl: targetRedirect,
+                    accessToken: authSession?.access_token || null,
+                    refreshToken: authSession?.refresh_token || null,
+                }
+            });
+
+            return NextResponse.json({
+                requireApproval: true,
+                requestId: challenge.requestId,
+                message: 'An active session was detected on another device. Waiting for approval...',
+                user: {
+                    id: userRecord.id,
+                    email: userRecord.email,
+                    role: effectiveRole,
+                    display_name: userRecord.display_name || userRecord.name || 'User',
+                }
+            });
+        }
+
         // Deactivate previous active sessions for this user
         await supabaseAdmin
             .from('sessions')
@@ -299,8 +344,6 @@ export async function POST(request: Request) {
                 ip_address: ip,
                 user_agent: userAgent,
             });
-
-        const targetRedirect = roleRedirects[effectiveRole] || (normRole.includes('purchase') ? '/purchase-orders' : '/warehousing');
 
         return NextResponse.json({
             success: true,

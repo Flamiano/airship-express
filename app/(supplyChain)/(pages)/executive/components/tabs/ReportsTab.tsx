@@ -356,29 +356,6 @@ export default function ReportsTab({ data }: ReportsTabProps) {
         { num: 12, name: 'December' },
     ];
 
-    // IF VIEWING A DETAILED REPORT: Render Detail View
-    if (activeCategory && detailReportData) {
-        return (
-            <>
-                <ReportDetailView
-                    reportData={detailReportData}
-                    onBack={handleBackToOverview}
-                    onRefresh={() => fetchDetailReport(activeCategory)}
-                    isLoading={isDetailLoading}
-                />
-
-                <ExecutiveVerificationModal
-                    isOpen={isVerifyModalOpen}
-                    onClose={() => {
-                        setIsVerifyModalOpen(false);
-                        setPendingCategory(null);
-                    }}
-                    reportTitle={pendingCategory?.title || 'Confidential Report'}
-                    onSuccess={handleVerificationSuccess}
-                />
-            </>
-        );
-    }
 
     // OVERVIEW VIEW: Render Month Selector & Summary Cards
     return (
@@ -615,6 +592,16 @@ export default function ReportsTab({ data }: ReportsTabProps) {
                 reportTitle={pendingCategory?.title || 'Confidential Report'}
                 onSuccess={handleVerificationSuccess}
             />
+
+            {/* 6. Detailed Confidential Report Table Modal (Viewable after password verification) */}
+            {activeCategory && detailReportData && (
+                <ReportDetailView
+                    reportData={detailReportData}
+                    onBack={handleBackToOverview}
+                    onRefresh={() => fetchDetailReport(activeCategory)}
+                    isLoading={isDetailLoading}
+                />
+            )}
         </div>
     );
 }

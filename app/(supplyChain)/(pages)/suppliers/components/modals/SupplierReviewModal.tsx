@@ -49,6 +49,7 @@ import {
     Plus,
 } from "lucide-react";
 import type { PotentialSupplierItem } from "../tables/PotentialSuppliersTab";
+import { parseQuotationNotes } from "../../utils/termsParser";
 
 export const PRODUCT_UNIT_OPTIONS = [
     "piece",
@@ -347,45 +348,17 @@ export function SupplierReviewModal({
             const discoveredWebsite = supplier.website || "";
 
             let rawNotes = supplier.notes || quote?.notes || "";
-            let cleanNotes = rawNotes;
+            const parsedFromNotes = parseQuotationNotes(rawNotes, quote);
+
+            let cleanNotes = parsedFromNotes.cleanNotes || rawNotes;
             let parsedPaymentMethod = "";
-            let parsedPaymentTerms = quote?.payment_terms || "";
-            let parsedDeliveryTerms = quote?.delivery_terms || "";
-            let parsedReturnPolicy = quote?.price_validity || "";
-            let parsedWarranty = quote?.warranty_terms || "";
+            let parsedPaymentTerms = parsedFromNotes.paymentTerms || quote?.payment_terms || "";
+            let parsedDeliveryTerms = parsedFromNotes.deliveryTerms || quote?.delivery_terms || "";
+            let parsedReturnPolicy = parsedFromNotes.priceValidity || quote?.price_validity || "";
+            let parsedWarranty = parsedFromNotes.warrantyTerms || quote?.warranty_terms || "";
             let parsedLeadTime = quote?.lead_time_days ? `${quote.lead_time_days} Business Days` : "";
             let parsedMoq = "";
-            let parsedClauses = "";
-
-            // Check if rawNotes has [Terms: Payment=... | Warranty=... | Validity=... | Delivery=... | Clauses: ...]
-            if (cleanNotes.includes("[Terms:")) {
-                const termsMatch = cleanNotes.match(/\[Terms:\s*([^\]]+)\]/i);
-                if (termsMatch && termsMatch[1]) {
-                    const termsContent = termsMatch[1];
-                    const parts = termsContent.split("|").map(p => p.trim());
-                    for (const part of parts) {
-                        if (/^Payment=/i.test(part)) parsedPaymentTerms = parsedPaymentTerms || part.replace(/^Payment=/i, "").trim();
-                        else if (/^Warranty=/i.test(part)) parsedWarranty = parsedWarranty || part.replace(/^Warranty=/i, "").trim();
-                        else if (/^Validity=/i.test(part)) parsedReturnPolicy = parsedReturnPolicy || part.replace(/^Validity=/i, "").trim();
-                        else if (/^Delivery=/i.test(part)) parsedDeliveryTerms = parsedDeliveryTerms || part.replace(/^Delivery=/i, "").trim();
-                        else if (/^Clauses:\s*/i.test(part)) {
-                            const clauseText = part.replace(/^Clauses:\s*/i, "").trim();
-                            if (clauseText) {
-                                parsedClauses = clauseText;
-                            }
-                        }
-                    }
-                }
-                cleanNotes = cleanNotes.replace(/\[Terms:\s*[^\]]+\]/i, "").trim();
-            }
-
-            if (cleanNotes.includes("--- Terms & Conditions ---")) {
-                const parts = cleanNotes.split(/---+\s*Terms\s*&\s*Conditions\s*---+/i);
-                cleanNotes = (parts[0] || "").trim();
-                if (parts[1] && parts[1].trim()) {
-                    parsedClauses = parts[1].trim();
-                }
-            }
+            let parsedClauses = parsedFromNotes.clauses || "";
 
             // Extract and strip all commercial lines from notes
             const lines = cleanNotes.split("\n");

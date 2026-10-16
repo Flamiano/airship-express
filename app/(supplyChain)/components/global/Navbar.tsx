@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { NAV } from "../../lib/navigation";
 import Image from "next/image";
@@ -57,6 +57,26 @@ export function AceternityNavbar() {
         }
         return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
     };
+    const filterNavigation = useCallback((role: string) => {
+        const filtered = (NAV as NavGroup[])
+            .map((group: NavGroup) => {
+                const items = group.items
+                    .filter((item: NavItem) => {
+                        return settingsService.canAccessPage(role, item.href, item.roles);
+                    })
+                    .map((item: NavItem) => ({
+                        ...item,
+                        isAuthorized: true,
+                    }));
+                return {
+                    ...group,
+                    items,
+                };
+            })
+            .filter((group) => group.items.length > 0);
+        setFilteredNav(filtered);
+    }, []);
+
     useEffect(() => {
         if (typeof window !== 'undefined') {
             const role = user.getRole();
@@ -75,11 +95,24 @@ export function AceternityNavbar() {
 
             const unsubscribe = settingsService.subscribe(() => {
                 const currentRole = user.getRole() || 'User';
+                setUserRole(currentRole);
                 filterNavigation(currentRole);
             });
             return () => unsubscribe();
         }
-    }, []);
+    }, [filterNavigation]);
+
+    // Keep navigation synchronized on page navigation
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            const currentRole = user.getRole();
+            if (currentRole) {
+                setUserRole(currentRole);
+                filterNavigation(currentRole);
+            }
+        }
+    }, [pathname, filterNavigation]);
+
     // close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -90,22 +123,6 @@ export function AceternityNavbar() {
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, [openDropdown]);
-    const filterNavigation = (role: string) => {
-        const filtered = (NAV as NavGroup[]).map((group: NavGroup) => {
-            const items = group.items.map((item: NavItem) => {
-                const isAuthorized = settingsService.canAccessPage(role, item.href, item.roles);
-                return {
-                    ...item,
-                    isAuthorized,
-                };
-            });
-            return {
-                ...group,
-                items,
-            };
-        });
-        setFilteredNav(filtered);
-    };
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = "hidden";
@@ -257,27 +274,24 @@ export function AceternityNavbar() {
                                             </StatusBadge>
                                         </div>
                                         {group.items.map((item: any) => {
-                        const active = isActive(item.href);
-                        const isAuthorized = item.isAuthorized !== false;
-                        return (<Link key={item.id} href={isAuthorized ? item.href : '#'} onClick={(e) => {
-                                if (!isAuthorized) {
-                                    e.preventDefault();
-                                    toast.error('You do not have permission to access this page');
-                                    return;
-                                }
-                                setOpenDropdown(null);
-                            }} className={cn("flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer", active && isAuthorized
-                                ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
-                                : !isAuthorized
-                                    ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                    : "text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white hover:bg-[#e4eaf3] dark:hover:bg-[#222432] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.45),inset_-1px_-1px_3px_rgba(255,255,255,0.04)]")}>
-                                                    <i className={cn(item.icon, !isAuthorized && "opacity-50", active && isAuthorized ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
-                                                    <span className={!isAuthorized ? "line-through" : ""}>
-                                                        {isAuthorized ? item.label : "Unauthorized"}
-                                                    </span>
-                                                    {!isAuthorized && (<IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600"/>)}
-                                                </Link>);
-                    })}
+                                            const active = isActive(item.href);
+                                            return (
+                                                <Link
+                                                    key={item.id}
+                                                    href={item.href}
+                                                    onClick={() => setOpenDropdown(null)}
+                                                    className={cn(
+                                                        "flex items-center gap-3 rounded-xl px-3.5 py-2 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer",
+                                                        active
+                                                            ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
+                                                            : "text-slate-700 hover:text-slate-900 dark:text-slate-200 dark:hover:text-white hover:bg-[#e4eaf3] dark:hover:bg-[#222432] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:hover:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.45),inset_-1px_-1px_3px_rgba(255,255,255,0.04)]"
+                                                    )}
+                                                >
+                                                    <i className={cn(item.icon, active ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
+                                                    <span>{item.label}</span>
+                                                </Link>
+                                            );
+                                        })}
                                     </div>)}
                             </div>);
         })}
@@ -370,29 +384,24 @@ export function AceternityNavbar() {
                                         </div>
                                         <div className="space-y-1.5 mt-1">
                                             {group.items.map((item: any) => {
-                    const active = isActive(item.href);
-                    const isAuthorized = item.isAuthorized !== false;
-                    return (<Link key={item.id} href={isAuthorized ? item.href : '#'} onClick={(e) => {
-                            if (!isAuthorized) {
-                                e.preventDefault();
-                                toast.error('You do not have permission to access this page');
-                                return;
-                            }
-                            setIsOpen(false);
-                        }} className={cn("flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer active:scale-98", active && isAuthorized
-                            ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
-                            : !isAuthorized
-                                ? "text-slate-400 cursor-not-allowed hover:bg-transparent dark:text-slate-600"
-                                : "text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-[#f0f3f8]/70 dark:bg-[#1d1e28]/70 border border-white/60 dark:border-[#2a2b38]/60 shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.03)] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25)] dark:hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)]")}>
-                                                <i className={cn(item.icon, !isAuthorized && "opacity-50", active && isAuthorized ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
-
-                                                <span className={cn(!isAuthorized && "line-through")}>
-                                                    {isAuthorized ? item.label : "Unauthorized"}
-                                                </span>
-
-                                                {!isAuthorized && (<IconLock className="h-3.5 w-3.5 ml-auto text-slate-400 dark:text-slate-600"/>)}
-                                            </Link>);
-                })}
+                                                const active = isActive(item.href);
+                                                return (
+                                                    <Link
+                                                        key={item.id}
+                                                        href={item.href}
+                                                        onClick={() => setIsOpen(false)}
+                                                        className={cn(
+                                                            "flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-medium transition-all duration-200 relative cursor-pointer active:scale-98",
+                                                            active
+                                                                ? "text-white bg-gradient-to-r from-pink-500 to-pink-600 border border-pink-400/80 shadow-[0_3px_10px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.45)] font-semibold"
+                                                                : "text-slate-700 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white bg-[#f0f3f8]/70 dark:bg-[#1d1e28]/70 border border-white/60 dark:border-[#2a2b38]/60 shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5),-1px_-1px_3px_rgba(255,255,255,0.03)] hover:shadow-[inset_2px_2px_4px_rgba(166,175,195,0.25)] dark:hover:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)]"
+                                                        )}
+                                                    >
+                                                        <i className={cn(item.icon, active ? "text-white" : "text-slate-500 dark:text-slate-400")}></i>
+                                                        <span>{item.label}</span>
+                                                    </Link>
+                                                );
+                                            })}
                                         </div>
                                     </div>);
         })}
@@ -421,7 +430,7 @@ interface ShadUiNavProps {
     onAIClick?: () => void;
 }
 export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
-    const { openChat, isOpen: isAIOpen, isRobotThinking, isRobotResponding, activeRecommendation, openRecommendationChat } = useAI();
+    const { openChat, isOpen: isAIOpen, isRobotThinking, isRobotResponding } = useAI();
     const [isOpen, setIsOpen] = useState(false);
     const [isHovering, setIsHovering] = useState(false);
     const [isMsgHovering, setIsMsgHovering] = useState(false);
@@ -432,12 +441,6 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
             setIsOpen(false);
         }
     }, [isAIOpen]);
-
-    useEffect(() => {
-        if (activeRecommendation) {
-            setIsOpen(true);
-        }
-    }, [activeRecommendation]);
     const greetings = [
         "Hi there!",
         "Hey! How can I help?",
@@ -579,13 +582,8 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
 
                                 <div className="h-7 w-px bg-pink-200/60 dark:bg-[#67224c]"/>
 
-                                <div className="relative">
-                                    <button onClick={() => {
-                                        if (activeRecommendation) {
-                                            openRecommendationChat(activeRecommendation);
-                                        } else {
-                                            openChat();
-                                        }
+                                <div className="relative">                                    <button onClick={() => {
+                                        openChat();
                                         setIsOpen(false);
                                         if (onAIClick)
                                             onAIClick();
@@ -637,53 +635,7 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                                     </button>
 
                                     <AnimatePresence>
-                                        {activeRecommendation ? (
-                                            <motion.div
-                                                key="recommendation-bubble"
-                                                className="absolute -top-32 right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 w-64 sm:w-72 z-50 cursor-pointer"
-                                                initial={{ opacity: 0, y: 15, scale: 0.85 }}
-                                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                exit={{ opacity: 0, y: -10, scale: 0.85 }}
-                                                transition={{ type: "spring", stiffness: 350, damping: 25 }}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openRecommendationChat(activeRecommendation);
-                                                    setIsOpen(false);
-                                                    if (onAIClick) onAIClick();
-                                                }}
-                                            >
-                                                <div className="bg-white/95 dark:bg-[#1a1b26]/95 rounded-2xl p-2.5 shadow-[0_12px_32px_rgba(236,72,153,0.35),inset_0_1px_0_#ffffff] dark:shadow-[0_12px_32px_rgba(0,0,0,0.8),inset_0_1px_0_rgba(255,255,255,0.08)] border-2 border-pink-400 dark:border-pink-500 backdrop-blur-md group hover:scale-[1.02] active:scale-95 transition-transform">
-                                                    <div className="flex items-center justify-between gap-1 mb-1">
-                                                        <span className="flex items-center gap-1.5 text-[10.5px] font-bold text-pink-600 dark:text-pink-300">
-                                                            <span className="relative flex h-2 w-2">
-                                                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
-                                                                <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
-                                                            </span>
-                                                            <i className="fas fa-trophy text-amber-500 text-[11px]" />
-                                                            AI Best Offer
-                                                        </span>
-                                                        <span className="text-[9.5px] font-bold px-1.5 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40">
-                                                            {activeRecommendation.overallScore || 96}/100
-                                                        </span>
-                                                    </div>
-
-                                                    <div className="flex items-start justify-between gap-1.5">
-                                                        <div className="min-w-0">
-                                                            <p className="text-[11.5px] font-bold text-slate-900 dark:text-white truncate">
-                                                                {activeRecommendation.supplierName}
-                                                            </p>
-                                                            <p className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
-                                                                ₱{activeRecommendation.totalAmount.toLocaleString()} • {activeRecommendation.leadTimeDays || 1}d lead
-                                                            </p>
-                                                        </div>
-                                                        <span className="shrink-0 text-[10px] font-bold text-pink-600 dark:text-pink-400 flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform mt-0.5">
-                                                            Chat <i className="fas fa-chevron-right text-[8px]" />
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="w-0 h-0 mx-auto border-x-8 border-x-transparent border-t-8 border-t-pink-400 dark:border-t-pink-500" />
-                                            </motion.div>
-                                        ) : isHovering ? (
+                                        {isHovering ? (
                                             <motion.div className="absolute -top-16 left-1/2 -translate-x-1/2 
                                                        whitespace-nowrap z-50 pointer-events-none" initial={{ opacity: 0, y: 10, scale: 0.8 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.8 }} transition={{ duration: 0.1 }}>
                                                     <motion.div key={currentGreeting} className="bg-white dark:bg-[#1c1d25] 
@@ -721,12 +673,6 @@ export function ShadUiNav({ onAIClick }: ShadUiNavProps) {
                         "focus:outline-none focus:ring-2 focus:ring-pink-400 focus:ring-offset-2 dark:focus:ring-offset-[#1c1b1f]"
                     )}
                 >
-                    {activeRecommendation && !isOpen && (
-                        <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-4 w-4 bg-pink-500 text-[9px] font-bold text-white items-center justify-center">1</span>
-                        </span>
-                    )}
                 <AnimatePresence mode="wait" initial={false}>
                     {isOpen ? (<motion.span key="chevron-right" initial={{ opacity: 0, rotate: -90 }} animate={{ opacity: 1, rotate: 0 }} exit={{ opacity: 0, rotate: 90 }} transition={{ duration: 0.2 }} className="flex items-center justify-center">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5 text-white drop-shadow-sm">

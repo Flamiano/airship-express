@@ -13,6 +13,7 @@ interface TabNavProps {
     blockedCount: number;
     appealsCount: number;
     activitiesCount: number;
+    employeeAccountsCount?: number;
 }
 
 export const TabNav: React.FC<TabNavProps> = ({
@@ -25,9 +26,11 @@ export const TabNav: React.FC<TabNavProps> = ({
     blockedCount,
     appealsCount,
     activitiesCount,
+    employeeAccountsCount = 0,
 }) => {
     const tabs: { id: ActivityTab; label: string; icon: string; count: number; badgePulse?: boolean }[] = [
         { id: 'active_users', label: 'Active Users', icon: 'fa-user-check', count: activeUsersCount },
+        { id: 'create_account', label: 'Create Account', icon: 'fa-user-plus', count: employeeAccountsCount },
         { id: 'sessions', label: 'Sessions', icon: 'fa-laptop', count: sessionsCount },
         { id: 'access_control', label: 'Access Control', icon: 'fa-user-shield', count: accessControlCount, badgePulse: pendingAuthCount > 0 },
         { id: 'blocked', label: 'Blocked', icon: 'fa-ban', count: blockedCount },

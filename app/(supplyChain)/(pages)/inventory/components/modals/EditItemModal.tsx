@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { toast } from 'sonner';
 import { sanitizeText } from '../../../../components/global/sanitize';
-import { EditItemFormData, InventoryItem, Supplier } from '../../types';
+import { EditItemFormData, InventoryItem, Supplier, WarehouseStorageZone } from '../../types';
 import { AppButton } from '../../../../components/ui/AppButton';
 import Portal from '../../../../components/client/Portal';
 import { supabase } from '../../../../lib/services/client/supabase';
@@ -53,6 +53,9 @@ export function EditItemModal({
     const [isCustomCategory, setIsCustomCategory] = useState(false);
     const [customCategoryText, setCustomCategoryText] = useState('');
 
+    const [storageZones, setStorageZones] = useState<WarehouseStorageZone[]>([]);
+    const [isLoadingZones, setIsLoadingZones] = useState(false);
+
     const [formData, setFormData] = useState<EditItemFormData>({
         id: '',
         item_code: '',
@@ -63,6 +66,7 @@ export function EditItemModal({
         current_stock: 0,
         minimum_stock: 0,
         storage_location: '',
+        warehouse_storage_zone_id: '',
         supplier: '',
         purchase_price: 0,
         status: 'available'
@@ -79,37 +83,51 @@ export function EditItemModal({
         if (isOpen) {
             let isMounted = true;
             setIsLoadingSuppliers(true);
+            setIsLoadingZones(true);
 
-            const loadSuppliers = async () => {
+            const loadData = async () => {
                 try {
-                    const { data, error } = await supabase
-                        .from('suppliers')
-                        .select('id, name, category, is_active, status')
-                        .order('name');
+                    const [suppRes, zonesRes] = await Promise.all([
+                        supabase
+                            .from('suppliers')
+                            .select('id, name, category, is_active, status')
+                            .order('name'),
+                        supabase
+                            .from('warehouse_storage_zones')
+                            .select('id, zone_code, zone_name, total_capacity_units, current_utilized_units, type, building_or_hub')
+                            .order('zone_code')
+                    ]);
 
-                    if (isMounted && !error && data && data.length > 0) {
-                        const activeSupps = data.filter((s: any) => s.is_active !== false && s.status !== 'inactive');
-                        setLocalSuppliers(activeSupps as unknown as Supplier[]);
+                    if (isMounted) {
+                        if (!suppRes.error && suppRes.data && suppRes.data.length > 0) {
+                            const activeSupps = suppRes.data.filter((s: any) => s.is_active !== false && s.status !== 'inactive');
+                            setLocalSuppliers(activeSupps as unknown as Supplier[]);
 
-                        const activeCats = Array.from(
-                            new Set(
-                                activeSupps
-                                    .map((s: any) => (typeof s.category === 'string' ? s.category.trim() : ''))
-                                    .filter(Boolean)
-                            )
-                        ).sort();
-                        setSupplierCategories(activeCats);
+                            const activeCats = Array.from(
+                                new Set(
+                                    activeSupps
+                                        .map((s: any) => (typeof s.category === 'string' ? s.category.trim() : ''))
+                                        .filter(Boolean)
+                                )
+                            ).sort();
+                            setSupplierCategories(activeCats);
+                        }
+
+                        if (!zonesRes.error && zonesRes.data) {
+                            setStorageZones(zonesRes.data as WarehouseStorageZone[]);
+                        }
                     }
                 } catch (err) {
-                    console.error('Error fetching suppliers:', err);
+                    console.error('Error fetching suppliers/zones:', err);
                 } finally {
                     if (isMounted) {
                         setIsLoadingSuppliers(false);
+                        setIsLoadingZones(false);
                     }
                 }
             };
 
-            loadSuppliers();
+            loadData();
 
             return () => {
                 isMounted = false;
@@ -155,6 +173,14 @@ export function EditItemModal({
         return options;
     }, [supplierCategories, item]);
 
+    // Currently selected storage zone details
+    const selectedZone = useMemo(() => {
+        return storageZones.find(z => 
+            (formData.warehouse_storage_zone_id && z.id === formData.warehouse_storage_zone_id) || 
+            (formData.storage_location && z.zone_code.toLowerCase().trim() === formData.storage_location.toLowerCase().trim())
+        );
+    }, [storageZones, formData.warehouse_storage_zone_id, formData.storage_location]);
+
     // Populate form when item changes
     useEffect(() => {
         if (isOpen && item) {
@@ -168,6 +194,7 @@ export function EditItemModal({
                 current_stock: item.current_stock,
                 minimum_stock: item.minimum_stock,
                 storage_location: item.storage_location || '',
+                warehouse_storage_zone_id: item.warehouse_storage_zone_id || '',
                 supplier: item.supplier || '',
                 purchase_price: item.purchase_price || 0,
                 status: item.status || 'available'
@@ -189,8 +216,8 @@ export function EditItemModal({
             return;
         }
 
-        if (!formData.supplier) {
-            toast.warning('Please select a supplier');
+        if (!formData.storage_location.trim()) {
+            toast.warning('Please select a warehouse storage zone');
             return;
         }
 
@@ -202,6 +229,8 @@ export function EditItemModal({
 
         await onSave({
             ...formData,
+            storage_location: formData.storage_location.trim(),
+            warehouse_storage_zone_id: formData.warehouse_storage_zone_id || (selectedZone ? selectedZone.id : undefined),
             category: effectiveCategory,
             purchase_price: numericPrice
         });
@@ -395,25 +424,118 @@ export function EditItemModal({
                                 <span>Logistics & Cost</span>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="md:col-span-2">
-                                    <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                                        Storage Location
-                                    </label>
-                                    <div className="relative">
-                                        <i className="fas fa-location-dot absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
-                                        <input
-                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg pl-9 pr-3.5 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-blue-500 transition-all"
-                                            value={formData.storage_location}
-                                            onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
-                                            placeholder="e.g. Shelf A-04, Zone 2"
-                                            disabled={loading}
-                                        />
+                                <div className="md:col-span-2 space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                            Storage Location (Warehouse Zone) <span className="text-rose-500 dark:text-rose-400">*</span>
+                                        </label>
+                                        {isLoadingZones && (
+                                            <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                                                <i className="fas fa-spinner fa-spin text-[10px]"></i> Loading zones...
+                                            </span>
+                                        )}
                                     </div>
+
+                                    <div className="relative">
+                                        <i className="fas fa-warehouse absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
+                                        <select
+                                            className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg pl-9 pr-8 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 transition-all cursor-pointer appearance-none disabled:opacity-50"
+                                            value={formData.storage_location}
+                                            onChange={(e) => {
+                                                const code = e.target.value;
+                                                const matched = storageZones.find(z => z.zone_code === code);
+                                                setFormData({
+                                                    ...formData,
+                                                    storage_location: code,
+                                                    warehouse_storage_zone_id: matched ? matched.id : ''
+                                                });
+                                            }}
+                                            required
+                                            disabled={loading || isLoadingZones}
+                                        >
+                                            <option value="" className="dark:bg-slate-900">{isLoadingZones ? 'Loading zones from warehouse...' : '-- Select Warehouse Storage Zone --'}</option>
+                                            {storageZones.map((zone) => {
+                                                const utilized = Number(zone.current_utilized_units || 0);
+                                                const total = Number(zone.total_capacity_units || 0);
+                                                const available = Math.max(0, total - utilized);
+                                                return (
+                                                    <option key={zone.id} value={zone.zone_code} className="dark:bg-slate-900">
+                                                        {zone.zone_code} - {zone.zone_name} ({utilized}/{total} units • {available} free)
+                                                    </option>
+                                                );
+                                            })}
+                                        </select>
+                                        <i className="fas fa-chevron-down absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
+                                    </div>
+
+                                    {selectedZone && (() => {
+                                        const currentUtil = Number(selectedZone.current_utilized_units || 0);
+                                        const totalCap = Number(selectedZone.total_capacity_units || 0);
+                                        const currentStock = Number(formData.current_stock || 0);
+                                        const prevStock = Number(item?.current_stock || 0);
+                                        const diff = currentStock - prevStock;
+                                        const isSameZone = (item?.storage_location || '').trim() === selectedZone.zone_code.trim();
+                                        // If same zone, projected = currentUtil + diff; if new zone, projected = currentUtil + currentStock
+                                        const projectedUtil = isSameZone ? (currentUtil + diff) : (currentUtil + currentStock);
+                                        const currentPct = totalCap > 0 ? Math.min(100, Math.round((currentUtil / totalCap) * 100)) : 0;
+                                        const projectedPct = totalCap > 0 ? Math.min(100, Math.round((projectedUtil / totalCap) * 100)) : 0;
+                                        const isOverCap = totalCap > 0 && projectedUtil > totalCap;
+
+                                        return (
+                                            <div className="p-3 bg-[#e5ecf6] dark:bg-[#111218] rounded-xl border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2 animate-in fade-in duration-150">
+                                                <div className="flex flex-wrap items-center justify-between gap-1 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                                            <i className="fas fa-map-pin text-[11px] text-blue-500"></i>
+                                                            {selectedZone.zone_name}
+                                                        </span>
+                                                        {selectedZone.building_or_hub && (
+                                                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                                                                {selectedZone.building_or_hub}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                                                        Capacity: <strong className="text-slate-900 dark:text-white">{currentUtil}</strong> / {totalCap} units
+                                                    </span>
+                                                </div>
+
+                                                {/* Capacity Progress Bar */}
+                                                <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden relative">
+                                                    <div
+                                                        className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                                                        style={{ width: `${currentPct}%` }}
+                                                    />
+                                                    {isOverCap && (
+                                                        <div
+                                                            className="h-full bg-rose-500 rounded-full absolute top-0 left-0 transition-all duration-300"
+                                                            style={{ width: '100%' }}
+                                                        />
+                                                    )}
+                                                </div>
+
+                                                <div className="flex items-center justify-between text-[11px]">
+                                                    <span className="text-slate-500 dark:text-slate-400">
+                                                        Zone utilization: <strong>{currentPct}%</strong> ({Math.max(0, totalCap - currentUtil)} units free)
+                                                    </span>
+                                                    {isOverCap ? (
+                                                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                                                            <i className="fas fa-triangle-exclamation"></i> Over capacity by {projectedUtil - totalCap} units!
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                                            <i className="fas fa-circle-check text-[10px]"></i> Space available
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
                                 </div>
 
                                 <div>
                                     <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                                        Supplier <span className="text-rose-500 dark:text-rose-400">*</span>
+                                        Supplier <span className="text-slate-400 dark:text-slate-500 text-xs font-normal">(Optional)</span>
                                     </label>
                                     <div className="relative">
                                         <i className="fas fa-building-user absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-xs pointer-events-none"></i>
@@ -421,10 +543,9 @@ export function EditItemModal({
                                             className="w-full bg-[#ebf0f7] dark:bg-[#14151e] border border-slate-200/60 dark:border-white/[0.08] shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.65)] rounded-lg pl-9 pr-8 py-2.5 text-xs sm:text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer"
                                             value={formData.supplier}
                                             onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
-                                            required
                                             disabled={loading || isLoadingSuppliers}
                                         >
-                                            <option value="" className="dark:bg-slate-900">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier'}</option>
+                                            <option value="" className="dark:bg-slate-900">{isLoadingSuppliers ? 'Loading suppliers...' : 'Select supplier (optional)'}</option>
                                             {localSuppliers.map((s) => (
                                                 <option key={s.id} value={s.name} className="dark:bg-slate-900">{s.name}</option>
                                             ))}

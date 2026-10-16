@@ -27,9 +27,11 @@ import {
     Download, 
     FileSpreadsheet,
     AlertTriangle,
-    Image as ImageIcon
+    Image as ImageIcon,
+    Receipt
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { user } from "../../../lib/services/Class/user";
 import { supabase } from "../../../lib/services/client/supabase";
 import { useDebounce } from "../../../hooks/useDebounce";
@@ -47,11 +49,19 @@ import {
     SupplierReturnRequestRecord 
 } from "../../warehousing/server/supplier-returns-actions";
 
+const DigitalReceiptModal = dynamic(
+    () => import("../../../components/modals/DigitalReceiptModal").then((m) => m.DigitalReceiptModal),
+    { ssr: false }
+);
+
 interface PurchaseOrderItem {
+    name?: string;
     item_name?: string;
     description?: string;
     quantity: number;
     unit_price: number;
+    price?: number;
+    total?: number;
     total_price: number;
 }
 
@@ -61,6 +71,9 @@ interface PurchaseOrder {
     request_id?: string;
     supplier_id: string;
     supplier_name?: string;
+    supplier_email?: string;
+    supplier_location?: string;
+    supplier_address?: string;
     total_amount: number;
     subtotal?: number;
     discount?: number;
@@ -71,6 +84,8 @@ interface PurchaseOrder {
     status: string;
     delivery_date?: string;
     delivery_location?: string;
+    payment_terms?: string;
+    terms_and_conditions?: string;
     admin_approval?: string;
     admin_approved_at?: string;
     financial_approval?: string;
@@ -80,9 +95,10 @@ interface PurchaseOrder {
     paid?: boolean;
     created_at?: string;
     updated_at?: string;
+    created_by?: string;
 }
 
-// Helper to check if a Purchase Order is approved by both Admin and Finance, and officially Issued
+// Helper to check if a Purchase Order is approved by both Admin and Finance, officially Issued, and NOT rejected
 export function isApprovedAndIssuedPO(po: any): boolean {
     if (!po) return false;
     
@@ -94,9 +110,15 @@ export function isApprovedAndIssuedPO(po: any): boolean {
     const finApproved = String(po.financial_approval || "").trim().toLowerCase() === "approved";
     if (!finApproved) return false;
 
-    // 3. Must be an issued order (not an internal draft or pending internal review)
+    // 3. Must not be rejected, draft, or pending approval
     const st = String(po.status || "").trim().toLowerCase();
-    if (st === "draft" || st === "pending approval" || st === "pending_approval") {
+    if (
+        st === "draft" || 
+        st === "pending approval" || 
+        st === "pending_approval" || 
+        st === "rejected" || 
+        st.includes("reject")
+    ) {
         return false;
     }
 
@@ -158,6 +180,9 @@ export default function SupplierPurchaseOrdersPage() {
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [selectedPo, setSelectedPo] = useState<PurchaseOrder | null>(null);
+    const [selectedPoTab, setSelectedPoTab] = useState<"details" | "manage">("details");
+    const [digitalReceiptPO, setDigitalReceiptPO] = useState<PurchaseOrder | null>(null);
+    const [isDigitalReceiptModalOpen, setIsDigitalReceiptModalOpen] = useState(false);
     const [supplierAccount, setSupplierAccount] = useState<any>(null);
     const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
     const [confirmModal, setConfirmModal] = useState<StatusConfirmState | null>(null);
@@ -394,6 +419,8 @@ export default function SupplierPurchaseOrdersPage() {
     // Filter and Search Logic
     const filteredOrders = useMemo(() => {
         return purchaseOrders.filter((po) => {
+            if (isRejectedStatus(po.status)) return false;
+
             const matchesSearch =
                 !debouncedSearch ||
                 (po.po_number && po.po_number.toLowerCase().includes(debouncedSearch.toLowerCase())) ||
@@ -405,8 +432,6 @@ export default function SupplierPurchaseOrdersPage() {
                 matchesStatus = isConfirmedStatus(po.status);
             } else if (selectedStatus === "DELIVERED") {
                 matchesStatus = isDeliveredStatus(po.status);
-            } else if (selectedStatus === "REJECTED") {
-                matchesStatus = isRejectedStatus(po.status);
             } else if (selectedStatus === "CANCELLED") {
                 matchesStatus = isCancelledStatus(po.status);
             } else if (selectedStatus === "PENDING") {
@@ -664,12 +689,20 @@ export default function SupplierPurchaseOrdersPage() {
                 console.error("Error sending PO update notification:", notifErr);
             }
 
+            const isNowRejected = normStatus === 'rejected' || normStatus.includes('reject');
             toast.success(`Purchase order status updated to ${newStatus}`);
-            setPurchaseOrders((prev) =>
-                prev.map((p) => (p.id === poId ? { ...p, status: newStatus } : p))
-            );
+            setPurchaseOrders((prev) => {
+                if (isNowRejected) {
+                    return prev.filter((p) => p.id !== poId);
+                }
+                return prev.map((p) => (p.id === poId ? { ...p, status: newStatus } : p));
+            });
             if (selectedPo && selectedPo.id === poId) {
-                setSelectedPo({ ...selectedPo, status: newStatus });
+                if (isNowRejected) {
+                    setSelectedPo(null);
+                } else {
+                    setSelectedPo({ ...selectedPo, status: newStatus });
+                }
             }
         } catch (err: any) {
             toast.error("Failed to update status: " + err.message);
@@ -688,20 +721,23 @@ export default function SupplierPurchaseOrdersPage() {
         });
     };
 
-    // Calculate Summary Metrics
+    // Calculate Summary Metrics (Excluding Rejected Orders)
     const metrics = useMemo(() => {
         let totalValue = 0;
         let pendingCount = 0;
         let deliveredCount = 0;
+        let count = 0;
 
         purchaseOrders.forEach((po) => {
+            if (isRejectedStatus(po.status)) return;
+            count++;
             totalValue += Number(po.total_amount) || 0;
             if (isDeliveredStatus(po.status)) deliveredCount++;
             else if (isPendingOrSentStatus(po.status)) pendingCount++;
         });
 
         return {
-            totalCount: purchaseOrders.length,
+            totalCount: count,
             totalValue,
             pendingCount,
             deliveredCount,
@@ -710,17 +746,16 @@ export default function SupplierPurchaseOrdersPage() {
 
     const statusCounts = useMemo(() => {
         const counts: Record<string, number> = {
-            ALL: purchaseOrders.length,
+            ALL: purchaseOrders.filter((po) => !isRejectedStatus(po.status)).length,
             PENDING: 0,
             CONFIRMED: 0,
             DELIVERED: 0,
-            REJECTED: 0,
             CANCELLED: 0,
         };
         purchaseOrders.forEach((po) => {
+            if (isRejectedStatus(po.status)) return;
             if (isDeliveredStatus(po.status)) counts.DELIVERED++;
             else if (isConfirmedStatus(po.status)) counts.CONFIRMED++;
-            else if (isRejectedStatus(po.status)) counts.REJECTED++;
             else if (isCancelledStatus(po.status)) counts.CANCELLED++;
             else counts.PENDING++;
         });
@@ -1024,7 +1059,6 @@ export default function SupplierPurchaseOrdersPage() {
                     { id: "PENDING", label: "Pending / Issued", count: statusCounts.PENDING },
                     { id: "CONFIRMED", label: "Confirmed", count: statusCounts.CONFIRMED },
                     { id: "DELIVERED", label: "Delivered", count: statusCounts.DELIVERED },
-                    { id: "REJECTED", label: "Rejected", count: statusCounts.REJECTED },
                     { id: "CANCELLED", label: "Cancelled", count: statusCounts.CANCELLED },
                 ].map((tab) => {
                     const active = selectedStatus === tab.id;
@@ -1242,7 +1276,10 @@ export default function SupplierPurchaseOrdersPage() {
                                                     size="xs"
                                                     icon={Eye}
                                                     iconClassName="text-pink-500"
-                                                    onClick={() => setSelectedPo(po)}
+                                                    onClick={() => {
+                                                        setSelectedPo(po);
+                                                        setSelectedPoTab("details");
+                                                    }}
                                                 >
                                                     Details
                                                 </AppButton>
@@ -1348,19 +1385,6 @@ export default function SupplierPurchaseOrdersPage() {
                                                                     Revert
                                                                 </AppButton>
                                                             </>
-                                                        ) : isRejectedStatus(po.status) ? (
-                                                            <>
-                                                                <AppButton
-                                                                    variant="danger"
-                                                                    size="xs"
-                                                                    icon={RotateCcw}
-                                                                    onClick={() => requestStatusChange(po, "revert")}
-                                                                    disabled={isUpdatingStatus}
-                                                                    title="Revert Rejected Order"
-                                                                >
-                                                                    Revert
-                                                                </AppButton>
-                                                            </>
                                                         ) : isDeliveredStatus(po.status) ? (
                                                             <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 px-2.5 py-1 bg-emerald-500/10 rounded-xl">
                                                                 <CheckCircle2 className="w-3 h-3" /> Done
@@ -1394,7 +1418,10 @@ export default function SupplierPurchaseOrdersPage() {
                                                             size="xs"
                                                             icon={Eye}
                                                             iconClassName="text-pink-500"
-                                                            onClick={() => setSelectedPo(po)}
+                                                            onClick={() => {
+                                                                setSelectedPo(po);
+                                                                setSelectedPoTab("details");
+                                                            }}
                                                             title="View PO Details"
                                                         >
                                                             Details
@@ -1688,17 +1715,48 @@ export default function SupplierPurchaseOrdersPage() {
                                                             </StatusBadge>
                                                         </td>
                                                         <td className="py-3.5 px-3 sm:px-4 text-right">
-                                                            <AppButton
-                                                                variant="pink"
-                                                                size="xs"
-                                                                icon={ShieldAlert}
-                                                                onClick={() => {
-                                                                    setSelectedReturnForModal(req);
-                                                                    setIsReturnModalOpen(true);
-                                                                }}
-                                                            >
-                                                                Review & Respond
-                                                            </AppButton>
+                                                            {(() => {
+                                                                const isResolvedOrDone =
+                                                                    (req.status as string) === "Resolved" ||
+                                                                    (req.status as string) === "Claim Closed" ||
+                                                                    (req.status as string) === "Closed" ||
+                                                                    (req.status as string) === "Rejected" ||
+                                                                    req.resolution_details?.replacement_receiving_status === "Received & Restocked" ||
+                                                                    (req as any).replacement_receiving_status === "Received & Restocked";
+
+                                                                return (
+                                                                    <div className="flex items-center justify-end gap-1.5">
+                                                                        <AppButton
+                                                                            variant={isResolvedOrDone ? "secondary" : "pink"}
+                                                                            size="xs"
+                                                                            icon={isResolvedOrDone ? CheckCircle2 : ShieldAlert}
+                                                                            disabled={isResolvedOrDone}
+                                                                            title={isResolvedOrDone ? "This return claim has been resolved and the process is complete" : "Review & Respond"}
+                                                                            onClick={() => {
+                                                                                if (isResolvedOrDone) return;
+                                                                                setSelectedReturnForModal(req);
+                                                                                setIsReturnModalOpen(true);
+                                                                            }}
+                                                                        >
+                                                                            {isResolvedOrDone ? "Resolved & Closed" : "Review & Respond"}
+                                                                        </AppButton>
+                                                                        {isResolvedOrDone && (
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => {
+                                                                                    setSelectedReturnForModal(req);
+                                                                                    setIsReturnModalOpen(true);
+                                                                                }}
+                                                                                title="View read-only claim details, photos & audit logs"
+                                                                                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer text-xs flex items-center gap-1"
+                                                                            >
+                                                                                <Eye className="w-3.5 h-3.5" />
+                                                                                <span className="text-[11px] font-semibold hidden sm:inline">View</span>
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </td>
                                                     </tr>
                                                 );
@@ -1750,216 +1808,525 @@ export default function SupplierPurchaseOrdersPage() {
             {/* Purchase Order Details Modal */}
             {selectedPo && (
                 <Portal>
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
-                        <div className="bg-[#f0f3f8] dark:bg-[#181926] max-w-2xl w-full rounded-3xl p-6 border border-white/90 dark:border-white/[0.08] max-h-[90vh] flex flex-col overflow-hidden">
-                            {/* Modal Header */}
-                            <div className="flex items-center justify-between pb-4 border-b border-slate-200/80 dark:border-slate-800">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 flex items-center justify-center text-white shadow-md">
-                                        <FileText className="w-5 h-5" />
+                    <div 
+                        className="fixed inset-0 bg-slate-950/60 dark:bg-black/75 backdrop-blur-md flex items-center justify-center z-[99999] p-3 sm:p-4 animate-in fade-in duration-200" 
+                        onClick={() => setSelectedPo(null)}
+                    >
+                        <div 
+                            className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-[12px_12px_36px_rgba(166,175,195,0.45),-12px_-12px_36px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] border border-white/90 dark:border-white/[0.08] overflow-hidden animate-in zoom-in-95 duration-200" 
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="px-6 py-4 border-b border-slate-200/60 dark:border-white/[0.06] flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-900/30">
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-11 h-11 rounded-2xl bg-pink-600 border border-pink-400/80 text-white flex items-center justify-center text-lg shrink-0 shadow-[3px_3px_7px_rgba(219,39,119,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4)]">
+                                        <FileText className="h-5 w-5" />
                                     </div>
                                     <div>
-                                        <h3 className="text-base font-black text-slate-900 dark:text-white">
-                                            PO Ref: {selectedPo.po_number}
-                                        </h3>
-                                        <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                                                Issue Date: {((selectedPo.admin_approval === 'Approved' || (selectedPo as any).financial_approval === 'Approved') && selectedPo.admin_approval !== 'Pending' && (selectedPo as any).financial_approval !== 'Pending') 
-                                                    ? formatDate((selectedPo as any).financial_approved_at || selectedPo.admin_approved_at || selectedPo.created_at) 
-                                                    : 'Pending'}
-                                            </p>
-                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                                <span>Admin & Finance Approved</span>
+                                        <div className="flex items-center gap-2">
+                                            <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
+                                                Purchase Order Details
+                                            </h2>
+                                            <span className="font-mono text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#14151e] px-2.5 py-0.5 rounded-full border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]">
+                                                #{selectedPo.po_number}
                                             </span>
                                         </div>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                            {selectedPo.supplier_name || supplierAccount?.suppliers?.name || supplierAccount?.company_name || 'Airship Express Logistics'} • <span className="font-bold text-slate-800 dark:text-slate-200">₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <button
-                                        onClick={() => setSelectedPo(null)}
-                                        className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 bg-[#ebf0f7] dark:bg-[#14151c] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] cursor-pointer"
+                                        type="button"
+                                        onClick={() => {
+                                            setDigitalReceiptPO(selectedPo);
+                                            setIsDigitalReceiptModalOpen(true);
+                                        }}
+                                        className="hidden sm:inline-flex px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] hover:bg-[#e4ebf5] dark:bg-[#1e1f2c] dark:hover:bg-[#252738] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                                        title="View & Print Digital Receipt"
                                     >
-                                        <X className="w-4 h-4" />
+                                        <Receipt className="h-3.5 w-3.5 text-pink-500" />
+                                        <span>Digital Receipt</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedPo(null)}
+                                        className="w-8 h-8 rounded-full bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 flex items-center justify-center transition-all cursor-pointer active:scale-95"
+                                        aria-label="Close modal"
+                                    >
+                                        <i className="fas fa-times text-xs" />
                                     </button>
                                 </div>
                             </div>
 
-                            {/* Modal Body */}
-                            <div className="flex-1 overflow-y-auto py-4 space-y-5">
-                                {/* Summary Grid */}
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                    <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]">
-                                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Total Amount</span>
-                                        <span className="text-sm font-black text-slate-900 dark:text-white font-mono">{formatCurrency(selectedPo.total_amount)}</span>
-                                    </div>
-                                    <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]">
-                                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Due Date</span>
-                                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{formatDate(selectedPo.delivery_date)}</span>
-                                    </div>
-                                    <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]">
-                                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Status</span>
-                                        <StatusBadge tone={getPOStatusTone(selectedPo.status || "Pending")} size="xs">
-                                            {selectedPo.status || "Pending"}
-                                        </StatusBadge>
-                                    </div>
-                                    <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]">
-                                        <span className="text-[10px] uppercase font-bold text-slate-400 block">Payment</span>
-                                        <span className="text-xs font-bold text-pink-600 dark:text-pink-400">{selectedPo.paid ? "Paid" : "Unpaid"}</span>
-                                    </div>
-                                </div>
-
-                                {/* Delivery & Logistics Info */}
-                                <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04] text-xs">
-                                    <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Delivery Destination</span>
-                                    <p className="font-semibold text-slate-800 dark:text-slate-200">
-                                        {selectedPo.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila (Airship Express Central Hub)'}
-                                    </p>
-                                </div>
-
-                                {/* Items Breakdown */}
-                                <div>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                                            Line Items Breakdown
-                                        </h4>
-                                        <button
-                                            onClick={() => handleExportSinglePoCSV(selectedPo)}
-                                            className="text-[11px] font-bold text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 cursor-pointer"
-                                        >
-                                            <Download className="w-3 h-3" />
-                                            <span>Export Line Items</span>
-                                        </button>
-                                    </div>
-                                    <div className="overflow-x-auto rounded-2xl border border-white/60 dark:border-white/[0.04] bg-[#ebf0f7]/50 dark:bg-[#13141c]/50">
-                                        <table className="w-full text-left text-xs">
-                                            <thead>
-                                                <tr className="bg-slate-200/50 dark:bg-slate-800/50 text-[10px] uppercase font-bold text-slate-500">
-                                                    <th className="py-2.5 px-3">Item Description</th>
-                                                    <th className="py-2.5 px-3 text-center">Qty</th>
-                                                    <th className="py-2.5 px-3 text-right">Unit Price</th>
-                                                    <th className="py-2.5 px-3 text-right">Total</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 font-medium">
-                                                {Array.isArray(selectedPo.items) && selectedPo.items.length > 0 ? (
-                                                    selectedPo.items.map((item: any, idx: number) => (
-                                                        <tr key={`item_${selectedPo.id || 'po'}_${idx}`}>
-                                                            <td className="py-2.5 px-3 text-slate-800 dark:text-slate-200">
-                                                                {item.item_name || item.description || `Item #${idx + 1}`}
-                                                            </td>
-                                                            <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-400 font-mono">
-                                                                {item.quantity || 1}
-                                                            </td>
-                                                            <td className="py-2.5 px-3 text-right font-mono text-slate-600 dark:text-slate-400">
-                                                                {formatCurrency(item.unit_price || 0)}
-                                                            </td>
-                                                            <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-900 dark:text-white">
-                                                                {formatCurrency(item.total_price || (item.quantity * item.unit_price) || 0)}
-                                                            </td>
-                                                        </tr>
-                                                    ))
-                                                ) : (
-                                                    <tr>
-                                                        <td colSpan={4} className="py-4 text-center text-slate-400">
-                                                            Standard supply order package
-                                                        </td>
-                                                    </tr>
-                                                )}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </div>
-
-                                {/* Order Notes */}
-                                {selectedPo.notes && (
-                                    <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/60 dark:border-white/[0.04]">
-                                        <span className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Order Notes</span>
-                                        <p className="text-xs text-slate-700 dark:text-slate-300">{selectedPo.notes}</p>
-                                    </div>
-                                )}
+                            {/* Segmented Tabs Bar */}
+                            <div className="px-6 pt-3 pb-0 bg-slate-100/60 dark:bg-slate-900/40 border-b border-slate-200/70 dark:border-slate-800 flex gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPoTab('details')}
+                                    className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all flex items-center gap-2 cursor-pointer ${
+                                        selectedPoTab === 'details'
+                                            ? 'bg-[#f0f3f8] dark:bg-[#161722] text-pink-600 dark:text-pink-400 border-white/90 dark:border-white/[0.08] border-b-transparent shadow-[0_-2px_6px_rgba(166,175,195,0.2)]'
+                                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent'
+                                    }`}
+                                >
+                                    <i className="fas fa-file-lines text-xs" />
+                                    <span>Overview & Line Items</span>
+                                    {selectedPo.items && selectedPo.items.length > 0 && (
+                                        <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 font-mono">
+                                            {selectedPo.items.length}
+                                        </span>
+                                    )}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPoTab('manage')}
+                                    className={`px-4 py-2 text-xs font-bold rounded-t-xl border-t border-x transition-all flex items-center gap-2 cursor-pointer ${
+                                        selectedPoTab === 'manage'
+                                            ? 'bg-[#f0f3f8] dark:bg-[#161722] text-pink-600 dark:text-pink-400 border-white/90 dark:border-white/[0.08] border-b-transparent shadow-[0_-2px_6px_rgba(166,175,195,0.2)]'
+                                            : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent'
+                                    }`}
+                                >
+                                    <i className="fas fa-sliders text-xs" />
+                                    <span>Status & Fulfillment</span>
+                                    <StatusBadge tone={getPOStatusTone(selectedPo.status)} size="xs">
+                                        {selectedPo.status}
+                                    </StatusBadge>
+                                </button>
                             </div>
 
-                            {/* Modal Footer: Quick Actions */}
-                            <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
-                                <Link
-                                    href={`/suppliers_page/messages?po=${selectedPo.po_number}`}
-                                    className="px-4 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#14151c] border border-pink-500/20 shadow-xs flex items-center gap-1.5"
-                                >
-                                    <MessageSquare className="w-3.5 h-3.5" />
-                                    <span>Inquire About PO</span>
-                                </Link>
-
-                                <div className="flex items-center gap-2">
-                                    {isConfirmedStatus(selectedPo.status) ? (
-                                        <>
-                                            <AppButton
-                                                variant="success"
-                                                size="sm"
-                                                icon={CheckCircle2}
-                                                onClick={() => requestStatusChange(selectedPo, "delivered")}
-                                                disabled={isUpdatingStatus}
-                                            >
-                                                Mark as Delivered
-                                            </AppButton>
-                                            <AppButton
-                                                variant="danger"
-                                                size="sm"
-                                                icon={RotateCcw}
-                                                onClick={() => requestStatusChange(selectedPo, "revert")}
-                                                disabled={isUpdatingStatus}
-                                            >
-                                                Revert Order
-                                            </AppButton>
-                                        </>
-                                    ) : isRejectedStatus(selectedPo.status) ? (
-                                        <>
-                                            <AppButton
-                                                variant="danger"
-                                                size="sm"
-                                                icon={RotateCcw}
-                                                onClick={() => requestStatusChange(selectedPo, "revert")}
-                                                disabled={isUpdatingStatus}
-                                            >
-                                                Revert Order
-                                            </AppButton>
-                                        </>
-                                    ) : isDeliveredStatus(selectedPo.status) ? (
-                                        <div className="px-3.5 py-1.5 rounded-full text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 flex items-center gap-1.5 border border-emerald-500/20">
-                                            <CheckCircle2 className="w-3.5 h-3.5" />
-                                            <span>Delivered & Completed</span>
+                            {/* Content Body */}
+                            <div className="p-6 space-y-5 overflow-y-auto flex-1 custom-scrollbar">
+                                {selectedPoTab === 'details' ? (
+                                    <>
+                                        {/* 4 Summary Metric Cards */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider">Total Amount</span>
+                                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono mt-0.5 block">
+                                                    ₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider">Due / Delivery</span>
+                                                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1 block">
+                                                    {selectedPo.delivery_date ? new Date(selectedPo.delivery_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Standard Schedule'}
+                                                </span>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider mb-1">Status</span>
+                                                <StatusBadge tone={getPOStatusTone(selectedPo.status)} size="xs">
+                                                    {selectedPo.status}
+                                                </StatusBadge>
+                                            </div>
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <span className="text-[10px] uppercase font-extrabold text-slate-400 dark:text-slate-500 block tracking-wider mb-1">Payment</span>
+                                                {selectedPo.paid ? (
+                                                    <StatusBadge tone="purple" icon="fas fa-check-circle" size="xs">
+                                                        Paid ✓
+                                                    </StatusBadge>
+                                                ) : (
+                                                    <StatusBadge tone="amber" icon="fas fa-hourglass-half" size="xs">
+                                                        Unpaid
+                                                    </StatusBadge>
+                                                )}
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <>
-                                            <AppButton
-                                                variant="pink"
-                                                size="sm"
-                                                icon={Check}
-                                                onClick={() => requestStatusChange(selectedPo, "accept")}
-                                                disabled={isUpdatingStatus}
-                                            >
-                                                Accept Order
-                                            </AppButton>
-                                            <AppButton
-                                                variant="danger"
-                                                size="sm"
-                                                icon={X}
-                                                onClick={() => requestStatusChange(selectedPo, "reject")}
-                                                disabled={isUpdatingStatus}
-                                            >
-                                                Reject Order
-                                            </AppButton>
-                                        </>
-                                    )}
 
-                                    <AppButton
-                                        variant="neutral"
-                                        size="sm"
-                                        onClick={() => setSelectedPo(null)}
-                                    >
-                                        Close
-                                    </AppButton>
-                                </div>
+                                        {/* Entity Information (Buyer & Supplier Panels) */}
+                                        {(() => {
+                                            const matchedSupplierName = selectedPo.supplier_name || supplierAccount?.suppliers?.name || supplierAccount?.company_name || 'Authorized Supplier';
+                                            const supplierEmail = (selectedPo as any).supplier_email || supplierAccount?.email || currentUserEmail || 'Verified Partner';
+                                            const supplierLocation = (selectedPo as any).supplier_location || (selectedPo as any).supplier_address || supplierAccount?.suppliers?.address || 'On File / Registered Supplier Facility';
+                                            const isFinancialApproved = (selectedPo.financial_approval === 'Approved' || selectedPo.admin_approval === 'Approved') &&
+                                                                        selectedPo.financial_approval !== 'Pending' &&
+                                                                        selectedPo.admin_approval !== 'Pending';
+                                            const approvalDateStr = selectedPo.financial_approved_at
+                                                ? new Date(selectedPo.financial_approved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                : selectedPo.admin_approved_at
+                                                    ? new Date(selectedPo.admin_approved_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                    : selectedPo.created_at
+                                                        ? new Date(selectedPo.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                                                        : '—';
+
+                                            return (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                                                    {/* Buyer (Issuer) Card */}
+                                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                        <div className="flex items-center gap-2 mb-1.5 text-pink-600 dark:text-pink-400">
+                                                            <i className="fas fa-building text-xs" />
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Buyer (Issuer)</span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-slate-900 dark:text-white">
+                                                            Airship Express Logistics Corp.
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                                            Procurement & Supply Chain Division
+                                                        </p>
+                                                        <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                            <i className="fas fa-map-marker-alt text-pink-500 mt-0.5 text-[10px] shrink-0" />
+                                                            <span className="leading-tight">
+                                                                <strong className="text-slate-700 dark:text-slate-300">Location:</strong> {selectedPo.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila (Airship Express Central Hub)'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                                                            <span>Authorized Signatory:</span>
+                                                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[150px]">{(selectedPo as any).created_by || 'Authorized Officer'}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Supplier / Vendor Card */}
+                                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                        <div className="flex items-center gap-2 mb-1.5 text-pink-600 dark:text-pink-400">
+                                                            <i className="fas fa-truck text-xs" />
+                                                            <span className="text-[10px] font-extrabold uppercase tracking-wider">Supplier / Vendor</span>
+                                                        </div>
+                                                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                                                            {matchedSupplierName}
+                                                        </p>
+                                                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate font-mono">
+                                                            {supplierEmail}
+                                                        </p>
+                                                        <div className="mt-2 text-[11px] text-slate-600 dark:text-slate-400 flex items-start gap-1.5">
+                                                            <i className="fas fa-map-marker-alt text-pink-500 mt-0.5 text-[10px] shrink-0" />
+                                                            <span className="leading-tight truncate" title={supplierLocation}>
+                                                                <strong className="text-slate-700 dark:text-slate-300">Location:</strong> {supplierLocation}
+                                                            </span>
+                                                        </div>
+                                                        <div className="mt-2.5 pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                                                            <span>Issue Date:</span>
+                                                            {isFinancialApproved ? (
+                                                                <span className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1">
+                                                                    <i className="fas fa-calendar-check text-[10px] text-emerald-500" />
+                                                                    {approvalDateStr}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 dark:bg-amber-950/40 px-2 py-0.5 rounded-full text-[10px] border border-amber-300 dark:border-amber-700/60 flex items-center gap-1">
+                                                                    <i className="fas fa-hourglass-half text-[9px]" />
+                                                                    Pending
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        {/* Full Itemized Line Items Table */}
+                                        <div className="space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                                                    <i className="fas fa-boxes-stacked text-pink-500" />
+                                                    <span>Purchased Line Items</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleExportSinglePoCSV(selectedPo)}
+                                                        className="text-[11px] font-bold text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Download className="w-3 h-3" />
+                                                        <span>Export CSV</span>
+                                                    </button>
+                                                    <span className="text-xs font-bold text-pink-600 dark:text-pink-400 px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/80 border border-pink-200 dark:border-pink-900/50">
+                                                        {Array.isArray(selectedPo.items) && selectedPo.items.length > 0 ? selectedPo.items.length : 1} {Array.isArray(selectedPo.items) && selectedPo.items.length === 1 ? 'item' : 'items'}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="overflow-x-auto rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-[#ebf0f7] dark:bg-[#13141c] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                                                <table className="w-full text-left text-xs border-collapse">
+                                                    <thead>
+                                                        <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-white/60 dark:bg-white/[0.02] text-[10.5px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                            <th className="py-2.5 px-3.5 w-12 text-center">#</th>
+                                                            <th className="py-2.5 px-3.5">Item Description</th>
+                                                            <th className="py-2.5 px-3.5 text-center w-20">Qty</th>
+                                                            <th className="py-2.5 px-3.5 text-right w-28">Unit Price</th>
+                                                            <th className="py-2.5 px-3.5 text-right w-32">Total</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-slate-700 dark:text-slate-300 font-medium">
+                                                        {Array.isArray(selectedPo.items) && selectedPo.items.length > 0 ? (
+                                                            selectedPo.items.map((it: any, idx: number) => {
+                                                                const qty = Number(it.quantity) || 1;
+                                                                const price = Number(it.unit_price ?? it.price ?? 0);
+                                                                const lineTotal = it.total ? Number(it.total) : (it.total_price ? Number(it.total_price) : qty * price);
+
+                                                                return (
+                                                                    <tr key={idx} className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors">
+                                                                        <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono text-xs">
+                                                                            {idx + 1}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white">
+                                                                            {it.name || it.item_name || it.description || 'Purchased Item'}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-center">
+                                                                            <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-white/70 dark:bg-slate-800/80 text-slate-800 dark:text-slate-200 border border-white/60 dark:border-white/[0.04]">
+                                                                                {qty}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-right font-mono text-slate-600 dark:text-slate-400">
+                                                                            ₱{price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                        <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                            ₱{lineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            <tr>
+                                                                <td className="py-2.5 px-3.5 text-center text-slate-400 font-mono text-xs">1</td>
+                                                                <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white">
+                                                                    {selectedPo.notes || 'Requisition Order Package'}
+                                                                </td>
+                                                                <td className="py-2.5 px-3.5 text-center font-mono text-xs">1</td>
+                                                                <td className="py-2.5 px-3.5 text-right font-mono">
+                                                                    ₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                                <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                    ₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                    <tfoot>
+                                                        {(selectedPo.subtotal !== undefined || selectedPo.discount || selectedPo.shipping_fee || selectedPo.tax_amount) ? (
+                                                            <>
+                                                                <tr className="border-t border-slate-200/80 dark:border-slate-800 bg-white/30 dark:bg-white/[0.01]">
+                                                                    <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">Subtotal</td>
+                                                                    <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                        ₱{Number(selectedPo.subtotal ?? selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </td>
+                                                                </tr>
+                                                                {Number(selectedPo.discount || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-emerald-600 dark:text-emerald-400 font-medium">Discount</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                                                                            -₱{Number(selectedPo.discount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                {Number(selectedPo.shipping_fee || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">Shipping Fee</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                            +₱{Number(selectedPo.shipping_fee).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                {Number(selectedPo.tax_amount || 0) > 0 && (
+                                                                    <tr className="border-t border-slate-200/40 dark:border-slate-800/40 bg-white/30 dark:bg-white/[0.01]">
+                                                                        <td colSpan={3} className="py-1.5 px-3.5 text-xs text-slate-500 font-medium">VAT ({selectedPo.tax_rate ?? 12}%)</td>
+                                                                        <td colSpan={2} className="py-1.5 px-3.5 text-right font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                                                            +₱{Number(selectedPo.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </td>
+                                                                    </tr>
+                                                                )}
+                                                                <tr className="border-t-2 border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-white/[0.02]">
+                                                                    <td colSpan={3} className="py-2.5 px-3.5 text-xs font-bold text-slate-700 dark:text-slate-300 uppercase">
+                                                                        Total Order Value
+                                                                    </td>
+                                                                    <td colSpan={2} className="py-2.5 px-3.5 text-right font-mono text-base font-black text-pink-600 dark:text-pink-400">
+                                                                        ₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </td>
+                                                                </tr>
+                                                            </>
+                                                        ) : (
+                                                            <tr className="border-t-2 border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-white/[0.01]">
+                                                                <td colSpan={3} className="py-2.5 px-3.5 text-xs font-bold text-slate-500 uppercase">
+                                                                    Total Order Value
+                                                                </td>
+                                                                <td colSpan={2} className="py-2.5 px-3.5 text-right font-mono text-base font-black text-pink-600 dark:text-pink-400">
+                                                                    ₱{Number(selectedPo.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </tfoot>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        {/* Commercial Logistics & Payment Terms Panel */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Payment Terms & Method
+                                                </span>
+                                                <p className="font-bold text-slate-900 dark:text-white">
+                                                    {selectedPo.payment_terms || 'Net 30 Days (Standard B2B)'}
+                                                </p>
+                                            </div>
+
+                                            <div className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Procurement Category
+                                                </span>
+                                                <p className="font-bold text-slate-900 dark:text-white">
+                                                    {selectedPo.category || (selectedPo as any).items?.[0]?.category || 'General Procurement'}
+                                                </p>
+                                            </div>
+
+                                            <div className="sm:col-span-2 md:col-span-1 p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-1">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Delivery Location / Hub
+                                                </span>
+                                                <p className="font-semibold text-slate-800 dark:text-slate-200 line-clamp-2" title={selectedPo.delivery_location || 'Airship Express Hub'}>
+                                                    {selectedPo.delivery_location || '352 Escolta St, Binondo, Manila, 1006 Metro Manila(Airship Express)'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Governing Terms & Conditions Box */}
+                                        {selectedPo.terms_and_conditions && (
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs space-y-1.5">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Governing Terms & Conditions
+                                                </span>
+                                                <p className="font-mono text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                    {selectedPo.terms_and_conditions}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Requisition Notes Box */}
+                                        {selectedPo.notes && (
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] text-xs space-y-1.5">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+                                                    Requisition Notes & Instructions
+                                                </span>
+                                                <p className="text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-wrap">
+                                                    {selectedPo.notes}
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {/* Action Buttons Toolbar */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setDigitalReceiptPO(selectedPo);
+                                                    setIsDigitalReceiptModalOpen(true);
+                                                }}
+                                                className="py-2.5 px-4 text-xs font-bold text-white bg-pink-600 hover:bg-pink-500 border border-pink-400/80 rounded-xl shadow-[3px_3px_7px_rgba(219,39,119,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                            >
+                                                <Receipt className="h-4 w-4" />
+                                                <span>View & Print Official Digital Receipt</span>
+                                            </button>
+
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedPoTab('manage')}
+                                                className="py-2.5 px-4 text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] dark:bg-[#1a1b26] hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-[#2a2b38] rounded-xl shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                                            >
+                                                <i className="fas fa-sliders text-pink-500" />
+                                                <span>Manage Status & Fulfillment</span>
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        {/* Status & Fulfillment Management Tab */}
+                                        <div className="space-y-4">
+                                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                                                        Current Fulfillment State
+                                                    </span>
+                                                    <StatusBadge tone={getPOStatusTone(selectedPo.status)} size="sm">
+                                                        {selectedPo.status}
+                                                    </StatusBadge>
+                                                </div>
+                                                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                                                    {isConfirmedStatus(selectedPo.status)
+                                                        ? "This purchase order has been accepted and confirmed. After preparing and delivering items to the hub, mark the order as Delivered."
+                                                        : isDeliveredStatus(selectedPo.status)
+                                                        ? "Order has been fulfilled and marked as Delivered. Receiving personnel have been notified for inspection."
+                                                        : "This purchase order has been issued by Airship Express. Please review the line items and terms, then accept or reject this order."}
+                                                </p>
+                                            </div>
+
+                                            {/* Status Action Controls */}
+                                            <div className="space-y-2.5">
+                                                <label className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                                                    <i className="fas fa-arrows-rotate text-pink-500 text-[11px]" />
+                                                    Order Actions
+                                                </label>
+                                                
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                                    {isConfirmedStatus(selectedPo.status) ? (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => requestStatusChange(selectedPo, "delivered")}
+                                                                disabled={isUpdatingStatus}
+                                                                className="py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(16,185,129,0.35)] transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                <CheckCircle2 className="w-4 h-4" />
+                                                                <span>Confirm Delivered</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => requestStatusChange(selectedPo, "revert")}
+                                                                disabled={isUpdatingStatus}
+                                                                className="py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(244,63,94,0.35)] transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                <RotateCcw className="w-4 h-4" />
+                                                                <span>Revert to Pending</span>
+                                                            </button>
+                                                        </>
+                                                    ) : isDeliveredStatus(selectedPo.status) ? (
+                                                        <div className="col-span-full p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center justify-center gap-2">
+                                                            <CheckCircle2 className="w-4 h-4" />
+                                                            <span>Delivered & Completed</span>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => requestStatusChange(selectedPo, "accept")}
+                                                                disabled={isUpdatingStatus}
+                                                                className="py-3 px-4 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-[0_4px_14px_rgba(236,72,153,0.45)] transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                <Check className="w-4 h-4" />
+                                                                <span>Accept Order</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => requestStatusChange(selectedPo, "reject")}
+                                                                disabled={isUpdatingStatus}
+                                                                className="py-3 px-4 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-[0_4px_12px_rgba(244,63,94,0.35)] transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                                <span>Reject Order</span>
+                                                            </button>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="pt-3 flex items-center justify-between border-t border-slate-200/80 dark:border-slate-800 gap-2">
+                                                <Link
+                                                    href={`/suppliers_page/messages?po=${selectedPo.po_number}`}
+                                                    className="px-4 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#14151c] border border-pink-500/20 shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                                >
+                                                    <MessageSquare className="w-3.5 h-3.5" />
+                                                    <span>Inquire About PO</span>
+                                                </Link>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleExportSinglePoCSV(selectedPo)}
+                                                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-200 bg-[#ebf0f7] dark:bg-[#14151c] border border-white/80 dark:border-white/[0.08] shadow-[2px_2px_5px_rgba(166,175,195,0.35)] flex items-center gap-1.5 cursor-pointer active:scale-95"
+                                                >
+                                                    <Download className="w-3.5 h-3.5 text-pink-500" />
+                                                    <span>Export Line Items</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -2050,6 +2417,16 @@ export default function SupplierPurchaseOrdersPage() {
                     fetchReturnRequests();
                     fetchOrders();
                 }}
+            />
+
+            {/* Digital Receipt Modal */}
+            <DigitalReceiptModal
+                isOpen={isDigitalReceiptModalOpen}
+                onClose={() => {
+                    setIsDigitalReceiptModalOpen(false);
+                    setDigitalReceiptPO(null);
+                }}
+                purchaseOrder={digitalReceiptPO}
             />
         </div>
     );

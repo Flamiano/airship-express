@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 export default function UserActivityPage() {
     return (
         <Suspense fallback={<PageSkeleton />}>
-            <SessionGuard requiredRole={['Admin', 'Executive']}>
+            <SessionGuard requiredRole={['Superadmin', 'Executive']}>
                 <UserActivityClient />
             </SessionGuard>
         </Suspense>

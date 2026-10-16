@@ -127,9 +127,21 @@ function SupplierMessagesContent() {
     }, [dateSearchInput]);
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const currentUserEmail = user.getEmail();
-    const currentUserName = user.getName() || "Supplier Representative";
-    const currentUserId = user.getUserId();
+    const [currentUserEmail, setCurrentUserEmail] = useState<string>("");
+    const [currentUserName, setCurrentUserName] = useState<string>("Supplier Representative");
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const email = user.getEmail() || "";
+        const name = user.getName() || "Supplier Representative";
+        const id = user.getUserId() || null;
+        setCurrentUserEmail(email);
+        setCurrentUserName(name);
+        setCurrentUserId(id);
+        if (email) {
+            fetchChatData(email);
+        }
+    }, []);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -216,15 +228,16 @@ function SupplierMessagesContent() {
     }, [selectedStaffKey, staffContacts]);
 
     // Fast Parallel Fetch
-    const fetchChatData = async () => {
-        if (!currentUserEmail) return;
+    const fetchChatData = async (overrideEmail?: string) => {
+        const emailToLookup = (overrideEmail || currentUserEmail || user.getEmail() || "").trim();
+        if (!emailToLookup) return;
         setIsLoading(true);
 
         try {
             const { data: acc, error: accErr } = await supabase
                 .from("suppliers_account")
                 .select("*, suppliers(*)")
-                .ilike("email", currentUserEmail.trim())
+                .ilike("email", emailToLookup)
                 .maybeSingle();
 
             if (accErr || !acc) {
@@ -292,83 +305,100 @@ function SupplierMessagesContent() {
         }
     }, [selectedStaffKey, messages, supplierAccount?.supplier_id]);
 
+    // Realtime subscription for live chat messages
     useEffect(() => {
-        let activeChannel: any = null;
-        let isMounted = true;
+        const supplierId = supplierAccount?.supplier_id;
+        if (!supplierId) return;
 
-        if (currentUserEmail) {
-            fetchChatData().then(() => {
-                if (!isMounted || !supplierAccount?.supplier_id) return;
+        const channelName = `supplier_room_${supplierId}_${Date.now()}`;
+        const channel = supabase
+            .channel(channelName)
+            .on(
+                "postgres_changes",
+                {
+                    event: "INSERT",
+                    schema: "public",
+                    table: "messages",
+                    filter: `supplier_id=eq.${supplierId}`,
+                },
+                (payload) => {
+                    if (!payload.new) return;
+                    const incomingMsg = payload.new as SupplierMessage;
+                    if (String(incomingMsg.supplier_id) !== String(supplierId)) return;
 
-                const channelName = `messages_room_${supplierAccount.supplier_id}_${Date.now()}`;
-                activeChannel = supabase
-                    .channel(channelName)
-                    .on(
-                        "postgres_changes",
-                        {
-                            event: "INSERT",
-                            schema: "public",
-                            table: "messages",
-                            filter: `supplier_id=eq.${supplierAccount.supplier_id}`,
-                        },
-                        (payload) => {
-                            if (!isMounted || !payload.new) return;
+                    setMessages((prev) => {
+                        if (prev.some((m) => m.id === incomingMsg.id)) return prev;
 
-                            setMessages((prev) => {
-                                if (prev.some((m) => m.id === payload.new.id)) return prev;
-
-                                const tempIdx = prev.findIndex(
-                                    (m) => m.id.startsWith("temp_") && m.message === payload.new.message && m.sender_type === payload.new.sender_type
-                                );
-                                if (tempIdx !== -1) {
-                                    const copy = [...prev];
-                                    copy[tempIdx] = { ...(payload.new as SupplierMessage), send_status: "sent" };
-                                    return copy;
-                                }
-
-                                return [...prev, { ...(payload.new as SupplierMessage), send_status: "sent" }];
-                            });
-                            setTimeout(scrollToBottom, 60);
+                        const tempIdx = prev.findIndex(
+                            (m) => m.id.startsWith("temp_") && m.message === incomingMsg.message && m.sender_type === incomingMsg.sender_type
+                        );
+                        if (tempIdx !== -1) {
+                            const copy = [...prev];
+                            copy[tempIdx] = { ...incomingMsg, send_status: "sent" };
+                            return copy;
                         }
-                    )
-                    .on(
-                        "postgres_changes",
-                        {
-                            event: "UPDATE",
-                            schema: "public",
-                            table: "messages",
-                            filter: `supplier_id=eq.${supplierAccount.supplier_id}`,
-                        },
-                        (payload) => {
-                            if (!isMounted || !payload.new) return;
-                            setMessages((prev) =>
-                                prev.map((m) => (m.id === payload.new.id ? { ...m, ...(payload.new as SupplierMessage) } : m))
-                            );
+
+                        return [...prev, { ...incomingMsg, send_status: "sent" }];
+                    });
+
+                    // If incoming message is from internal staff
+                    if (incomingMsg.sender_type === "internal") {
+                        const sEmail = (incomingMsg.sender_email || "").toLowerCase().trim();
+                        const sName = (incomingMsg.sender_name || "").toLowerCase().trim();
+                        const isCurrentChat = !selectedStaffKey || selectedStaffKey === sEmail || selectedStaffKey === sName;
+
+                        if (isCurrentChat) {
+                            supabase
+                                .from("messages")
+                                .update({ is_read: true })
+                                .eq("id", incomingMsg.id)
+                                .then();
+                        } else {
+                            toast.info(`New message from ${incomingMsg.sender_name || "Staff"}: "${incomingMsg.message.slice(0, 45)}${incomingMsg.message.length > 45 ? "..." : ""}"`);
                         }
-                    )
-                    .on(
-                        "postgres_changes",
-                        {
-                            event: "DELETE",
-                            schema: "public",
-                            table: "messages",
-                        },
-                        (payload) => {
-                            if (!isMounted || !payload.old?.id) return;
-                            setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
-                        }
-                    )
-                    .subscribe();
+                    }
+
+                    setTimeout(scrollToBottom, 60);
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "UPDATE",
+                    schema: "public",
+                    table: "messages",
+                    filter: `supplier_id=eq.${supplierId}`,
+                },
+                (payload) => {
+                    if (!payload.new) return;
+                    const updatedMsg = payload.new as SupplierMessage;
+                    setMessages((prev) =>
+                        prev.map((m) => (m.id === updatedMsg.id ? { ...m, ...updatedMsg } : m))
+                    );
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "DELETE",
+                    schema: "public",
+                    table: "messages",
+                },
+                (payload) => {
+                    if (!payload.old?.id) return;
+                    setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
+                }
+            )
+            .subscribe((status, err) => {
+                if (status === "CHANNEL_ERROR" || err) {
+                    console.error("Realtime subscription error:", status, err);
+                }
             });
-        }
 
         return () => {
-            isMounted = false;
-            if (activeChannel) {
-                supabase.removeChannel(activeChannel);
-            }
+            supabase.removeChannel(channel);
         };
-    }, [currentUserEmail, supplierAccount?.supplier_id]);
+    }, [supplierAccount?.supplier_id, selectedStaffKey]);
 
     // Send Message directed to selected internal staff member
     const handleSendMessage = async (e: React.FormEvent) => {
@@ -620,7 +650,34 @@ function SupplierMessagesContent() {
         if (msg.sender_type === "internal") {
             const sEmail = (msg.sender_email || "").toLowerCase().trim();
             const sName = (msg.sender_name || "").toLowerCase().trim();
-            return sEmail === targetKey || sName === targetKey;
+            const sId = (msg.sender_id || "").trim();
+
+            if (sEmail === targetKey || sName === targetKey) return true;
+
+            if (activeStaffContact) {
+                if (sId && activeStaffContact.id && sId === activeStaffContact.id) return true;
+                if (sEmail && activeStaffContact.email && sEmail === activeStaffContact.email.toLowerCase().trim()) return true;
+                if (sName && activeStaffContact.name && sName === activeStaffContact.name.toLowerCase().trim()) return true;
+            }
+
+            if (Array.isArray(msg.attachments)) {
+                const target = msg.attachments.find(
+                    (a: any) => a && (a.type === "target_recipient" || a.staff_id || a.staff_email)
+                );
+                if (target) {
+                    const stEmail = (target.staff_email || "").toLowerCase().trim();
+                    const stName = (target.staff_name || "").toLowerCase().trim();
+                    const stId = (target.staff_id || "").trim();
+                    if (stEmail === targetKey || stName === targetKey) return true;
+                    if (activeStaffContact && stId && activeStaffContact.id && stId === activeStaffContact.id) return true;
+                }
+            }
+
+            if (staffContacts.length <= 1) {
+                return true;
+            }
+
+            return false;
         }
 
         if (msg.sender_type === "supplier") {
@@ -631,7 +688,9 @@ function SupplierMessagesContent() {
                 if (target) {
                     const tEmail = (target.recipient_email || target.staff_email || "").toLowerCase().trim();
                     const tName = (target.recipient_name || target.staff_name || "").toLowerCase().trim();
-                    return tEmail === targetKey || tName === targetKey;
+                    const tId = (target.recipient_id || target.staff_id || "").trim();
+                    if (tEmail === targetKey || tName === targetKey) return true;
+                    if (activeStaffContact && tId && activeStaffContact.id && tId === activeStaffContact.id) return true;
                 }
             }
             if (staffContacts.length <= 1) {
@@ -822,7 +881,7 @@ function SupplierMessagesContent() {
                 </div>
                 <button
                     type="button"
-                    onClick={fetchChatData}
+                    onClick={() => fetchChatData()}
                     disabled={isLoading}
                     className="self-start sm:self-auto px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#1a1b26] border border-white/80 dark:border-white/[0.08] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.3)] active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
                 >

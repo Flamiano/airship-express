@@ -52,6 +52,18 @@ export function useInventory() {
             if (formData.current_stock <= 0) status = 'out-of-stock';
             else if (formData.current_stock < formData.minimum_stock) status = 'low-stock';
 
+            const zoneCode = formData.storage_location ? formData.storage_location.trim() : null;
+            let zoneId = formData.warehouse_storage_zone_id || null;
+
+            if (!zoneId && zoneCode) {
+                const { data: foundZone } = await supabase
+                    .from('warehouse_storage_zones')
+                    .select('id')
+                    .eq('zone_code', zoneCode)
+                    .maybeSingle();
+                if (foundZone) zoneId = foundZone.id;
+            }
+
             const { data, error } = await supabase
                 .from('inventory_items')
                 .insert([{
@@ -61,7 +73,8 @@ export function useInventory() {
                     unit: formData.unit,
                     current_stock: formData.current_stock,
                     minimum_stock: formData.minimum_stock,
-                    storage_location: formData.storage_location || null,
+                    storage_location: zoneCode,
+                    warehouse_storage_zone_id: zoneId,
                     supplier: formData.supplier || null,
                     purchase_price: formData.purchase_price || 0,
                     description: formData.description || null,
@@ -70,6 +83,93 @@ export function useInventory() {
                 .select();
 
             if (error) throw error;
+
+            // Automatically update warehouse_storage_zones utilized units
+            if (zoneCode || zoneId) {
+                try {
+                    const initialQty = Number(formData.current_stock || 0);
+                    if (initialQty > 0) {
+                        let zoneQuery = supabase.from('warehouse_storage_zones').select('id, current_utilized_units, total_capacity_units');
+                        if (zoneId) {
+                            zoneQuery = zoneQuery.eq('id', zoneId);
+                        } else {
+                            zoneQuery = zoneQuery.eq('zone_code', zoneCode);
+                        }
+                        const { data: matchedZone } = await zoneQuery.maybeSingle();
+
+                        if (matchedZone) {
+                            const currentUtil = Number(matchedZone.current_utilized_units || 0);
+                            const newUtil = currentUtil + initialQty;
+                            await supabase
+                                .from('warehouse_storage_zones')
+                                .update({
+                                    current_utilized_units: newUtil,
+                                    updated_at: new Date().toISOString()
+                                })
+                                .eq('id', matchedZone.id);
+                        }
+                    }
+                } catch (zoneErr) {
+                    console.warn('Failed to update warehouse storage zone capacity:', zoneErr);
+                }
+            }
+
+            // Retrieve current user info for audit trail
+            let performedByName = 'Warehouse Staff';
+            let performedById: string | null = null;
+            try {
+                if (typeof window !== 'undefined') {
+                    const localName = localStorage.getItem('user_name');
+                    const localId = localStorage.getItem('user_id');
+                    if (localName) performedByName = localName;
+                    if (localId) performedById = localId;
+                }
+                const { data: authData } = await supabase.auth.getUser();
+                if (authData?.user) {
+                    performedById = authData.user.id || performedById;
+                    performedByName = authData.user.user_metadata?.full_name 
+                        || authData.user.user_metadata?.name 
+                        || authData.user.email 
+                        || performedByName;
+                }
+            } catch (_) {}
+
+            const createdItem = data && data[0] ? data[0] : null;
+            const initialQty = Number(formData.current_stock || 0);
+
+            // Log stock movement audit trail for newly added item
+            try {
+                await logStockMovement({
+                    item_id: createdItem ? String(createdItem.id) : null,
+                    item_code: formData.item_code,
+                    item_name: formData.item_name,
+                    movement_type: initialQty > 0 ? 'Stock In' : 'Adjustment',
+                    quantity: initialQty,
+                    previous_stock: 0,
+                    new_stock: initialQty,
+                    reference_number: `INIT-${Date.now().toString().slice(-6)}`,
+                    reason: formData.description?.trim() 
+                        ? formData.description.trim() 
+                        : (initialQty > 0 
+                            ? `Initial stock registration (${initialQty} ${formData.unit})` 
+                            : 'New inventory item registered (0 initial stock)'),
+                    department: 'Warehouse / Inventory',
+                    performed_by: performedByName,
+                    performed_by_id: performedById,
+                    metadata: {
+                        action: 'ITEM_CREATION_STOCK_MOVEMENT',
+                        category: formData.category,
+                        unit: formData.unit,
+                        storage_location: formData.storage_location || undefined,
+                        supplier: formData.supplier || undefined,
+                        purchase_price: formData.purchase_price || 0,
+                        initial_stock: initialQty,
+                    }
+                });
+            } catch (movementErr) {
+                console.warn('Failed to log stock movement for new item:', movementErr);
+            }
+
             toast.success('Item added successfully!', { id: toastId });
             useInventoryCache = null;
             await fetchInventory(true);
@@ -106,6 +206,18 @@ export function useInventory() {
             const newStock = Number(formData.current_stock ?? 0);
             const diff = newStock - oldStock;
 
+            const zoneCode = formData.storage_location ? formData.storage_location.trim() : null;
+            let zoneId = formData.warehouse_storage_zone_id || null;
+
+            if (!zoneId && zoneCode) {
+                const { data: foundZone } = await supabase
+                    .from('warehouse_storage_zones')
+                    .select('id')
+                    .eq('zone_code', zoneCode)
+                    .maybeSingle();
+                if (foundZone) zoneId = foundZone.id;
+            }
+
             const { error } = await supabase
                 .from('inventory_items')
                 .update({
@@ -115,7 +227,8 @@ export function useInventory() {
                     unit: formData.unit,
                     current_stock: formData.current_stock,
                     minimum_stock: formData.minimum_stock,
-                    storage_location: formData.storage_location || null,
+                    storage_location: zoneCode,
+                    warehouse_storage_zone_id: zoneId,
                     supplier: formData.supplier || null,
                     purchase_price: formData.purchase_price || 0,
                     description: formData.description || null,
@@ -125,6 +238,60 @@ export function useInventory() {
                 .eq('id', formData.id);
 
             if (error) throw error;
+
+            // Synchronize warehouse_storage_zones capacity if location or stock changed
+            try {
+                const oldZoneCode = oldItem ? (oldItem.storage_location || '').trim() : '';
+                const newZoneCode = (zoneCode || '').trim();
+
+                if (oldZoneCode && newZoneCode && oldZoneCode !== newZoneCode) {
+                    // Item moved between zones
+                    if (oldStock > 0) {
+                        const { data: oldZone } = await supabase
+                            .from('warehouse_storage_zones')
+                            .select('id, current_utilized_units')
+                            .eq('zone_code', oldZoneCode)
+                            .maybeSingle();
+                        if (oldZone) {
+                            const reduced = Math.max(0, (Number(oldZone.current_utilized_units) || 0) - oldStock);
+                            await supabase
+                                .from('warehouse_storage_zones')
+                                .update({ current_utilized_units: reduced, updated_at: new Date().toISOString() })
+                                .eq('id', oldZone.id);
+                        }
+                    }
+                    if (newStock > 0) {
+                        const { data: newZone } = await supabase
+                            .from('warehouse_storage_zones')
+                            .select('id, current_utilized_units')
+                            .eq('zone_code', newZoneCode)
+                            .maybeSingle();
+                        if (newZone) {
+                            const added = (Number(newZone.current_utilized_units) || 0) + newStock;
+                            await supabase
+                                .from('warehouse_storage_zones')
+                                .update({ current_utilized_units: added, updated_at: new Date().toISOString() })
+                                .eq('id', newZone.id);
+                        }
+                    }
+                } else if (newZoneCode && diff !== 0) {
+                    // Same zone, quantity adjusted
+                    const { data: targetZone } = await supabase
+                        .from('warehouse_storage_zones')
+                        .select('id, current_utilized_units')
+                        .eq('zone_code', newZoneCode)
+                        .maybeSingle();
+                    if (targetZone) {
+                        const updated = Math.max(0, (Number(targetZone.current_utilized_units) || 0) + diff);
+                        await supabase
+                            .from('warehouse_storage_zones')
+                            .update({ current_utilized_units: updated, updated_at: new Date().toISOString() })
+                            .eq('id', targetZone.id);
+                    }
+                }
+            } catch (zoneUpdateErr) {
+                console.warn('Failed to synchronize storage zone capacity on edit:', zoneUpdateErr);
+            }
 
             // Retrieve current user info for audit trail
             let performedByName = 'Warehouse Staff';
@@ -202,6 +369,30 @@ export function useInventory() {
 
             if (error) throw error;
 
+            // Deduct utilized units from warehouse_storage_zones if applicable
+            if (targetItem?.storage_location) {
+                try {
+                    const prevStock = Number(targetItem.current_stock || 0);
+                    if (prevStock > 0) {
+                        const { data: matchedZone } = await supabase
+                            .from('warehouse_storage_zones')
+                            .select('id, current_utilized_units')
+                            .eq('zone_code', targetItem.storage_location.trim())
+                            .maybeSingle();
+
+                        if (matchedZone) {
+                            const reduced = Math.max(0, (Number(matchedZone.current_utilized_units) || 0) - prevStock);
+                            await supabase
+                                .from('warehouse_storage_zones')
+                                .update({ current_utilized_units: reduced, updated_at: new Date().toISOString() })
+                                .eq('id', matchedZone.id);
+                        }
+                    }
+                } catch (zoneErr) {
+                    console.warn('Failed to deduct warehouse zone capacity on item delete:', zoneErr);
+                }
+            }
+
             // Retrieve current user info for audit trail
             let performedByName = 'Warehouse Staff';
             let performedById: string | null = null;
@@ -276,6 +467,36 @@ export function useInventory() {
                 .in('id', ids);
 
             if (error) throw error;
+
+            // Deduct utilized units for all deleted items grouped by zone
+            try {
+                const zoneDeductions: Record<string, number> = {};
+                for (const delItem of itemsToDelete) {
+                    const loc = (delItem.storage_location || '').trim();
+                    const stock = Number(delItem.current_stock || 0);
+                    if (loc && stock > 0) {
+                        zoneDeductions[loc] = (zoneDeductions[loc] || 0) + stock;
+                    }
+                }
+
+                for (const [zoneCode, deductAmt] of Object.entries(zoneDeductions)) {
+                    const { data: matchedZone } = await supabase
+                        .from('warehouse_storage_zones')
+                        .select('id, current_utilized_units')
+                        .eq('zone_code', zoneCode)
+                        .maybeSingle();
+
+                    if (matchedZone) {
+                        const reduced = Math.max(0, (Number(matchedZone.current_utilized_units) || 0) - deductAmt);
+                        await supabase
+                            .from('warehouse_storage_zones')
+                            .update({ current_utilized_units: reduced, updated_at: new Date().toISOString() })
+                            .eq('id', matchedZone.id);
+                    }
+                }
+            } catch (zoneErr) {
+                console.warn('Failed to deduct warehouse zone capacities on bulk delete:', zoneErr);
+            }
 
             let performedByName = 'Warehouse Staff';
             let performedById: string | null = null;

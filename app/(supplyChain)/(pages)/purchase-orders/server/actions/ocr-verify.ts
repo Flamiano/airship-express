@@ -174,7 +174,8 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
         }
 
         // upload file
-        const fileExt = fileName.split('.').pop() || 'png';
+        const fileExt = fileName.split('.').pop()?.toLowerCase() || 'png';
+        const isPdf = fileType === 'application/pdf' || fileType === 'application/x-pdf' || fileExt === 'pdf';
         const storagePath = `documents/${po.po_number || po_id}_${Date.now()}.${fileExt}`;
         
         // strip base64 prefix
@@ -184,7 +185,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
         const { error: uploadError } = await supabaseAdmin.storage
             .from('documents')
             .upload(storagePath, fileBuffer, {
-                contentType: fileType || 'image/png',
+                contentType: isPdf ? 'application/pdf' : (fileType || 'image/png'),
                 upsert: true,
             });
 
@@ -280,6 +281,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             file_name: sanitizedFileName,
             file_size: Number(fileSize) || 1024,
             file_type: sanitizedType,
+            file_url: uploadedFileUrl,
             storage_path: storagePath,
             category: 'documents',
             document_type: 'Official Receipt',
@@ -289,7 +291,7 @@ export async function uploadReceiptAndVerifyAction(input: VerifyReceiptInput) {
             purchase_id: po.id,
             document_verification_id: dvId,
             user_id: validUserUUID || null,
-            uploaded_by: userName ? String(userName).slice(0, 95) : 'Procurement',
+            uploaded_by: validUserUUID || null,
             notes: 'Verified via Gemini OCR (Matched)',
             role: userRole || null,
         };
@@ -337,6 +339,8 @@ Return ONLY a valid JSON object matching the following structure without any mar
   ]
 }`;
 
+                const resolvedMimeType = isPdf ? 'application/pdf' : (fileType && fileType.startsWith('image/') ? fileType : 'image/png');
+
                 const response = await generateWithModelFallback(genAI, [
                     {
                         role: 'user',
@@ -345,7 +349,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                             {
                                 inlineData: {
                                     data: pureBase64,
-                                    mimeType: fileType && fileType.startsWith('image/') ? fileType : 'image/png',
+                                    mimeType: resolvedMimeType,
                                 },
                             },
                         ],
@@ -453,6 +457,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                         file_name: sanitizedFileName,
                         file_size: Number(fileSize) || 1024,
                         file_type: sanitizedType,
+                        file_url: uploadedFileUrl,
                         storage_path: storagePath,
                         category: 'documents',
                         document_type: 'Official Receipt',
@@ -461,7 +466,7 @@ Return ONLY a valid JSON object matching the following structure without any mar
                         po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                         purchase_id: po.id,
                         document_verification_id: dvId,
-                        uploaded_by: userName ? String(userName).slice(0, 95) : 'Procurement',
+                        uploaded_by: validUserUUID || null,
                         notes: 'Verified via Gemini OCR (Matched)',
                         extracted: extracted || null,
                     })
@@ -476,16 +481,32 @@ Return ONLY a valid JSON object matching the following structure without any mar
             }
 
             // update verifications
-            await supabaseAdmin
+            const matchDvPayload: Record<string, any> = {
+                compared_fields: comparedFields,
+                match_result: 'matched',
+                resolved_by: validUserUUID,
+                resolved_at: new Date().toISOString(),
+            };
+
+            const { error: dvUpdateErr } = await supabaseAdmin
                 .from('document_verifications')
                 .update({
-                    compared_fields: comparedFields,
-                    match_result: 'matched',
+                    ...matchDvPayload,
                     document_id: newDocId,
-                    resolved_by: validUserUUID,
-                    resolved_at: new Date().toISOString(),
                 })
                 .eq('id', dvId);
+
+            if (dvUpdateErr) {
+                // If foreign key to documents table fails (since newDocId is in supplier_documents), update with document_id: null
+                console.warn('Notice updating document_verification with document_id, falling back to null:', dvUpdateErr.message);
+                await supabaseAdmin
+                    .from('document_verifications')
+                    .update({
+                        ...matchDvPayload,
+                        document_id: null,
+                    })
+                    .eq('id', dvId);
+            }
 
             // update po
             const { error: poUpdateErr } = await supabaseAdmin
@@ -532,25 +553,50 @@ Return ONLY a valid JSON object matching the following structure without any mar
                 comparedFields,
             };
         } else {
-            // on mismatch: STRICTLY DO NOT INSERT INTO DOCUMENTS TABLE
-            // Ensure any document row accidentally linked to this verification is removed
-            try {
-                await supabaseAdmin
-                    .from('supplier_documents')
-                    .delete()
-                    .eq('document_verification_id', dvId);
-            } catch (cleanupErr) {
-                console.warn('Could not delete mismatch document if any existed:', cleanupErr);
+            // on mismatch: save uploaded receipt document to supplier_documents with pending/review notes
+            // so uploaded receipt is visible in /documents library for the PO and supplier
+            const mismatchPayload = {
+                ...docPayload,
+                title: `Receipt (Review Required) - ${po.po_number || po.supplier_name}`.slice(0, 250),
+                notes: 'Uploaded via Purchase Orders - OCR Mismatch (Review Required)',
+                extracted: extracted || null,
+            };
+
+            const { data: mismatchDoc, error: mismatchDocErr } = await supabaseAdmin
+                .from('supplier_documents')
+                .insert(mismatchPayload)
+                .select('id')
+                .single();
+
+            if (!mismatchDocErr && mismatchDoc?.id) {
+                newDocId = mismatchDoc.id;
+            } else {
+                console.warn('Could not insert mismatch document:', mismatchDocErr);
             }
 
-            await supabaseAdmin
+            const mismatchDvPayload: Record<string, any> = {
+                compared_fields: comparedFields,
+                match_result: 'mismatched',
+            };
+
+            const { error: dvMismatchErr } = await supabaseAdmin
                 .from('document_verifications')
                 .update({
-                    compared_fields: comparedFields,
-                    match_result: 'mismatched',
-                    document_id: null,
+                    ...mismatchDvPayload,
+                    document_id: newDocId || null,
                 })
                 .eq('id', dvId);
+
+            if (dvMismatchErr) {
+                console.warn('Notice updating document_verification on mismatch, falling back to document_id: null:', dvMismatchErr.message);
+                await supabaseAdmin
+                    .from('document_verifications')
+                    .update({
+                        ...mismatchDvPayload,
+                        document_id: null,
+                    })
+                    .eq('id', dvId);
+            }
 
             // emit notification
             try {
@@ -662,6 +708,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                 .from('supplier_documents')
                 .update({
                     title: `Receipt (Forced) - ${po.po_number || po.supplier_name}`.slice(0, 250),
+                    file_url: dv.uploaded_file_url || null,
                     force_inserted_by: validUserUUID || null,
                     notes: `Forced override by ${userName}: ${reason}`.slice(0, 250),
                     category: 'documents',
@@ -702,6 +749,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                     file_name: resolvedFileName.slice(0, 250),
                     file_size: 1024,
                     file_type: 'image/png',
+                    file_url: dv.uploaded_file_url || null,
                     storage_path: resolvedStoragePath,
                     category: 'documents',
                     document_type: 'Official Receipt',
@@ -712,7 +760,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                     document_verification_id: dv.id,
                     user_id: validUserUUID || null,
                     force_inserted_by: validUserUUID || null,
-                    uploaded_by: userName ? String(userName).slice(0, 95) : 'Administrator',
+                    uploaded_by: validUserUUID || null,
                     notes: `Forced override by ${userName}: ${reason}`,
                     role: userRole || null,
                     extracted: dv.extracted_json || null,
@@ -731,6 +779,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                         file_name: resolvedFileName.slice(0, 250),
                         file_size: 1024,
                         file_type: 'image/png',
+                        file_url: dv.uploaded_file_url || null,
                         storage_path: resolvedStoragePath,
                         category: 'documents',
                         document_type: 'Official Receipt',
@@ -739,7 +788,7 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
                         po_number: po.po_number ? String(po.po_number).slice(0, 48) : null,
                         purchase_id: po.id,
                         document_verification_id: dv.id,
-                        uploaded_by: userName ? String(userName).slice(0, 95) : 'Administrator',
+                        uploaded_by: validUserUUID || null,
                         notes: `Forced override by ${userName}: ${reason}`,
                         extracted: dv.extracted_json || null,
                     })
@@ -755,15 +804,30 @@ export async function forceInsertVerificationAction(input: ForceInsertInput) {
         }
 
         // update verifications
-        await supabaseAdmin
+        const forceDvPayload: Record<string, any> = {
+            match_result: 'forced',
+            resolved_by: validUserUUID,
+            resolved_at: new Date().toISOString(),
+        };
+
+        const { error: forceDvErr } = await supabaseAdmin
             .from('document_verifications')
             .update({
-                match_result: 'forced',
+                ...forceDvPayload,
                 document_id: newDocId,
-                resolved_by: validUserUUID,
-                resolved_at: new Date().toISOString(),
             })
             .eq('id', dv.id);
+
+        if (forceDvErr) {
+            console.warn('Notice updating document_verification on force, falling back to document_id: null:', forceDvErr.message);
+            await supabaseAdmin
+                .from('document_verifications')
+                .update({
+                    ...forceDvPayload,
+                    document_id: null,
+                })
+                .eq('id', dv.id);
+        }
 
         // update po
         const { error: poForceErr } = await supabaseAdmin

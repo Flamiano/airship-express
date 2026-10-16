@@ -46,7 +46,7 @@ export const ALL_ROLES: UserRole[] = ['Executive', 'Admin', 'Purchase Officer', 
 
 export const DEFAULT_ROLE_REDIRECTS: Record<UserRole, string> = {
     'Executive': '/executive',
-    'Admin': '/procurement',
+    'Admin': '/inventory',
     'Purchase Officer': '/purchase-orders',
     'Operator': '/warehousing',
     'Supplier': '/suppliers_page/purchase-orders',
@@ -60,84 +60,84 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         label: 'Executive Overview',
         description: 'High-level business analytics, KPIs, and executive reporting',
         section: 'Operations',
-        allowedRoles: ['Executive'],
+        allowedRoles: ['Superadmin', 'Executive'],
     },
     {
         route: '/warehousing',
         label: 'Warehousing',
         description: 'Facility management, bays, racks, and storage layouts',
         section: 'Operations',
-        allowedRoles: ['Executive', 'Admin', 'Operator'],
+        allowedRoles: ['Superadmin', 'Operator'],
     },
     {
         route: '/inventory',
         label: 'Inventory',
         description: 'Item classifications, stock levels, and warehouse counts',
         section: 'Operations',
-        allowedRoles: ['Executive', 'Admin', 'Operator'],
+        allowedRoles: ['Superadmin', 'Admin'],
     },
     {
         route: '/procurement',
         label: 'Procurement',
         description: 'Purchase requests, supplier requisitions, and budgeting',
         section: 'Procurement',
-        allowedRoles: ['Executive', 'Admin', 'Purchase Officer'],
+        allowedRoles: ['Superadmin', 'Purchase Officer'],
     },
     {
         route: '/suppliers',
         label: 'Suppliers',
         description: 'Vendor directory, partner ratings, and supply agreements',
         section: 'Procurement',
-        allowedRoles: ['Executive', 'Admin', 'Purchase Officer'],
+        allowedRoles: ['Superadmin', 'Purchase Officer'],
     },
     {
         route: '/purchase-orders',
         label: 'Purchase Orders',
         description: 'Order fulfillment, invoicing, and purchase authorization',
         section: 'Procurement',
-        allowedRoles: ['Superadmin', 'Admin', 'Purchase Officer', 'Executive', 'Operator', 'Employee'],
+        allowedRoles: ['Superadmin', 'Admin', 'Purchase Officer'],
     },
     {
         route: '/documents',
         label: 'Documents',
         description: 'Compliance files, shipping docs, and records archive',
         section: 'Intelligence',
-        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
+        allowedRoles: ['Superadmin', 'Purchase Officer'],
     },
     {
         route: '/forecast',
         label: 'Forecast',
         description: 'Demand forecasting and algorithmic predictive models',
         section: 'Intelligence',
-        allowedRoles: ['Executive', 'Admin'],
+        allowedRoles: ['Superadmin', 'Executive', 'Admin'],
     },
     {
         route: '/gallery',
         label: 'Gallery',
         description: 'Media archive, logistics photos, and inspection snapshots',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
+        allowedRoles: ['Superadmin'],
     },
     {
         route: '/trash',
         label: 'Trash & Recycle Bin',
         description: 'Deleted records recovery and permanent purge controls',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin', 'Purchase Officer', 'Operator'],
+        allowedRoles: ['Superadmin', 'Admin', 'Purchase Officer'],
     },
     {
         route: '/user-activity',
         label: 'User Activities',
         description: 'Audit logs, active sessions, and blocked device management',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin'],
+        allowedRoles: ['Superadmin', 'Executive'],
     },
     {
         route: '/settings',
         label: 'Settings',
         description: 'Inactivity timeouts, role access policies, and system preferences',
         section: 'Others',
-        allowedRoles: ['Executive', 'Admin'],
+        allowedRoles: ['Superadmin', 'Executive'],
     },
     {
         route: '/suppliers_page',
@@ -181,7 +181,7 @@ export const DEFAULT_SETTINGS: SystemSettings = {
     updatedBy: 'System Default',
 };
 
-const SETTINGS_STORAGE_KEY = 'sc_system_settings';
+const SETTINGS_STORAGE_KEY = 'sc_system_settings_v3';
 const SETTINGS_EVENT_NAME = 'sc_settings_updated';
 
 class SettingsService {
@@ -243,14 +243,7 @@ class SettingsService {
             for (const [route, roles] of Object.entries(settings.pagePermissions)) {
                 if (!Array.isArray(roles)) continue;
                 const cleanKey = route.toLowerCase().replace(/\/$/, '') || '/';
-                // Ensure Executive always retains permission in cache
-                const roleSet = new Set(roles);
-                roleSet.add('Executive');
-                // Ensure Operator is explicitly enabled for core operations & media routes
-                if (['/documents', '/gallery', '/trash', '/warehousing', '/inventory'].includes(cleanKey)) {
-                    roleSet.add('Operator');
-                }
-                this.routeRolesCache.set(cleanKey, Array.from(roleSet));
+                this.routeRolesCache.set(cleanKey, Array.from(new Set(roles)));
             }
         }
 
@@ -295,14 +288,6 @@ class SettingsService {
                         }
                     });
                 }
-
-                // Ensure Operator is always included in documents, gallery, trash
-                ['/documents', '/gallery', '/trash', '/warehousing', '/inventory'].forEach((route) => {
-                    const currentList = rawPerms[route] || [];
-                    if (!currentList.includes('Operator')) {
-                        rawPerms[route] = [...currentList, 'Operator'];
-                    }
-                });
 
                 const merged: SystemSettings = {
                     inactivity: {
@@ -459,30 +444,21 @@ class SettingsService {
     public canAccessPage(role: string, pathname: string, fallbackRoles?: string[]): boolean {
         if (!role) return false;
         const normRole = role.trim().toLowerCase();
+        
+        // Superadmin has full access to internal pages
+        if (normRole === 'superadmin') return true;
+
         const validFallback = Array.isArray(fallbackRoles)
             ? fallbackRoles
             : typeof fallbackRoles === 'string' && (fallbackRoles as string).trim()
             ? [(fallbackRoles as string).trim()]
             : undefined;
 
-        // 1. Check fallbackRoles directly (from NAV / page definitions)
-        if (validFallback && validFallback.length > 0) {
-            const isFallbackAllowed = validFallback.some(r => {
-                const normAllowed = (r || '').trim().toLowerCase();
-                if (normRole === normAllowed) return true;
-                if ((normRole === 'superadmin' && normAllowed === 'executive') || (normRole === 'executive' && normAllowed === 'superadmin')) return true;
-                if ((normRole === 'purchase officer' && (normAllowed === 'staff' || normAllowed === 'employee')) || ((normRole === 'staff' || normRole === 'employee') && normAllowed === 'purchase officer')) return true;
-                return false;
-            });
-            if (isFallbackAllowed) return true;
-        }
-
-        // 2. Check dynamic allowed roles from DB/settings
+        // Check dynamic allowed roles from DB/settings (falls back to validFallback only if route not configured)
         const allowedRoles = this.getPageRoles(pathname, validFallback);
         return allowedRoles.some(r => {
             const normAllowed = (r || '').trim().toLowerCase();
             if (normRole === normAllowed) return true;
-            if ((normRole === 'superadmin' && normAllowed === 'executive') || (normRole === 'executive' && normAllowed === 'superadmin')) return true;
             if ((normRole === 'purchase officer' && (normAllowed === 'staff' || normAllowed === 'employee')) || ((normRole === 'staff' || normRole === 'employee') && normAllowed === 'purchase officer')) return true;
             return false;
         });
@@ -551,7 +527,7 @@ class SettingsService {
     public async fetchBackendSettings(): Promise<SystemSettings> {
         if (typeof window === 'undefined') return DEFAULT_SETTINGS;
         try {
-            const res = await fetch('/api/supplyChain/settings');
+            const res = await fetch('/api/supplyChain/settings', { cache: 'no-store' });
             if (res.ok) {
                 const json = await res.json();
                 if (json.ok && json.data) {

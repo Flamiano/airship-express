@@ -1056,6 +1056,17 @@ export default function PurchaseOrders() {
             toast.warning("Please select at least one purchase order");
             return;
         }
+        if (newStatus === 'Cancelled') {
+            const hasDelivered = Array.from(selectedIds).some(id => {
+                const po = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id);
+                const s = (po?.status || '').toLowerCase();
+                return s === 'delivered' || s === 'completed';
+            });
+            if (hasDelivered) {
+                toast.warning("Cannot cancel purchase orders that have already been delivered.");
+                return;
+            }
+        }
         const confirmed = await confirm({
             title: `Confirm Bulk Status Change`,
             message: `Are you sure you want to change the status of ${selectedIds.size} selected purchase order(s) to "${newStatus}"?`,
@@ -1149,6 +1160,11 @@ export default function PurchaseOrders() {
 
         if (currentIndex !== -1 && targetIndex !== -1 && targetIndex < currentIndex) {
             toast.warning(`Cannot revert order status from "${currentStatus}" back to "${newStatus}".`);
+            return;
+        }
+
+        if (newStatus === 'Cancelled' && (currentStatus.toLowerCase() === 'delivered' || currentStatus.toLowerCase() === 'completed')) {
+            toast.warning(`Cannot cancel purchase order #${targetOrder?.po_number || id} because it has already been delivered.`);
             return;
         }
 
@@ -1623,7 +1639,7 @@ export default function PurchaseOrders() {
             totalSpend: spend,
         };
     }, [allOrders, purchaseOrders]);
-    return (<SessionGuard requiredRole={['Superadmin', 'Admin', 'Executive', 'Purchase Officer', 'Operator', 'Supervisor', 'Staff', 'Employee']}>
+    return (<SessionGuard requiredRole={['Superadmin', 'Admin', 'Purchase Officer']}>
         <div className="p-6 space-y-6 fade-in bgCard">
             {/* header */}
             <div className="flex items-start justify-between gap-4 flex-wrap border-b border-slate-200/80 dark:border-white/10 pb-5 transition-colors">
@@ -2866,7 +2882,9 @@ export default function PurchaseOrders() {
                                                     const isCurrent = actionModalOrder.status === status;
                                                     const isOrderCancelled = actionModalOrder.status === 'Cancelled';
                                                     const isRestricted = !canUpdateStatus;
-                                                    const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isSendingActionComm || isOrderCancelled;
+                                                    const isOrderDelivered = ['delivered', 'completed'].includes((actionModalOrder.status || '').toLowerCase());
+                                                    const isCancelDisabledAfterDelivered = status === 'Cancelled' && isOrderDelivered;
+                                                    const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isSendingActionComm || isOrderCancelled || isCancelDisabledAfterDelivered;
 
                                                     const getStatusIcon = () => {
                                                         switch (status) {
@@ -2879,7 +2897,9 @@ export default function PurchaseOrders() {
                                                     const getStatusSubtitle = () => {
                                                         switch (status) {
                                                             case 'Delivered': return 'Mark items received at facility';
-                                                            case 'Cancelled': return 'Void / Cancel purchase order';
+                                                            case 'Cancelled':
+                                                                if (isCancelDisabledAfterDelivered) return 'Cannot cancel delivered purchase order';
+                                                                return 'Void / Cancel purchase order';
                                                             default: return '';
                                                         }
                                                     };
@@ -2903,7 +2923,7 @@ export default function PurchaseOrders() {
                                                             onClick={() => handleUpdateStatus(actionModalOrder.id, status)}
                                                             className={`group w-full px-3.5 py-2.5 rounded-2xl text-xs transition-all flex items-center justify-between border ${isCurrent
                                                                 ? 'bg-[#e2e8f0]/80 dark:bg-[#101118] border-pink-400/60 dark:border-pink-500/50 shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] cursor-default'
-                                                                : isRestricted || isOrderCancelled
+                                                                : isRestricted || isOrderCancelled || isCancelDisabledAfterDelivered
                                                                     ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
                                                                     : 'bg-[#f0f3f8] dark:bg-[#1a1b26] border-white/80 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] hover:border-pink-300 dark:hover:border-pink-500/40 hover:text-pink-600 dark:hover:text-pink-400 text-slate-700 dark:text-slate-200 active:scale-[0.98] cursor-pointer'
                                                                 }`}
@@ -2929,6 +2949,10 @@ export default function PurchaseOrders() {
                                                             ) : isOrderCancelled ? (
                                                                 <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
                                                                     <i className="fas fa-ban text-[9px]" /> Voided
+                                                                </span>
+                                                            ) : isCancelDisabledAfterDelivered ? (
+                                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
+                                                                    <i className="fas fa-lock text-[9px]" /> Delivered
                                                                 </span>
                                                             ) : (
                                                                 <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 dark:text-slate-500 group-hover:text-pink-600 dark:group-hover:text-pink-400 group-hover:translate-x-0.5 transition-all">

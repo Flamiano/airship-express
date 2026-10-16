@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
 import { GoogleGenAI } from '@google/genai';
+import { runSupervisedMLForecast, type MLTrainingMetadata } from '../lib/gradientDescentRegressor';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -141,7 +142,7 @@ function runMovingAverageForecast(
     };
 }
 
-// Robust Multi-Method Forecaster with Chronological Validation
+// Robust Multi-Method Forecaster with Chronological Validation & Machine Learning Tournament
 async function executeTimeSeriesForecast(
     counts: number[],
     horizon: number = 7
@@ -151,6 +152,7 @@ async function executeTimeSeriesForecast(
     upper: number[];
     confidence: string;
     model_used: string;
+    ml_metadata?: MLTrainingMetadata;
     evaluation: {
         has_evaluation: boolean;
         mae: number;
@@ -188,7 +190,8 @@ async function executeTimeSeriesForecast(
 
     // 1. Chronological Holdout Validation (if at least 14 days of data)
     let evaluationResult: any = null;
-    let preferredModelType: 'croston' | 'autotheta' | 'holtwinters' | 'moving_avg' = 'croston';
+    let preferredModelType: 'croston' | 'autotheta' | 'holtwinters' | 'moving_avg' | 'ml_gradient_descent' = 'croston';
+    let savedMlMetadata: MLTrainingMetadata | undefined = undefined;
 
     if (totalDays >= 14 && nonZeroCount >= 2) {
         const holdoutSize = Math.min(horizon, 7, Math.floor(totalDays / 3));
@@ -196,11 +199,11 @@ async function executeTimeSeriesForecast(
         const actualHoldout = counts.slice(totalDays - holdoutSize);
         const actualHoldoutSum = actualHoldout.reduce((a, b) => a + b, 0);
 
-        // Candidate 1: Croston SBA
+        // Candidate 1: Croston SBA (Intermittent Statistical)
         const crostonHoldout = runCrostonSBA(trainCounts, holdoutSize).predictions;
         const crostonMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (crostonHoldout[i] || 0)), 0) / holdoutSize;
 
-        // Candidate 2: Moving Average (7-day)
+        // Candidate 2: Moving Average (7-day baseline)
         const maHoldout = runMovingAverageForecast(trainCounts, holdoutSize, 7).predictions;
         const maMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (maHoldout[i] || 0)), 0) / holdoutSize;
 
@@ -212,7 +215,24 @@ async function executeTimeSeriesForecast(
             preferredModelType = 'moving_avg';
         }
 
-        // Candidate 3: AutoTheta / HoltWinters if anofox available and data not hyper-sparse
+        // Candidate 3: Supervised Machine Learning (Gradient Descent Regressor)
+        if (trainCounts.length >= 10 && nonZeroCount >= 3) {
+            try {
+                const mlHoldoutResult = runSupervisedMLForecast(trainCounts, holdoutSize, 250, 0.05);
+                const mlMae = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (mlHoldoutResult.predictions[i] || 0)), 0) / holdoutSize;
+                
+                // If ML outperforms statistical models by achieving lower MAE
+                if (mlMae < bestMae) {
+                    bestMae = mlMae;
+                    preferredModelType = 'ml_gradient_descent';
+                    savedMlMetadata = mlHoldoutResult.ml_metadata;
+                }
+            } catch (mlErr) {
+                console.warn('ML holdout validation failed, continuing tournament:', mlErr);
+            }
+        }
+
+        // Candidate 4: AutoTheta / HoltWinters if anofox available and data not hyper-sparse
         if (anofox && zeroDaysFraction < 0.65 && trainCounts.length >= 7) {
             try {
                 const { TimeSeries, AutoThetaForecaster, HoltWintersForecaster } = anofox;
@@ -245,9 +265,16 @@ async function executeTimeSeriesForecast(
         }
 
         // Compute chosen model holdout error metrics
-        const chosenHoldoutPreds = preferredModelType === 'croston' ? crostonHoldout :
-            preferredModelType === 'moving_avg' ? maHoldout :
-            runCrostonSBA(trainCounts, holdoutSize).predictions;
+        let chosenHoldoutPreds: number[] = [];
+        if (preferredModelType === 'croston') {
+            chosenHoldoutPreds = crostonHoldout;
+        } else if (preferredModelType === 'moving_avg') {
+            chosenHoldoutPreds = maHoldout;
+        } else if (preferredModelType === 'ml_gradient_descent') {
+            chosenHoldoutPreds = runSupervisedMLForecast(trainCounts, holdoutSize, 250, 0.05).predictions;
+        } else {
+            chosenHoldoutPreds = runCrostonSBA(trainCounts, holdoutSize).predictions;
+        }
 
         const totalAbsErr = actualHoldout.reduce((sum, act, i) => sum + Math.abs(act - (chosenHoldoutPreds[i] || 0)), 0);
         const mae = totalAbsErr / holdoutSize;
@@ -271,6 +298,15 @@ async function executeTimeSeriesForecast(
     }
 
     // 2. Generate final forward forecast on entire series
+    // If Machine Learning won the tournament:
+    if (preferredModelType === 'ml_gradient_descent' && counts.length >= 10) {
+        const mlResult = runSupervisedMLForecast(counts, horizon, 250, 0.05);
+        return {
+            ...mlResult,
+            evaluation: evaluationResult
+        };
+    }
+
     // Intermittent data or sparse points: Croston SBA
     if (zeroDaysFraction >= 0.40 || nonZeroCount < 5 || preferredModelType === 'croston') {
         const croston = runCrostonSBA(counts, horizon);
@@ -363,7 +399,7 @@ async function executeTimeSeriesForecast(
     }
 }
 
-// Generate Gemini AI Executive Insights
+// Generate Gemini AI Executive Insights via Google GenAI
 async function generateGeminiInsights(context: {
     totalItems: number;
     forecastHorizon: number;
@@ -800,6 +836,7 @@ export async function GET(request: NextRequest) {
             let modelUsedStr: string;
             let forecastDemandSum = 0;
             let itemEvaluation: any = null;
+            let itemMlMetadata: any = null;
 
             if (!hasThreeYearsHistory) {
                 itemDailyPredictions = Array(validHorizonDays).fill(0);
@@ -825,6 +862,7 @@ export async function GET(request: NextRequest) {
                 modelUsedStr = forecastResult.model_used;
                 forecastDemandSum = itemDailyPredictions.reduce((a, b) => a + b, 0);
                 itemEvaluation = forecastResult.evaluation;
+                itemMlMetadata = forecastResult.ml_metadata || null;
             }
 
             // Incoming purchase orders
@@ -941,6 +979,7 @@ export async function GET(request: NextRequest) {
                 upper_bounds: upperBounds,
                 confidence: confidenceStr,
                 model_used: modelUsedStr,
+                ml_metadata: itemMlMetadata,
 
                 expected_incoming: expectedIncoming,
                 incoming_pos_details: incomingInfo.details,

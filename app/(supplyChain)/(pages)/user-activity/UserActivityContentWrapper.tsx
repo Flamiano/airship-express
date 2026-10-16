@@ -14,16 +14,30 @@ import { AccessControlTab } from './components/tabs/AccessControlTab';
 import { BlockedDevicesTab } from './components/tabs/BlockedDevicesTab';
 import { AppealsTab } from './components/tabs/AppealsTab';
 import { ActivityLogTab } from './components/tabs/ActivityLogTab';
+import { CreateAccountTab } from './components/tabs/CreateAccountTab';
 import { AppealResponseModal } from './components/modals/AppealResponseModal';
 
 export default function UserActivityContentWrapper() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    const validTabs: ActivityTab[] = ['active_users', 'sessions', 'access_control', 'blocked', 'appeals', 'activity'];
+    const validTabs: ActivityTab[] = ['active_users', 'create_account', 'sessions', 'access_control', 'blocked', 'appeals', 'activity'];
     const tabParam = searchParams.get('tab') as ActivityTab;
     const initialTab = tabParam && validTabs.includes(tabParam) ? tabParam : 'active_users';
     const [activeTab, setActiveTab] = useState<ActivityTab>(initialTab);
+    const [employeeAccountsCount, setEmployeeAccountsCount] = useState<number>(0);
+
+    // Initial fetch of employee accounts count
+    useEffect(() => {
+        fetch('/api/supplyChain/employee-accounts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && typeof data.total === 'number') {
+                    setEmployeeAccountsCount(data.total);
+                }
+            })
+            .catch(() => {});
+    }, []);
 
     // Sync activeTab when searchParams change (browser back/forward or direct navigation)
     useEffect(() => {
@@ -374,6 +388,7 @@ export default function UserActivityContentWrapper() {
                 blockedCount={blockedDevices.length}
                 appealsCount={appeals.length}
                 activitiesCount={activities.length}
+                employeeAccountsCount={employeeAccountsCount}
             />
 
             {/* active tab view */}
@@ -397,6 +412,12 @@ export default function UserActivityContentWrapper() {
                     slotStats={slotStats}
                     terminatingSessionId={terminatingSessionId}
                     isBulkTerminating={isBulkTerminating}
+                />
+            )}
+
+            {activeTab === 'create_account' && (
+                <CreateAccountTab
+                    onAccountsCountChange={setEmployeeAccountsCount}
                 />
             )}
 

@@ -256,7 +256,7 @@ function WarehousingContent() {
     }, [purchaseOrders, departmentRequests, inventoryItems, dbZonesCount, dbDamageCount]);
 
     return (
-        <SessionGuard requiredRole={["Admin", "Purchase Officer", "Operator", "Executive"]}>
+        <SessionGuard requiredRole={["Superadmin", "Operator"]}>
             <div className="p-4 sm:p-6 lg:p-7 space-y-6 fade-in bgCard">
                 {/* 1. Master Page Header with Neumorphic Card Styling */}
                 <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)] flex items-start justify-between gap-4 flex-wrap">

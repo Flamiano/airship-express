@@ -61,6 +61,8 @@ export interface Supplier {
     phone: string;
     email: string;
     location: string;
+    is_active?: boolean;
+    status?: string;
     document_count?: number;
     photo_count?: number;
     total_files?: number;

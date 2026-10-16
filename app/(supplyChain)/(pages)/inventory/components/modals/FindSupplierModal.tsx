@@ -276,8 +276,18 @@ const BusinessCardItem = React.memo(function BusinessCardItem({
 }: BusinessCardItemProps) {
     return (
         <div
+            id={`supplier-card-${b.id}`}
+            tabIndex={0}
+            role="button"
+            aria-selected={isSelected}
             onClick={() => onSelect(b)}
-            className={`p-4 rounded-2xl transition-all cursor-pointer space-y-2.5 shadow-none ${
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onSelect(b);
+                }
+            }}
+            className={`p-4 rounded-2xl transition-all cursor-pointer space-y-2.5 shadow-none focus:outline-hidden focus:ring-2 focus:ring-pink-500 focus:border-pink-500 ${
                 isSelected
                     ? 'bg-pink-50/60 dark:bg-pink-950/20 border-2 border-pink-500 ring-2 ring-pink-500/20'
                     : 'bg-white dark:bg-[#161826] border border-slate-200 dark:border-slate-800 hover:border-pink-300 dark:hover:border-pink-800'
@@ -358,19 +368,33 @@ const BusinessCardItem = React.memo(function BusinessCardItem({
                 </button>
 
                 {isOfficial ? (
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onOrderOfficial(b);
-                        }}
-                        className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.4)]"
-                        title="Official supplier: Create Purchase Order directly"
-                    >
-                        <ShoppingCart className="w-3 h-3" />
-                        <span>Order(Official supplier)</span>
-                    </button>
-                ) : offersItem ? (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onInquire(b);
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.4)]"
+                            title={`Inquire with active supplier ${b.name}`}
+                        >
+                            <MessageSquare className="w-3 h-3" />
+                            <span>Inquire</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onOrderOfficial(b);
+                            }}
+                            className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.4)]"
+                            title="Official supplier: Create Purchase Order directly"
+                        >
+                            <ShoppingCart className="w-3 h-3" />
+                            <span>Order</span>
+                        </button>
+                    </div>
+                ) : (
                     <button
                         type="button"
                         onClick={(e) => {
@@ -400,19 +424,6 @@ const BusinessCardItem = React.memo(function BusinessCardItem({
                                 <span>Add as Potential Supplier</span>
                             </>
                         )}
-                    </button>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            onInquire(b);
-                        }}
-                        className="px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.4)]"
-                        title={`Item not part of standard offer. Click to message ${b.name}`}
-                    >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>Inquire</span>
                     </button>
                 )}
             </div>
@@ -993,6 +1004,91 @@ export function FindSupplierModal({
     useEffect(() => {
         setVisibleCardsLimit(30);
     }, [resultsSearchTerm, categoryFilter, distanceFilter, selectedLocation, selectedRadiusKm]);
+
+    // Keyboard navigation (ArrowUp, ArrowDown, ArrowLeft, ArrowRight) through suppliers
+    useEffect(() => {
+        if (!isOpen) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Do not handle if modal is closed or child modals are open
+            if (isMessageModalOpen || isInternalPOModalOpen || isViewAllOpen) return;
+
+            const isArrowUp = e.key === 'ArrowUp';
+            const isArrowDown = e.key === 'ArrowDown';
+            const isArrowLeft = e.key === 'ArrowLeft';
+            const isArrowRight = e.key === 'ArrowRight';
+
+            if (!isArrowUp && !isArrowDown && !isArrowLeft && !isArrowRight) return;
+
+            // If user is focused on a textarea, allow standard multi-line navigation
+            if (document.activeElement instanceof HTMLTextAreaElement) {
+                return;
+            }
+
+            // If user is inside an input field:
+            if (document.activeElement instanceof HTMLInputElement) {
+                // Allow left/right for moving cursor inside text input
+                if (isArrowLeft || isArrowRight) return;
+                // For ArrowUp / ArrowDown in input, prevent default to navigate suppliers
+            }
+
+            if (!filteredBusinesses || filteredBusinesses.length === 0) return;
+
+            e.preventDefault();
+
+            const currentIndex = filteredBusinesses.findIndex(
+                (b) => String(b.id) === String(selectedBusiness?.id)
+            );
+
+            let nextIndex = 0;
+            if (isArrowDown || isArrowRight) {
+                if (currentIndex === -1) {
+                    nextIndex = 0;
+                } else {
+                    nextIndex = (currentIndex + 1) % filteredBusinesses.length;
+                }
+            } else if (isArrowUp || isArrowLeft) {
+                if (currentIndex === -1) {
+                    nextIndex = filteredBusinesses.length - 1;
+                } else {
+                    nextIndex = (currentIndex - 1 + filteredBusinesses.length) % filteredBusinesses.length;
+                }
+            }
+
+            // If the next card is beyond current visibleCardsLimit, expand limit
+            if (nextIndex >= visibleCardsLimit) {
+                setVisibleCardsLimit((prev) => Math.max(prev, nextIndex + 15));
+            }
+
+            const targetBusiness = filteredBusinesses[nextIndex];
+            if (targetBusiness) {
+                setSelectedBusiness(targetBusiness);
+                setActiveDetailView(true);
+
+                // Scroll the selected card into view smoothly and apply focus
+                setTimeout(() => {
+                    const cardElement = document.getElementById(`supplier-card-${targetBusiness.id}`);
+                    if (cardElement) {
+                        cardElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        if (!(document.activeElement instanceof HTMLInputElement)) {
+                            cardElement.focus({ preventScroll: true });
+                        }
+                    }
+                }, 40);
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [
+        isOpen,
+        filteredBusinesses,
+        selectedBusiness,
+        visibleCardsLimit,
+        isMessageModalOpen,
+        isInternalPOModalOpen,
+        isViewAllOpen
+    ]);
 
     if (!isOpen || !request) return null;
 
@@ -1885,39 +1981,35 @@ export function FindSupplierModal({
                                             </div>
                                         </div>
 
-                                        {/* Action Button: Dynamic based on Official / Offers Item / Inquire */}
+                                        {/* Action Button: Dynamic based on Official (in suppliers table & active) vs Potential Lead */}
                                         <div className="pt-2 border-t border-slate-200/60 dark:border-white/[0.04]">
                                             {(() => {
                                                 const officialSup = findOfficialSupplierMatch(selectedBusiness, dbSuppliers);
                                                 const isOfficial = Boolean(officialSup);
-                                                const offersItem = checkSupplierOffersItem(selectedBusiness, currentItemNameForOffer, currentItemCatForOffer, officialSup);
                                                 const isAlreadySaved = isBusinessAlreadySaved(selectedBusiness);
 
                                                 if (isOfficial) {
                                                     return (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, officialSup)}
-                                                            className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)]"
-                                                            title="Official supplier: Create Purchase Order directly"
-                                                        >
-                                                            <ShoppingCart className="w-4 h-4" />
-                                                            <span>Order (Official supplier)</span>
-                                                        </button>
-                                                    );
-                                                }
-
-                                                if (!offersItem) {
-                                                    return (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleInquireSupplier(selectedBusiness)}
-                                                            className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.4)]"
-                                                            title={`Item not part of standard offer. Click to message ${selectedBusiness.name} about ${currentItemNameForOffer}`}
-                                                        >
-                                                            <MessageSquare className="w-4 h-4" />
-                                                            <span>Inquire</span>
-                                                        </button>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                                className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.4)]"
+                                                                title={`Inquire with active supplier ${selectedBusiness.name}`}
+                                                            >
+                                                                <MessageSquare className="w-4 h-4" />
+                                                                <span>Inquire</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, officialSup)}
+                                                                className="w-full py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)]"
+                                                                title="Official supplier: Create Purchase Order directly"
+                                                            >
+                                                                <ShoppingCart className="w-4 h-4" />
+                                                                <span>Order (Official supplier)</span>
+                                                            </button>
+                                                        </div>
                                                     );
                                                 }
 
@@ -1939,8 +2031,8 @@ export function FindSupplierModal({
                                                             </>
                                                         ) : isAlreadySaved ? (
                                                             <>
-                                                                <CheckCircle2 className="w-4 h-4" />
-                                                                <span>Added to Potential Suppliers (Pending Evaluation)</span>
+                                                                <Check className="w-4 h-4" />
+                                                                <span>Saved as Potential Supplier</span>
                                                             </>
                                                         ) : (
                                                             <>
@@ -2036,6 +2128,12 @@ export function FindSupplierModal({
                                                 </span>
                                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-pink-500/10 dark:bg-pink-500/20 text-pink-600 dark:text-pink-400 border border-pink-500/20">
                                                     {filteredBusinesses.length} {filteredBusinesses.length === 1 ? 'store' : 'stores'}
+                                                </span>
+                                                <span className="hidden sm:inline-flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-medium ml-1" title="Use Arrow Up / Down / Left / Right on keyboard to navigate suppliers">
+                                                    <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-mono text-slate-700 dark:text-slate-300">↑</kbd>
+                                                    <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-mono text-slate-700 dark:text-slate-300">↓</kbd>
+                                                    <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-mono text-slate-700 dark:text-slate-300">←</kbd>
+                                                    <kbd className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[9px] font-mono text-slate-700 dark:text-slate-300">→</kbd>
                                                 </span>
                                             </div>
 
@@ -2189,27 +2287,24 @@ export function FindSupplierModal({
 
                                             if (isOff) {
                                                 return (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
-                                                        className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30"
-                                                    >
-                                                        <ShoppingCart className="w-3.5 h-3.5" />
-                                                        <span>Order(Official supplier)</span>
-                                                    </button>
-                                                );
-                                            }
-
-                                            if (!offers) {
-                                                return (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleInquireSupplier(selectedBusiness)}
-                                                        className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ml-1 bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30"
-                                                    >
-                                                        <MessageSquare className="w-3.5 h-3.5" />
-                                                        <span>Inquire</span>
-                                                    </button>
+                                                    <div className="flex items-center gap-1.5 ml-1">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                            className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/30"
+                                                        >
+                                                            <MessageSquare className="w-3.5 h-3.5" />
+                                                            <span>Inquire</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
+                                                            className="px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/30"
+                                                        >
+                                                            <ShoppingCart className="w-3.5 h-3.5" />
+                                                            <span>Order(Official supplier)</span>
+                                                        </button>
+                                                    </div>
                                                 );
                                             }
 
@@ -2271,27 +2366,24 @@ export function FindSupplierModal({
 
                                     if (isOff) {
                                         return (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
-                                                className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
-                                            >
-                                                <ShoppingCart className="w-4 h-4" />
-                                                <span>Order (Official supplier)</span>
-                                            </button>
-                                        );
-                                    }
-
-                                    if (!offers) {
-                                        return (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleInquireSupplier(selectedBusiness)}
-                                                className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950"
-                                            >
-                                                <MessageSquare className="w-4 h-4" />
-                                                <span>Inquire</span>
-                                            </button>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleInquireSupplier(selectedBusiness)}
+                                                    className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950"
+                                                >
+                                                    <MessageSquare className="w-4 h-4" />
+                                                    <span>Inquire</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
+                                                    className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
+                                                >
+                                                    <ShoppingCart className="w-4 h-4" />
+                                                    <span>Order (Official supplier)</span>
+                                                </button>
+                                            </div>
                                         );
                                     }
 
@@ -2567,33 +2659,30 @@ export function FindSupplierModal({
 
                                                         if (isOff) {
                                                             return (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setIsViewAllOpen(false);
-                                                                        handleOrderFromOfficialSupplier(b, off);
-                                                                    }}
-                                                                    className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.3)]"
-                                                                >
-                                                                    <ShoppingCart className="w-3.5 h-3.5" />
-                                                                    <span>Order(Official supplier)</span>
-                                                                </button>
-                                                            );
-                                                        }
-
-                                                        if (!offers) {
-                                                            return (
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        setIsViewAllOpen(false);
-                                                                        handleInquireSupplier(b);
-                                                                    }}
-                                                                    className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.3)]"
-                                                                >
-                                                                    <MessageSquare className="w-3.5 h-3.5" />
-                                                                    <span>Inquire</span>
-                                                                </button>
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setIsViewAllOpen(false);
+                                                                            handleInquireSupplier(b);
+                                                                        }}
+                                                                        className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(245,158,11,0.3)]"
+                                                                    >
+                                                                        <MessageSquare className="w-3.5 h-3.5" />
+                                                                        <span>Inquire</span>
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            setIsViewAllOpen(false);
+                                                                            handleOrderFromOfficialSupplier(b, off);
+                                                                        }}
+                                                                        className="px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.2),_2px_2px_6px_rgba(37,99,235,0.3)]"
+                                                                    >
+                                                                        <ShoppingCart className="w-3.5 h-3.5" />
+                                                                        <span>Order(Official supplier)</span>
+                                                                    </button>
+                                                                </div>
                                                             );
                                                         }
 
@@ -2615,13 +2704,13 @@ export function FindSupplierModal({
                                                                     </>
                                                                 ) : isSaved ? (
                                                                     <>
-                                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                        <Check className="w-3.5 h-3.5" />
                                                                         <span>Saved Potential</span>
                                                                     </>
                                                                 ) : (
                                                                     <>
                                                                         <PlusCircle className="w-3.5 h-3.5" />
-                                                                        <span>Add as Potential</span>
+                                                                        <span>Add as Potential Supplier</span>
                                                                     </>
                                                                 )}
                                                             </button>

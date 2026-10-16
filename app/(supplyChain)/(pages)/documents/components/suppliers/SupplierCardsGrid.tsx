@@ -205,7 +205,11 @@ export function SupplierCardsGrid({
                     <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
                         {filteredSuppliers.length} {filteredSuppliers.length === 1 ? 'Supplier' : 'Suppliers'} Available
                     </span>
-                    <span className="text-xs text-slate-400 dark:text-slate-500">· Click any card to view documents & gallery</span>
+                    <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-2xs">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Realtime
+                    </span>
+                    <span className="text-xs text-slate-400 dark:text-slate-500 hidden sm:inline">· Click any card to view documents & gallery</span>
                 </div>
                 <span className="text-xs font-semibold text-pink-600 dark:text-pink-400">
                     {totalFiles} Total Files across all suppliers
@@ -269,6 +273,7 @@ export function SupplierCardsGrid({
                         const totalSupplierFiles = supplier.total_files || (docCount + photoCount);
                         const totalSize = supplier.total_size || 0;
                         const gradient = getGradient(supplier.id);
+                        const isOfficial = supplier.is_active !== false;
 
                         return (
                             <motion.div
@@ -287,11 +292,22 @@ export function SupplierCardsGrid({
                                         <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${gradient} text-white flex items-center justify-center font-bold text-lg shadow-md shrink-0 uppercase tracking-tight`}>
                                             {supplier.name.substring(0, 2)}
                                         </div>
-                                        {supplier.category && (
-                                            <StatusBadge tone="neutral" size="xs">
-                                                <span className="truncate max-w-[120px]">{supplier.category}</span>
-                                            </StatusBadge>
-                                        )}
+                                        <div className="flex flex-col items-end gap-1">
+                                            {isOfficial ? (
+                                                <StatusBadge tone="emerald" size="xs" dot>
+                                                    Official Supplier
+                                                </StatusBadge>
+                                            ) : (
+                                                <StatusBadge tone="amber" size="xs" dot dotColor="bg-amber-500">
+                                                    Inactive
+                                                </StatusBadge>
+                                            )}
+                                            {supplier.category && (
+                                                <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 truncate max-w-[120px]">
+                                                    {supplier.category}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <div>

@@ -343,16 +343,15 @@ export async function POST(request: Request) {
 
         // determine redirect based on role
         const roleRedirects: Record<string, string> = {
-            'Admin': '/procurement',
-            'Purchase Officer': '/warehousing',
-            'Staff': '/documents',
-            'Employee': '/documents',
-            'Operator': '/warehousing?tab=incoming',
+            'Superadmin': '/executive',
+            'Admin': '/inventory',
+            'Purchase Officer': '/purchase-orders',
+            'Operator': '/warehousing',
             'Executive': '/executive',
             'Supplier': '/suppliers_page/purchase-orders',
         };
 
-        const redirectUrl = roleRedirects[role] || '/documents';
+        const redirectUrl = roleRedirects[role] || '/inventory';
 
         return NextResponse.json({
             success: true,

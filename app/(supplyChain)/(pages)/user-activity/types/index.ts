@@ -78,5 +78,23 @@ export interface UserActivity {
     };
 }
 
-export type ActivityTab = 'active_users' | 'sessions' | 'access_control' | 'blocked' | 'activity' | 'appeals';
+export interface EmployeeAccount {
+    id: string;
+    employee_id: string;
+    display_name: string;
+    email: string;
+    department: string;
+    position: string;
+    role: string;
+    raw_employee_role?: string;
+    status: string;
+    has_account: boolean;
+    user_id: string | null;
+    account_status: string;
+    account_created_at: string | null;
+    password_hash: string | null;
+    has_password: boolean;
+}
+
+export type ActivityTab = 'active_users' | 'sessions' | 'access_control' | 'blocked' | 'activity' | 'appeals' | 'create_account';
 

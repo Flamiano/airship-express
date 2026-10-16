@@ -128,6 +128,12 @@ export interface SupplierReturnRequestRecord {
         total_amount?: number;
         payment_terms?: string;
         terms_and_conditions?: string;
+        warranty_terms?: string;
+        services_offered?: string[];
+        quotation_clauses?: string;
+        quotation_notes?: string;
+        quotation_id?: number | string;
+        lead_time_days?: string;
         financial_approval?: string;
         admin_approval?: string;
         status?: string;
@@ -516,6 +522,7 @@ export async function fetchSupplierReturnRequestsAction() {
         // Fetch all relevant POs to enrich details (terms, quotation, prices, line items)
         const poNumbers = Array.from(new Set(returnRequests.map((r) => r.po_number).filter(Boolean)));
         let poMap = new Map<string, any>();
+        let quoteMap = new Map<number | string, any>();
 
         if (poNumbers.length > 0) {
             const { data: pos } = await dbClient
@@ -525,30 +532,105 @@ export async function fetchSupplierReturnRequestsAction() {
 
             if (pos) {
                 pos.forEach((p) => poMap.set(p.po_number, p));
+
+                // Fetch linked quotations by suppliers_qoutation_bid
+                const quoteIds = Array.from(
+                    new Set(pos.map((p) => p.suppliers_qoutation_bid).filter(Boolean))
+                );
+                if (quoteIds.length > 0) {
+                    const { data: quotes } = await dbClient
+                        .from('supplier_quotations')
+                        .select('*')
+                        .in('id', quoteIds);
+
+                    if (quotes) {
+                        quotes.forEach((q) => quoteMap.set(q.id, q));
+                    }
+                }
             }
         }
 
-        // Enrich records with PO terms, supplier details, incident numbers
+        // Also fetch accepted quotations for suppliers whose PO does not specify suppliers_qoutation_bid
+        const supplierIds = Array.from(
+            new Set(returnRequests.map((r) => r.supplier_id).filter(Boolean))
+        );
+        if (supplierIds.length > 0) {
+            const { data: supQuotes } = await dbClient
+                .from('supplier_quotations')
+                .select('*')
+                .in('supplier_id', supplierIds)
+                .order('created_at', { ascending: false });
+
+            if (supQuotes) {
+                supQuotes.forEach((q) => {
+                    const key = `sup_${q.supplier_id}`;
+                    if (!quoteMap.has(key)) {
+                        quoteMap.set(key, q);
+                    }
+                });
+            }
+        }
+
+        // Enrich records with PO terms, supplier details, warranty terms, and incident numbers from DB
         const enriched: SupplierReturnRequestRecord[] = returnRequests.map((req) => {
             const matchedPO = poMap.get(req.po_number);
+            const matchedQuote = matchedPO?.suppliers_qoutation_bid
+                ? quoteMap.get(matchedPO.suppliers_qoutation_bid)
+                : (req.supplier_id ? quoteMap.get(`sup_${req.supplier_id}`) : undefined);
+
+            let warranty_terms: string | undefined;
+            let quotation_clauses: string | undefined;
+            let quotation_payment_terms: string | undefined;
+
+            // 1. From quote services_offered
+            if (Array.isArray(matchedQuote?.services_offered)) {
+                const found = matchedQuote.services_offered.find((s: string) => /warranty/i.test(s));
+                if (found) warranty_terms = found;
+            }
+
+            // 2. From quote notes
+            if (matchedQuote?.notes) {
+                const wMatch = matchedQuote.notes.match(/Warranty=([^|\]\n]+)/i);
+                if (wMatch && !warranty_terms) warranty_terms = wMatch[1].trim();
+
+                const pMatch = matchedQuote.notes.match(/Payment=([^|\]\n]+)/i);
+                if (pMatch) quotation_payment_terms = pMatch[1].trim();
+
+                const cMatch = matchedQuote.notes.match(/Clauses:\s*([\s\S]+?)(?:\]|$)/i);
+                if (cMatch) quotation_clauses = cMatch[1].trim();
+            }
+
+            // 3. From PO notes
+            if (matchedPO?.notes && !warranty_terms) {
+                const poWMatch = matchedPO.notes.match(/Warranty:\s*([^.\n]+)/i);
+                if (poWMatch) warranty_terms = poWMatch[1].trim();
+            }
+
+            const payment_terms = matchedPO?.payment_terms || quotation_payment_terms;
+            const terms_and_conditions = matchedPO?.terms_and_conditions || quotation_clauses;
+
             return {
                 ...req,
                 incident_number: req.incident_number || `INC-${req.return_request_number.replace('SRR-', '')}`,
-                po_details: matchedPO
+                po_details: (matchedPO || matchedQuote)
                     ? {
-                          total_amount: Number(matchedPO.total_amount) || 0,
-                          payment_terms: matchedPO.payment_terms || 'Net 30 Days Upon Receipt',
-                          terms_and_conditions:
-                              matchedPO.terms_and_conditions ||
-                              'Defective or damaged items subject to standard vendor replacement or credit note within 14 business days of arrival notice.',
-                          financial_approval: matchedPO.financial_approval,
-                          admin_approval: matchedPO.admin_approval,
-                          status: matchedPO.status,
-                          paid: Boolean(matchedPO.paid),
-                          items: matchedPO.items || [],
-                          supplier_contact_person: matchedPO.supplier_contact || 'Vendor Account Representative',
-                          supplier_phone: matchedPO.supplier_phone || '',
-                          supplier_address: matchedPO.supplier_address || matchedPO.delivery_address || '',
+                          total_amount: Number(matchedPO?.total_amount) || Number(matchedQuote?.total_amount) || 0,
+                          payment_terms: payment_terms || undefined,
+                          terms_and_conditions: terms_and_conditions || undefined,
+                          warranty_terms: warranty_terms || undefined,
+                          services_offered: matchedQuote?.services_offered || [],
+                          quotation_clauses: quotation_clauses || undefined,
+                          quotation_notes: matchedQuote?.notes || undefined,
+                          quotation_id: matchedQuote?.id || matchedPO?.suppliers_qoutation_bid || undefined,
+                          lead_time_days: matchedQuote?.lead_time_days || undefined,
+                          financial_approval: matchedPO?.financial_approval,
+                          admin_approval: matchedPO?.admin_approval,
+                          status: matchedPO?.status,
+                          paid: Boolean(matchedPO?.paid),
+                          items: matchedPO?.items || [],
+                          supplier_contact_person: matchedPO?.supplier_contact || matchedQuote?.contact_person || 'Vendor Account Representative',
+                          supplier_phone: matchedPO?.supplier_phone || matchedQuote?.contact_phone || '',
+                          supplier_address: matchedPO?.supplier_address || matchedPO?.delivery_address || '',
                       }
                     : undefined,
             };

@@ -335,47 +335,46 @@ const MemoizedSupplierMarker = React.memo(function MemoizedSupplierMarker({
                                 View Details
                             </button>
                             {actionState?.isOfficial ? (
-                                <button
-                                    type="button"
-                                    onClick={() => onOrderOfficialSupplier ? onOrderOfficialSupplier(supplier) : onSelect(supplier.id)}
-                                    className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
-                                    title="Create Purchase Order directly with this Official Supplier"
-                                >
-                                    <ShoppingCart className="w-3 h-3" />
-                                    <span>Order(Official supplier)</span>
-                                </button>
-                            ) : actionState?.offersItem ? (
-                                actionState?.isSaved ? (
+                                <div className="flex items-center gap-1.5 flex-1">
                                     <button
                                         type="button"
-                                        disabled
-                                        className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-emerald-600 text-white shadow-sm flex items-center justify-center gap-1 cursor-default"
+                                        onClick={() => onInquireSupplier ? onInquireSupplier(supplier) : onSelect(supplier.id)}
+                                        className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                        title="Inquire with this active supplier"
                                     >
-                                        <Check className="w-3 h-3" />
-                                        <span>Saved</span>
+                                        <MessageSquare className="w-3 h-3" />
+                                        <span>Inquire</span>
                                     </button>
-                                ) : (
-                                    onAddPotentialSupplier && (
-                                        <button
-                                            type="button"
-                                            onClick={() => onAddPotentialSupplier(supplier)}
-                                            className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-black bg-pink-600 hover:bg-pink-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
-                                        >
-                                            <PlusCircle className="w-3 h-3" />
-                                            <span>+ Add Supplier</span>
-                                        </button>
-                                    )
-                                )
-                            ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => onOrderOfficialSupplier ? onOrderOfficialSupplier(supplier) : onSelect(supplier.id)}
+                                        className="flex-1 py-1.5 px-2 rounded-xl text-[11px] font-black bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                        title="Create Purchase Order directly with this Official Supplier"
+                                    >
+                                        <ShoppingCart className="w-3 h-3" />
+                                        <span>Order</span>
+                                    </button>
+                                </div>
+                            ) : actionState?.isSaved ? (
                                 <button
                                     type="button"
-                                    onClick={() => onInquireSupplier ? onInquireSupplier(supplier) : onSelect(supplier.id)}
-                                    className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-black bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
-                                    title="Inquire with supplier about this specific item"
+                                    disabled
+                                    className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-bold bg-emerald-600 text-white shadow-sm flex items-center justify-center gap-1 cursor-default"
                                 >
-                                    <MessageSquare className="w-3 h-3" />
-                                    <span>Inquire</span>
+                                    <Check className="w-3 h-3" />
+                                    <span>Saved</span>
                                 </button>
+                            ) : (
+                                onAddPotentialSupplier && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onAddPotentialSupplier(supplier)}
+                                        className="flex-1 py-1.5 px-2.5 rounded-xl text-[11px] font-black bg-pink-600 hover:bg-pink-500 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1"
+                                    >
+                                        <PlusCircle className="w-3 h-3" />
+                                        <span>+ Add Supplier</span>
+                                    </button>
+                                )
                             )}
                         </div>
                     </div>

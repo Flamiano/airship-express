@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { supabase } from "../../lib/services/client/supabase";
 import { user } from "../../lib/services/Class/user";
 import { buildEmailTemplate } from "../../(pages)/procurement/api/send-email/template";
 import { PurchaseRequestItem, PurchaseOrderModalProps } from "../../(pages)/procurement/types/index";
+import { parseQuotationNotes } from "../../(pages)/suppliers/utils/termsParser";
 import { AppButton } from "../ui/AppButton";
 import Portal from "../client/Portal";
 import { 
@@ -77,17 +78,21 @@ export function PurchaseOrderModal({
 
     useEffect(() => {
         if (isOpen) {
-            setGeneratedPoNumber(`PO-${Date.now().toString().slice(-6)}`);
+            setGeneratedPoNumber((prev) => prev || `PO-${Date.now().toString().slice(-6)}`);
+        } else {
+            setGeneratedPoNumber('');
         }
     }, [isOpen, request?.id]);
 
-    const poNumber = request ? `PO-${Date.now().toString().slice(-6)}` : (generatedPoNumber || `PO-${Date.now().toString().slice(-6)}`);
+    const poNumber = generatedPoNumber || 'PO-000000';
 
     const getAiCacheKey = (reqId?: string, poNum?: string) => {
         if (reqId) return `po_ai_compose_req_${reqId}`;
         if (poNum) return `po_ai_compose_po_${poNum}`;
         return 'po_ai_compose_temp';
     };
+
+    const [dbDefaultTerms, setDbDefaultTerms] = useState<string>('');
 
     const [formData, setFormData] = useState({
         category: "",
@@ -97,7 +102,7 @@ export function PurchaseOrderModal({
         warranty_terms: DEFAULT_WARRANTY_TERMS,
         price_validity: DEFAULT_PRICE_VALIDITY,
         delivery_terms: DEFAULT_DELIVERY_TERMS,
-        terms_and_conditions: DEFAULT_TERMS_AND_CONDITIONS,
+        terms_and_conditions: "",
         discount: 0,
         shipping_fee: 0,
         tax_rate: 12,
@@ -199,14 +204,59 @@ export function PurchaseOrderModal({
                 }
             }
 
+            // Extract structured terms and governing clauses directly from quotation notes and database
+            const parsedQuote = quoteData?.notes ? parseQuotationNotes(quoteData.notes, quoteData) : null;
+            const parsedSupplier = supplierData?.notes ? parseQuotationNotes(supplierData.notes) : null;
+
+            let dbTermsForSupplier = parsedQuote?.clauses || parsedSupplier?.clauses || "";
+
+            // Query purchase_orders table for previously agreed terms with this supplier
+            if (!dbTermsForSupplier && supplierId) {
+                try {
+                    const { data: poForSupplier } = await supabase
+                        .from('purchase_orders')
+                        .select('terms_and_conditions')
+                        .eq('supplier_id', supplierId)
+                        .not('terms_and_conditions', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (poForSupplier?.terms_and_conditions) {
+                        dbTermsForSupplier = poForSupplier.terms_and_conditions;
+                    }
+                } catch (poErr) {
+                    console.warn('Could not query supplier PO terms from database:', poErr);
+                }
+            }
+
+            // If not found yet, query the most recent purchase order in database
+            if (!dbTermsForSupplier) {
+                try {
+                    const { data: globalPo } = await supabase
+                        .from('purchase_orders')
+                        .select('terms_and_conditions')
+                        .not('terms_and_conditions', 'is', null)
+                        .order('created_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (globalPo?.terms_and_conditions) {
+                        dbTermsForSupplier = globalPo.terms_and_conditions;
+                    }
+                } catch (gErr) {
+                    console.warn('Could not query latest PO terms from database:', gErr);
+                }
+            }
+
             // Populate category, payment terms, warranty, price validity, delivery terms from supplier or quote
             const autoCategory = supplierData?.category || quoteData?.category || "";
-            const autoPaymentTerms = supplierData?.payment_terms || quoteData?.payment_terms || DEFAULT_PAYMENT_TERMS;
-            const autoWarrantyTerms = supplierData?.warranty || quoteData?.warranty_terms || DEFAULT_WARRANTY_TERMS;
-            const autoPriceValidity = quoteData?.price_validity || DEFAULT_PRICE_VALIDITY;
-            const autoDeliveryTerms = supplierData?.delivery_terms || quoteData?.delivery_terms || DEFAULT_DELIVERY_TERMS;
-            const autoTermsAndConditions = supplierData?.terms_and_conditions || quoteData?.supplier_terms || DEFAULT_TERMS_AND_CONDITIONS;
-            const autoNotes = quoteData?.notes || supplierData?.notes || "";
+            const autoPaymentTerms = parsedQuote?.paymentTerms || supplierData?.payment_terms || quoteData?.payment_terms || DEFAULT_PAYMENT_TERMS;
+            const autoWarrantyTerms = parsedQuote?.warrantyTerms || supplierData?.warranty || quoteData?.warranty_terms || DEFAULT_WARRANTY_TERMS;
+            const autoPriceValidity = parsedQuote?.priceValidity || quoteData?.price_validity || DEFAULT_PRICE_VALIDITY;
+            const autoDeliveryTerms = parsedQuote?.deliveryTerms || supplierData?.delivery_terms || quoteData?.delivery_terms || DEFAULT_DELIVERY_TERMS;
+            const autoTermsAndConditions = dbTermsForSupplier || dbDefaultTerms || "";
+            const autoNotes = parsedQuote?.cleanNotes || quoteData?.notes || supplierData?.notes || "";
 
             // Extract Products to Supply from Supplier Review & Activation (other_products_offer)
             const rawSupplierOther = Array.isArray(supplierData?.other_products_offer)
@@ -344,144 +394,208 @@ export function PurchaseOrderModal({
                     : (autoItems.length > 0 ? autoItems : [{ name: "", item_name: "", quantity: 1, unit_price: 0, total: 0 } as any]),
             }));
 
-            if (supplierData?.name) {
-                toast.info(`Synced supplier profile: ${supplierData.name}`);
+            } catch (err) {
+                console.error('Error auto-filling supplier data:', err);
+            } finally {
+                setIsLoadingSupplierData(false);
             }
-        } catch (err) {
-            console.error('Error auto-filling supplier data:', err);
-        } finally {
-            setIsLoadingSupplierData(false);
-        }
-    }, [formData.items]);
+        }, [dbDefaultTerms]);
+
+    const prevInitKeyRef = useRef<string>('');
 
     useEffect(() => {
-        if (isOpen) {
-            if (request) {
-                setSelectedSupplierId(request.supplier_id || '');
-                setSelectedSupplierName(request.supplier_name || '');
-                const rawItems = request.items || [];
-                const reqAmount = Number(request.amount) || 0;
-                let mappedItems = rawItems.map((item: any) => {
-                    const itemName = item.item_name || item.name || item.description || request.description || request.type || 'Inventory Item';
-                    const quantity = Math.max(1, Number(item.quantity) || 1);
-                    let unit_price = Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0);
-                    if (unit_price <= 0 && reqAmount > 0 && rawItems.length === 1) {
-                        unit_price = reqAmount / quantity;
-                    }
-                    const total = unit_price > 0 ? unit_price * quantity : 0;
-                    return {
-                        ...item,
-                        name: itemName,
-                        item_name: itemName,
-                        quantity,
-                        unit_price,
-                        total,
-                    };
+        if (!isOpen) {
+            prevInitKeyRef.current = '';
+            return;
+        }
+
+        const currentInitKey = `${request?.id || 'direct'}_${request?.supplier_id || ''}_${request?.amount || 0}`;
+        if (prevInitKeyRef.current === currentInitKey) {
+            return;
+        }
+        prevInitKeyRef.current = currentInitKey;
+
+        if (request) {
+            setSelectedSupplierId(request.supplier_id || '');
+            setSelectedSupplierName(request.supplier_name || '');
+            const rawItems = request.items || [];
+            const reqAmount = Number(request.amount) || 0;
+            let mappedItems = rawItems.map((item: any) => {
+                const itemName = item.item_name || item.name || item.description || request.description || request.type || 'Inventory Item';
+                const quantity = Math.max(1, Number(item.quantity) || 1);
+                let unit_price = Number(item.unit_price ?? item.price ?? item.purchase_price ?? 0);
+                if (unit_price <= 0 && reqAmount > 0 && rawItems.length === 1) {
+                    unit_price = reqAmount / quantity;
+                }
+                const total = unit_price > 0 ? unit_price * quantity : 0;
+                return {
+                    ...item,
+                    name: itemName,
+                    item_name: itemName,
+                    quantity,
+                    unit_price,
+                    total,
+                };
+            });
+
+            if (mappedItems.length === 0) {
+                const defaultName = request.description || request.type || "General Request Item";
+                mappedItems = [{
+                    name: defaultName,
+                    item_name: defaultName,
+                    quantity: 1,
+                    unit_price: reqAmount > 0 ? reqAmount : 0,
+                    total: reqAmount > 0 ? reqAmount : 0,
+                }];
+            }
+
+            const totalFromItems = mappedItems.reduce((sum, it) => sum + it.total, 0);
+            if (totalFromItems === 0 && reqAmount > 0 && mappedItems.length > 0) {
+                const perItemTotal = reqAmount / mappedItems.length;
+                mappedItems.forEach((it) => {
+                    it.unit_price = Number((perItemTotal / it.quantity).toFixed(2));
+                    it.total = Number((it.unit_price * it.quantity).toFixed(2));
                 });
+            }
 
-                if (mappedItems.length === 0) {
-                    const defaultName = request.description || request.type || "General Request Item";
-                    mappedItems = [{
-                        name: defaultName,
-                        item_name: defaultName,
-                        quantity: 1,
-                        unit_price: reqAmount > 0 ? reqAmount : 0,
-                        total: reqAmount > 0 ? reqAmount : 0,
-                    }];
-                }
+            const targetDelivery = new Date();
+            targetDelivery.setDate(targetDelivery.getDate() + 3);
 
-                const totalFromItems = mappedItems.reduce((sum, it) => sum + it.total, 0);
-                if (totalFromItems === 0 && reqAmount > 0 && mappedItems.length > 0) {
-                    const perItemTotal = reqAmount / mappedItems.length;
-                    mappedItems.forEach((it) => {
-                        it.unit_price = Number((perItemTotal / it.quantity).toFixed(2));
-                        it.total = Number((it.unit_price * it.quantity).toFixed(2));
-                    });
-                }
+            setFormData({
+                category: "",
+                delivery_date: targetDelivery.toISOString().split("T")[0],
+                delivery_location: DEFAULT_DELIVERY_LOCATION,
+                payment_terms: DEFAULT_PAYMENT_TERMS,
+                warranty_terms: DEFAULT_WARRANTY_TERMS,
+                price_validity: DEFAULT_PRICE_VALIDITY,
+                delivery_terms: DEFAULT_DELIVERY_TERMS,
+                terms_and_conditions: dbDefaultTerms || "",
+                discount: 0,
+                shipping_fee: 0,
+                tax_rate: 12,
+                notes: "",
+                items: mappedItems,
+            });
+            setStep(1);
+            setSupplierEmail('');
+            setPoCreated(false);
 
-                const targetDelivery = new Date();
-                targetDelivery.setDate(targetDelivery.getDate() + 3);
-
-                setFormData({
-                    category: "",
-                    delivery_date: targetDelivery.toISOString().split("T")[0],
-                    delivery_location: DEFAULT_DELIVERY_LOCATION,
-                    payment_terms: DEFAULT_PAYMENT_TERMS,
-                    warranty_terms: DEFAULT_WARRANTY_TERMS,
-                    price_validity: DEFAULT_PRICE_VALIDITY,
-                    delivery_terms: DEFAULT_DELIVERY_TERMS,
-                    terms_and_conditions: DEFAULT_TERMS_AND_CONDITIONS,
-                    discount: 0,
-                    shipping_fee: 0,
-                    tax_rate: 12,
-                    notes: "",
-                    items: mappedItems,
-                });
-                setStep(1);
-                setSupplierEmail('');
-                setPoCreated(false);
-
-                // Check localStorage for previously composed AI content
-                const cacheKey = getAiCacheKey(request.id, poNumber);
-                const cachedAi = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
-                if (cachedAi) {
-                    setAiMessage(cachedAi);
-                    setEmailMode('ai');
-                } else {
-                    setAiMessage('');
-                    setEmailMode('standard');
-                }
-
-                if (request.supplier_id) {
-                    autoFillSupplierDetails(request.supplier_id, request);
-                }
+            // Check localStorage for previously composed AI content
+            const cacheKey = getAiCacheKey(request.id, poNumber);
+            const cachedAi = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+            if (cachedAi) {
+                setAiMessage(cachedAi);
+                setEmailMode('ai');
             } else {
-                // Direct PO Creation Mode without request
-                const initialSupplier = suppliers[0];
-                const initialId = initialSupplier?.id || '';
-                const initialName = initialSupplier?.name || '';
-                setSelectedSupplierId(initialId);
-                setSelectedSupplierName(initialName);
-
-                const targetDelivery = new Date();
-                targetDelivery.setDate(targetDelivery.getDate() + 3);
-
-                setFormData({
-                    category: initialSupplier?.category || "",
-                    delivery_date: targetDelivery.toISOString().split("T")[0],
-                    delivery_location: DEFAULT_DELIVERY_LOCATION,
-                    payment_terms: DEFAULT_PAYMENT_TERMS,
-                    warranty_terms: DEFAULT_WARRANTY_TERMS,
-                    price_validity: DEFAULT_PRICE_VALIDITY,
-                    delivery_terms: DEFAULT_DELIVERY_TERMS,
-                    terms_and_conditions: DEFAULT_TERMS_AND_CONDITIONS,
-                    discount: 0,
-                    shipping_fee: 0,
-                    tax_rate: 12,
-                    notes: "",
-                    items: [
-                        {
-                            name: "",
-                            item_name: "",
-                            quantity: 1,
-                            unit_price: 0,
-                            total: 0,
-                        } as any,
-                    ],
-                });
-                setStep(1);
-                setPoCreated(false);
                 setAiMessage('');
                 setEmailMode('standard');
+            }
 
-                if (initialId) {
-                    autoFillSupplierDetails(initialId, null);
-                } else if (initialSupplier?.email) {
-                    setSupplierEmail(initialSupplier.email);
-                }
+            if (request.supplier_id) {
+                autoFillSupplierDetails(request.supplier_id, request);
+            }
+        } else {
+            // Direct PO Creation Mode without request
+            const initialSupplier = suppliers[0];
+            const initialId = initialSupplier?.id || '';
+            const initialName = initialSupplier?.name || '';
+            setSelectedSupplierId(initialId);
+            setSelectedSupplierName(initialName);
+
+            const targetDelivery = new Date();
+            targetDelivery.setDate(targetDelivery.getDate() + 3);
+
+            setFormData({
+                category: initialSupplier?.category || "",
+                delivery_date: targetDelivery.toISOString().split("T")[0],
+                delivery_location: DEFAULT_DELIVERY_LOCATION,
+                payment_terms: DEFAULT_PAYMENT_TERMS,
+                warranty_terms: DEFAULT_WARRANTY_TERMS,
+                price_validity: DEFAULT_PRICE_VALIDITY,
+                delivery_terms: DEFAULT_DELIVERY_TERMS,
+                terms_and_conditions: dbDefaultTerms || "",
+                discount: 0,
+                shipping_fee: 0,
+                tax_rate: 12,
+                notes: "",
+                items: [
+                    {
+                        name: "",
+                        item_name: "",
+                        quantity: 1,
+                        unit_price: 0,
+                        total: 0,
+                    } as any,
+                ],
+            });
+            setStep(1);
+            setPoCreated(false);
+            setAiMessage('');
+            setEmailMode('standard');
+
+            if (initialId) {
+                autoFillSupplierDetails(initialId, null);
+            } else if (initialSupplier?.email) {
+                setSupplierEmail(initialSupplier.email);
             }
         }
-    }, [isOpen, request]);
+    }, [isOpen, request?.id, request?.supplier_id, request?.amount, suppliers, dbDefaultTerms, autoFillSupplierDetails]);
+
+    // Query active terms directly from the database (purchase_orders / quotation notes)
+    useEffect(() => {
+        let isMounted = true;
+        async function fetchDbTerms() {
+            try {
+                // 1. Fetch from latest purchase order with terms in Supabase
+                const { data: latestPo } = await supabase
+                    .from('purchase_orders')
+                    .select('terms_and_conditions')
+                    .not('terms_and_conditions', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (latestPo?.terms_and_conditions && isMounted) {
+                    setDbDefaultTerms(latestPo.terms_and_conditions);
+                    setFormData(prev => {
+                        if (!prev.terms_and_conditions) {
+                            return { ...prev, terms_and_conditions: latestPo.terms_and_conditions };
+                        }
+                        return prev;
+                    });
+                    return;
+                }
+
+                // 2. Fetch from latest supplier quotation with clauses in Supabase
+                const { data: latestQuote } = await supabase
+                    .from('supplier_quotations')
+                    .select('notes')
+                    .not('notes', 'is', null)
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (latestQuote?.notes && isMounted) {
+                    const parsed = parseQuotationNotes(latestQuote.notes);
+                    if (parsed.clauses) {
+                        setDbDefaultTerms(parsed.clauses);
+                        setFormData(prev => {
+                            if (!prev.terms_and_conditions) {
+                                return { ...prev, terms_and_conditions: parsed.clauses };
+                            }
+                            return prev;
+                        });
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not load terms from database:', err);
+            }
+        }
+        if (isOpen) {
+            fetchDbTerms();
+        }
+        return () => { isMounted = false; };
+    }, [isOpen]);
 
     const handleSupplierSelect = (supplierId: string) => {
         setSelectedSupplierId(supplierId);
@@ -751,7 +865,9 @@ export function PurchaseOrderModal({
             const structuredTermsSummary = `Payment=${formData.payment_terms || DEFAULT_PAYMENT_TERMS} | Warranty=${formData.warranty_terms || DEFAULT_WARRANTY_TERMS} | Validity=${formData.price_validity || DEFAULT_PRICE_VALIDITY} | Delivery=${formData.delivery_terms || DEFAULT_DELIVERY_TERMS}`;
             const fullTerms = formData.terms_and_conditions 
                 ? `${formData.terms_and_conditions}\n\n[Commercial Terms: ${structuredTermsSummary}]`
-                : `${DEFAULT_TERMS_AND_CONDITIONS}\n\n[Commercial Terms: ${structuredTermsSummary}]`;
+                : (dbDefaultTerms 
+                    ? `${dbDefaultTerms}\n\n[Commercial Terms: ${structuredTermsSummary}]`
+                    : `[Commercial Terms: ${structuredTermsSummary}]`);
 
             const orderData = {
                 po_number: poNumber,
@@ -841,7 +957,7 @@ export function PurchaseOrderModal({
                 deliveryDate: formData.delivery_date || 'As agreed in procurement contract',
                 deliveryLocation: formData.delivery_location || DEFAULT_DELIVERY_LOCATION,
                 paymentTerms: formData.payment_terms || DEFAULT_PAYMENT_TERMS,
-                termsAndConditions: formData.terms_and_conditions || DEFAULT_TERMS_AND_CONDITIONS,
+                termsAndConditions: formData.terms_and_conditions || dbDefaultTerms || "",
                 notes: formData.notes || 'None',
                 confirmLink: confirmLink,
                 customBodyText: emailMode === 'ai' && aiMessage ? aiMessage : undefined,
@@ -1357,6 +1473,9 @@ export function PurchaseOrderModal({
                                             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
                                                 <FileText className="w-3.5 h-3.5 text-pink-500" />
                                                 <span>Governing Terms and Conditions</span>
+                                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                                                    Database Linked
+                                                </span>
                                                 <span className="text-[10px] text-slate-400 font-normal">
                                                     ({formData.terms_and_conditions.split('\n').filter(Boolean).length} clauses · {formData.terms_and_conditions.length} chars)
                                                 </span>
@@ -1364,12 +1483,12 @@ export function PurchaseOrderModal({
                                             <div className="flex items-center gap-1.5">
                                                 <button
                                                     type="button"
-                                                    onClick={() => setFormData(prev => ({ ...prev, terms_and_conditions: DEFAULT_TERMS_AND_CONDITIONS }))}
+                                                    onClick={() => setFormData(prev => ({ ...prev, terms_and_conditions: dbDefaultTerms }))}
                                                     className="text-[11px] text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-slate-200/50 dark:hover:bg-white/5 transition-colors cursor-pointer"
-                                                    title="Reset to standard terms template"
+                                                    title="Reset to terms from database"
                                                 >
                                                     <RefreshCw className="w-3 h-3" />
-                                                    <span>Reset Default</span>
+                                                    <span>Reset from DB</span>
                                                 </button>
                                                 <button
                                                     type="button"
@@ -1387,7 +1506,7 @@ export function PurchaseOrderModal({
                                                 value={formData.terms_and_conditions}
                                                 onChange={(e) => setFormData((prev) => ({ ...prev, terms_and_conditions: e.target.value }))}
                                                 rows={5}
-                                                placeholder="Standard governing clauses and terms..."
+                                                placeholder="Governing clauses and terms loaded from database..."
                                                 className="w-full min-h-[140px] max-h-[350px] bg-white dark:bg-[#10121a] border border-slate-200/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] rounded-xl p-3 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-pink-500 font-mono resize-y leading-relaxed"
                                             />
                                         </div>
@@ -1433,13 +1552,18 @@ export function PurchaseOrderModal({
                                 </div>
                             </div>
 
-                            {/* Financial Summary & Tax Calculation */}
+                            {/* Financial Summary & Tax Calculation - Strictly View Only */}
                             <div className="p-4 rounded-2xl bg-white dark:bg-[#161826] border border-pink-500/30 dark:border-pink-500/20 space-y-3">
                                 <div className="flex items-center justify-between border-b border-pink-500/20 pb-2">
-                                    <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
-                                        <DollarSign className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                                        Financial Summary &amp; Tax Calculation
-                                    </h4>
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="font-bold text-xs text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-1.5">
+                                            <DollarSign className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                                            Financial Summary &amp; Tax Calculation
+                                        </h4>
+                                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-white/10">
+                                            View Only
+                                        </span>
+                                    </div>
                                     <span className="text-[10px] text-pink-600 dark:text-pink-400 font-bold">
                                         Philippine Peso (PHP / ₱)
                                     </span>
@@ -1453,44 +1577,34 @@ export function PurchaseOrderModal({
                                         </p>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-1">
-                                        <label className="text-[10px] text-slate-400 font-bold uppercase block">Discount (₱)</label>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            step="any"
-                                            value={formData.discount || ''}
-                                            placeholder="0.00"
-                                            onChange={(e) => setFormData(prev => ({ ...prev, discount: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                                            className="w-full bg-white dark:bg-[#10121a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:border-pink-500"
-                                        />
+                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-0.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Discount (₱)</span>
+                                            <span className="text-[9px] text-slate-400 font-medium">From Quote</span>
+                                        </div>
+                                        <p className="font-mono font-bold text-emerald-600 dark:text-emerald-400 text-sm">
+                                            {discountAmount > 0 ? `-₱${discountAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'}
+                                        </p>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-1">
-                                        <label className="text-[10px] text-slate-400 font-bold uppercase block">Shipping (₱)</label>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            step="any"
-                                            value={formData.shipping_fee || ''}
-                                            placeholder="0.00"
-                                            onChange={(e) => setFormData(prev => ({ ...prev, shipping_fee: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                                            className="w-full bg-white dark:bg-[#10121a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-pink-500"
-                                        />
+                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-0.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Shipping (₱)</span>
+                                            <span className="text-[9px] text-slate-400 font-medium">From Quote</span>
+                                        </div>
+                                        <p className="font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
+                                            {shippingFee > 0 ? `+₱${shippingFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '₱0.00'}
+                                        </p>
                                     </div>
 
-                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-1">
-                                        <label className="text-[10px] text-slate-400 font-bold uppercase block">VAT / Tax (%)</label>
-                                        <input
-                                            type="number"
-                                            min={0}
-                                            max={100}
-                                            step="0.5"
-                                            value={formData.tax_rate ?? 12}
-                                            placeholder="12"
-                                            onChange={(e) => setFormData(prev => ({ ...prev, tax_rate: Math.max(0, parseFloat(e.target.value) || 0) }))}
-                                            className="w-full bg-white dark:bg-[#10121a] border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 text-xs font-mono font-bold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-pink-500"
-                                        />
+                                    <div className="p-2.5 rounded-xl bg-[#f4f7fb] dark:bg-black/30 border border-slate-200/70 dark:border-white/5 space-y-0.5">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">VAT / Tax Rate</span>
+                                            <span className="text-[9px] text-slate-400 font-medium">Standard</span>
+                                        </div>
+                                        <p className="font-mono font-bold text-slate-900 dark:text-slate-100 text-sm">
+                                            {formData.tax_rate ?? 12}%
+                                        </p>
                                     </div>
 
                                     <div className="col-span-2 sm:col-span-1 p-2.5 rounded-xl bg-pink-100/60 dark:bg-pink-950/40 border border-pink-500/30 space-y-0.5">
@@ -2031,11 +2145,11 @@ export function PurchaseOrderModal({
                                     <div className="flex items-center gap-2">
                                         <button
                                             type="button"
-                                            onClick={() => setFormData(prev => ({ ...prev, terms_and_conditions: DEFAULT_TERMS_AND_CONDITIONS }))}
+                                            onClick={() => setFormData(prev => ({ ...prev, terms_and_conditions: dbDefaultTerms }))}
                                             className="text-xs text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                                         >
                                             <RefreshCw className="w-3 h-3" />
-                                            <span>Reset to Standard Clauses</span>
+                                            <span>Reset to Database Terms</span>
                                         </button>
                                         <span>•</span>
                                         <button

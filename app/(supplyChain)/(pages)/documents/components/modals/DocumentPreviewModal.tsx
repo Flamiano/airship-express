@@ -40,10 +40,12 @@ export function DocumentPreviewModal({
                             </div>
                             <div>
                                 <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate max-w-2xl tracking-tight">
-                                    {selectedDoc.title}
+                                    {selectedDoc.title && selectedDoc.title !== selectedDoc.id
+                                        ? selectedDoc.title
+                                        : (selectedDoc.file_name || selectedDoc.document_type || selectedDoc.id)}
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                                    <span className="font-mono">{selectedDoc.id}</span> · {selectedDoc.document_type}
+                                    <span className="font-mono">{selectedDoc.id.substring(0, 8)}...</span> · {selectedDoc.document_type}
                                 </p>
                             </div>
                         </div>

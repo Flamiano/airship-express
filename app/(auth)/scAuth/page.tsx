@@ -19,6 +19,7 @@ import {
     OtpVerificationModal,
     AppealModal,
     LoginQueueModal,
+    WaitingForApprovalModal,
 } from './modals';
 import { user } from '../../(supplyChain)/lib/services/Class/user';
 import {
@@ -92,6 +93,11 @@ export default function SupplyChainLoginPage() {
     const [queuePosition, setQueuePosition] = useState(1);
     const [queueActiveUsers, setQueueActiveUsers] = useState(1);
     const [queueMaxCapacity, setQueueMaxCapacity] = useState(1);
+
+    // Concurrent device login approval state
+    const [showWaitingApprovalModal, setShowWaitingApprovalModal] = useState(false);
+    const [challengeRequestId, setChallengeRequestId] = useState<string | null>(null);
+    const approvalPollRef = useRef<NodeJS.Timeout | null>(null);
 
     const lastCheckRef = useRef<number>(0);
     const isCheckingRef = useRef<boolean>(false);
@@ -338,6 +344,99 @@ export default function SupplyChainLoginPage() {
         }
     };
 
+    // Concurrent device login approval polling & cancel handlers
+    const handleCancelWaitingApproval = () => {
+        if (approvalPollRef.current) {
+            clearInterval(approvalPollRef.current);
+            approvalPollRef.current = null;
+        }
+        setShowWaitingApprovalModal(false);
+        setChallengeRequestId(null);
+        toast.info('Login approval request cancelled.');
+    };
+
+    const startPollingForApproval = (requestId: string, targetUser: any) => {
+        if (approvalPollRef.current) {
+            clearInterval(approvalPollRef.current);
+            approvalPollRef.current = null;
+        }
+
+        const pollInterval = setInterval(async () => {
+            try {
+                const res = await fetch(`/api/auth/concurrent-login/status?requestId=${encodeURIComponent(requestId)}`);
+                if (!res.ok) return;
+
+                const data = await res.json();
+
+                if (data.status === 'approved') {
+                    if (approvalPollRef.current) {
+                        clearInterval(approvalPollRef.current);
+                        approvalPollRef.current = null;
+                    }
+                    setShowWaitingApprovalModal(false);
+                    toast.success('Login approved! Transferring session to this device...');
+
+                    const payload = data.sessionPayload || {};
+                    if (payload.accessToken) {
+                        await setSupabaseSession(payload.accessToken, payload.refreshToken || '');
+                    }
+
+                    user.setUser({
+                        name: payload.displayName || targetUser?.display_name || targetUser?.name || 'User',
+                        role: payload.role || targetUser?.role || 'Admin',
+                        email: payload.email || targetUser?.email || email,
+                        sessionToken: payload.sessionToken,
+                        expiresAt: payload.expiresAt || '',
+                        rememberMe: Boolean(payload.rememberMe),
+                        userId: payload.userId || targetUser?.id,
+                    });
+
+                    const urlParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+                    const redirectQuery = urlParams?.get('redirect') || urlParams?.get('returnUrl');
+                    const defaultRedirect = payload.redirectUrl || settingsService.getRoleRedirect(payload.role || targetUser?.role);
+                    const targetRedirect = (redirectQuery && redirectQuery.startsWith('/') && redirectQuery !== '/scAuth')
+                        ? redirectQuery
+                        : defaultRedirect;
+
+                    router.push(targetRedirect);
+                } else if (data.status === 'declined') {
+                    if (approvalPollRef.current) {
+                        clearInterval(approvalPollRef.current);
+                        approvalPollRef.current = null;
+                    }
+                    setShowWaitingApprovalModal(false);
+                    setChallengeRequestId(null);
+                    const declMsg = 'Permission declined. You do not have permission to log in from this device.';
+                    toast.error(declMsg, { duration: 6000 });
+                    setLoginError(declMsg);
+                } else if (data.status === 'timeout') {
+                    if (approvalPollRef.current) {
+                        clearInterval(approvalPollRef.current);
+                        approvalPollRef.current = null;
+                    }
+                    setShowWaitingApprovalModal(false);
+                    setChallengeRequestId(null);
+                    const timeoutMsg = 'Login approval request timed out. Please try again.';
+                    toast.error(timeoutMsg);
+                    setLoginError(timeoutMsg);
+                }
+            } catch (err) {
+                console.error('Error polling login approval:', err);
+            }
+        }, 2000);
+
+        approvalPollRef.current = pollInterval;
+    };
+
+    useEffect(() => {
+        return () => {
+            if (approvalPollRef.current) {
+                clearInterval(approvalPollRef.current);
+                approvalPollRef.current = null;
+            }
+        };
+    }, []);
+
     // Main Login Handler
     async function handleLogin(e: React.FormEvent) {
         e.preventDefault();
@@ -412,6 +511,15 @@ export default function SupplyChainLoginPage() {
             setLoginAttempts(0);
             setLoginLockoutSeconds(0);
 
+            // CASE 0: Another device is currently logged in and approval is required!
+            if (data.requireApproval && data.requestId) {
+                setChallengeRequestId(data.requestId);
+                setLoggedInUser(data.user);
+                setShowWaitingApprovalModal(true);
+                startPollingForApproval(data.requestId, data.user);
+                return;
+            }
+
             // CASE 1: Superadmin / Admin requires 2FA Email OTP
             if (data.requireOtp) {
                 setLoggedInUser({
@@ -425,7 +533,7 @@ export default function SupplyChainLoginPage() {
                 setOtpMaskedEmail(data.maskedEmail || maskEmail(data.email));
                 setOtpTargetUserId(data.userId);
                 setOtpTargetRole(data.role);
-                setOtpTargetDisplayName(data.displayName || 'Admin User');
+                setOtpTargetDisplayName(data.displayName || data.role || 'User');
                 setOtpCode(['', '', '', '', '', '']);
                 setOtpError(null);
                 setOtpSuccess(null);
@@ -439,7 +547,16 @@ export default function SupplyChainLoginPage() {
                 return;
             }
 
-            // CASE 2: Standard Users (Purchase Officer, Operator, Supplier) Direct Login
+            // CASE 2: Concurrent Active Session on another device detected — requires approval
+            if (data.requireApproval && data.requestId) {
+                setChallengeRequestId(data.requestId);
+                setLoggedInUser(data.user);
+                setShowWaitingApprovalModal(true);
+                startPollingForApproval(data.requestId, data.user);
+                return;
+            }
+
+            // CASE 3: Standard Users (Purchase Officer, Operator, Supplier) Direct Login
             if (data.success && data.user) {
                 if (data.access_token) {
                     await setSupabaseSession(data.access_token, data.refresh_token || '');
@@ -528,6 +645,16 @@ export default function SupplyChainLoginPage() {
 
             if (!ok) {
                 throw new Error(data?.message || 'Invalid security code. Please try again.');
+            }
+
+            // Check if active session on another device requires approval
+            if (data.requireApproval && data.requestId) {
+                setShowOtpModal(false);
+                setChallengeRequestId(data.requestId);
+                setLoggedInUser(data.user);
+                setShowWaitingApprovalModal(true);
+                startPollingForApproval(data.requestId, data.user);
+                return;
             }
 
             toast.success('Security code verified successfully!');
@@ -991,6 +1118,14 @@ export default function SupplyChainLoginPage() {
                         }
                     }}
                     onClose={() => setShowQueueModal(false)}
+                />
+
+                {/* Waiting for Other Device Login Approval Modal */}
+                <WaitingForApprovalModal
+                    isOpen={showWaitingApprovalModal}
+                    onCancel={handleCancelWaitingApproval}
+                    userEmail={loggedInUser?.email || email}
+                    userDisplayName={loggedInUser?.display_name || loggedInUser?.name}
                 />
             </OfflineDetector>
         </>

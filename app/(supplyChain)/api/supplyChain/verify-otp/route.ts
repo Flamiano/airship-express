@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 import { createHash, randomBytes } from 'crypto';
+import { createLoginChallenge } from '../../../lib/services/concurrentLoginService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_URL || '';
 const serviceRoleKey = process.env.NEXT_PUBLIC_SUPPLYCHAIN_SUPABASE_SERVICE_ROLE_KEY || 
@@ -21,7 +22,7 @@ function hashOTP(otp: string): string {
 const roleRedirects: Record<string, string> = {
     'Superadmin': '/executive',
     'Executive': '/executive',
-    'Admin': '/procurement',
+    'Admin': '/inventory',
     'Purchase Officer': '/purchase-orders',
     'Operator': '/warehousing',
     'Supplier': '/suppliers_page/purchase-orders',
@@ -165,6 +166,51 @@ export async function POST(request: Request) {
             ? new Date(Date.now() + 15 * 24 * 3600000).toISOString()
             : expiresAt;
 
+        // Check if user already has an active session on another device/browser
+        const { data: existingActiveSessions } = await supabaseAdmin
+            .from('sessions')
+            .select('id, user_agent, ip_address, session_token, expires_at')
+            .eq('user_id', existingUser.id)
+            .eq('is_active', true);
+
+        const now = new Date();
+        const currentActive = (existingActiveSessions || []).find(
+            s => !s.expires_at || new Date(s.expires_at) > now
+        );
+
+        const redirectPath = roleRedirects[effectiveRole] || (effectiveRole === 'Executive' ? '/executive' : (effectiveRole === 'Supplier' ? '/suppliers_page/purchase-orders' : '/inventory'));
+
+        if (currentActive) {
+            // Another device is currently active! Create challenge and wait for active session approval
+            const challenge = await createLoginChallenge({
+                userId: existingUser.id,
+                email: existingUser.email,
+                displayName: existingUser.display_name || existingUser.name || (isSupplier ? 'Supplier' : 'Admin User'),
+                role: effectiveRole,
+                newDeviceUserAgent: userAgent,
+                newDeviceIp: ipAddress,
+                sessionPayload: {
+                    sessionToken,
+                    expiresAt: isRememberAllowed ? expiresAtRemember : expiresAt,
+                    rememberMe: isRememberAllowed,
+                    redirectUrl: redirectPath,
+                }
+            });
+
+            return NextResponse.json({
+                verified: true,
+                requireApproval: true,
+                requestId: challenge.requestId,
+                message: 'An active session was detected on another device. Waiting for approval...',
+                user: {
+                    id: existingUser.id,
+                    email: existingUser.email,
+                    display_name: existingUser.display_name || existingUser.name || (isSupplier ? 'Supplier' : 'User'),
+                    role: effectiveRole,
+                }
+            });
+        }
+
         // Deactivate existing active sessions
         await supabaseAdmin
             .from('sessions')
@@ -209,8 +255,6 @@ export async function POST(request: Request) {
                 ip_address: ipAddress,
                 user_agent: userAgent,
             });
-
-        const redirectPath = roleRedirects[effectiveRole] || (effectiveRole === 'Executive' ? '/executive' : (effectiveRole === 'Supplier' ? '/suppliers_page/purchase-orders' : '/procurement'));
 
         return NextResponse.json({
             verified: true,

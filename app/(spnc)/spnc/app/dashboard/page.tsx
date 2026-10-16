@@ -40,7 +40,7 @@ const RING_COLORS = ["#F2419B", "#FF6FB1", "#FF8CC6", "#FFB3D9", "#C22A78"];
 const PAGE_SIZE = 3;
 const ANOMALY_POLL_MS = 60_000; // vehicles report every minute, so poll at the same pace
 
-const userFullName = "ADMIN"; // TODO: replace with real session user's full_name
+
 
 const getArrayLength = (payload: unknown, key: string) => {
   if (payload && typeof payload === "object" && key in payload) {
@@ -727,7 +727,7 @@ export default function DashboardPage() {
     <div className={`min-h-full pb-8 ${isDark ? "bg-[#0A0A0E]" : "bg-[#F7F2F5]"}`}>
       <PageHeader
         icon={<LayoutDashboard size={20} />}
-        title={userFullName}
+        title="Dashboard"
         subtitle={`Network Control overview · ${today}`}
         showThemeToggle
       />

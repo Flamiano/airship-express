@@ -317,9 +317,14 @@ export default function ItemForecastModal({
                         {/* Model Evaluation Details if available (Debossed Well & Inner Pills) */}
                         {item.evaluation?.has_evaluation && (
                             <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
-                                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-2.5">
-                                    Model Backtesting & Holdout Accuracy
-                                </h4>
+                                <div className="flex items-center justify-between mb-2.5">
+                                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                                        Model Backtesting & Holdout Accuracy
+                                    </h4>
+                                    <span className="text-[10px] font-mono text-slate-400">
+                                        Winner: {item.evaluation.model_tested || "Automated Tournament"}
+                                    </span>
+                                </div>
                                 <div className="grid grid-cols-3 gap-2.5 text-center">
                                     <div className="p-2.5 rounded-xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_5px_rgba(166,175,195,0.25),-2px_-2px_5px_rgba(255,255,255,0.85)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)]">
                                         <div className="text-sm font-bold text-slate-900 dark:text-white">
@@ -340,6 +345,70 @@ export default function ItemForecastModal({
                                         <div className="text-[10px] text-slate-500 font-medium">WAPE Error</div>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+
+                        {/* Machine Learning Training Metrics Card (If ML Regressor Was Used) */}
+                        {item.ml_metadata && (
+                            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 border border-indigo-200/80 dark:border-indigo-800/50 shadow-[inset_1.5px_1.5px_3px_rgba(99,102,241,0.15)] space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <span className="w-5 h-5 rounded-md bg-indigo-500 text-white flex items-center justify-center text-[10px]">
+                                            <i className="fas fa-brain" />
+                                        </span>
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
+                                            Machine Learning Training Telemetry
+                                        </h4>
+                                    </div>
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-700">
+                                        Gradient Descent (MSE + Ridge L2)
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                                    <div className="p-2 rounded-xl bg-white/80 dark:bg-black/30 border border-indigo-100 dark:border-indigo-900/40">
+                                        <span className="text-[10px] text-slate-500 block font-medium">Training Epochs</span>
+                                        <span className="font-bold text-slate-800 dark:text-slate-100">{item.ml_metadata.epochs}</span>
+                                    </div>
+                                    <div className="p-2 rounded-xl bg-white/80 dark:bg-black/30 border border-indigo-100 dark:border-indigo-900/40">
+                                        <span className="text-[10px] text-slate-500 block font-medium">Final Loss (MSE)</span>
+                                        <span className="font-bold text-emerald-600 dark:text-emerald-400">{item.ml_metadata.finalLoss}</span>
+                                    </div>
+                                    <div className="p-2 rounded-xl bg-white/80 dark:bg-black/30 border border-indigo-100 dark:border-indigo-900/40">
+                                        <span className="text-[10px] text-slate-500 block font-medium">R² Determination</span>
+                                        <span className="font-bold text-indigo-600 dark:text-indigo-400">{item.ml_metadata.r2Score}</span>
+                                    </div>
+                                    <div className="p-2 rounded-xl bg-white/80 dark:bg-black/30 border border-indigo-100 dark:border-indigo-900/40">
+                                        <span className="text-[10px] text-slate-500 block font-medium">Learning Rate (α)</span>
+                                        <span className="font-bold text-purple-600 dark:text-purple-400">{item.ml_metadata.learningRate}</span>
+                                    </div>
+                                </div>
+
+                                {item.ml_metadata.featureImportances?.length > 0 && (
+                                    <div className="pt-1 border-t border-indigo-200/40 dark:border-indigo-800/30">
+                                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">
+                                            Learned Feature Importance Weights:
+                                        </span>
+                                        <div className="space-y-1">
+                                            {item.ml_metadata.featureImportances.map((feat: any, idx: number) => (
+                                                <div key={idx} className="flex items-center justify-between text-[11px]">
+                                                    <span className="text-slate-600 dark:text-slate-300 font-medium">{feat.featureName}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-20 h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                                            <div
+                                                                className="h-full bg-indigo-500 rounded-full"
+                                                                style={{ width: `${feat.importancePercentage}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="font-mono text-[10px] text-slate-500 w-8 text-right font-semibold">
+                                                            {feat.importancePercentage}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

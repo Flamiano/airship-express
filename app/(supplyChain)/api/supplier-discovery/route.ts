@@ -234,7 +234,7 @@ const VERIFIED_OSM_STORES: DiscoveredSupplier[] = [
         city: 'Manila',
         postcode: '1006',
         phone: '+63 2 8242 3345',
-        email: '',
+        email: 'b0s5ls.do1s@gmail.com',
         website: '',
         opening_hours: 'Mo-Sa 08:30-17:30',
         operator: 'Pamco Trading',

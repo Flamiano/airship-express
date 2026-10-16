@@ -149,7 +149,7 @@ export function calculateGroupedStockShortages({
         if (!canonicalKey) return;
 
         const current = Math.max(0, Number(inv.current_stock || 0));
-        const defective = Math.max(0, Number(inv.defective_quantity || inv.damaged_stock || inv.quarantined_stock || 0));
+        const defective = Math.max(0, Number(inv.defective_quantity || inv.damaged_stock || inv.quarantined_stock || inv.quarantine_stock || 0));
         const usable = Math.max(0, current - defective);
         const configuredMin = Number(inv.minimum_stock ?? 0);
         const officialSupId = inv.official_supplier_id ?? null;
@@ -517,7 +517,7 @@ export function calculateGroupedStockShortages({
         }
     });
 
-    // 4. Also include warehouse stock shortages that have NO active requisitions but are below safety threshold
+    // 4. Also include warehouse stock shortages that have NO active requisitions but are below safety threshold or flagged as low-stock/out-of-stock
     inventoryMap.forEach((invData, canonicalKey) => {
         // Skip alias keys (code: and cat:) to avoid generating duplicate shortage rows
         if (canonicalKey.startsWith("cat:") || canonicalKey.startsWith("code:")) {
@@ -525,16 +525,18 @@ export function calculateGroupedStockShortages({
         }
 
         if (!groupMap.has(canonicalKey)) {
-            const bufferDeficit = Math.max(0, invData.minStock - invData.usableStock);
-            const isShortage = invData.usableStock === 0 || invData.usableStock < invData.minStock;
+            const rawStatus = String(invData.invRecord?.status || "").toLowerCase().trim();
+            const isDbShortage = rawStatus === "out-of-stock" || rawStatus === "out_of_stock" || rawStatus === "low-stock" || rawStatus === "low_stock";
+            const isZeroStock = invData.usableStock === 0;
+            const isBelowMin = invData.minStock > 0 && invData.usableStock <= invData.minStock;
 
-            if (isShortage && bufferDeficit > 0) {
+            if (isDbShortage || isZeroStock || isBelowMin) {
                 groupMap.set(canonicalKey, {
                     canonicalKey,
                     representativeName: invData.displayName,
                     category: invData.category,
                     unit: invData.unit,
-                    totalApprovedDemand: 0, // No requisition demand; purely safety buffer deficit
+                    totalApprovedDemand: 0, // No requisition demand; purely warehouse stock shortage
                     relatedRequests: [],
                     requestIds: new Set<string>(),
                     sourceDepartments: new Set<string>(["Warehouse"]),
@@ -555,7 +557,7 @@ export function calculateGroupedStockShortages({
         const invData = inventoryMap.get(canonicalKey);
         const usableStock = invData ? invData.usableStock : 0;
 
-        // Resolve official supplier by official_supplier_id foreign key
+        // Resolve official supplier by official_supplier_id foreign key or matching supplier name
         let officialSupplier: any = null;
         let hasOfficialSupplier = false;
         const officialSupplierId = invData?.officialSupplierId ?? null;
@@ -571,14 +573,31 @@ export function calculateGroupedStockShortages({
             }
         }
 
-        // Section 5 Rules:
-        // No official supplier: minimum_stock = 0.
-        // Official supplier assigned: default minimum_stock = 10 (or explicitly configured value > 0).
+        if (!officialSupplier && invData?.supplierName && Array.isArray(suppliers) && suppliers.length > 0) {
+            const supNameNorm = invData.supplierName.trim().toLowerCase();
+            officialSupplier = suppliers.find((s: any) => 
+                (s.name || s.company_name || "").trim().toLowerCase() === supNameNorm &&
+                (s.is_active === undefined || s.is_active === true || s.is_active === "true") &&
+                (s.status || "").toLowerCase() !== "inactive"
+            ) || null;
+            if (officialSupplier) {
+                hasOfficialSupplier = true;
+            }
+        }
+
+        // Determine effective minimum stock threshold:
+        // 1. If configured min_stock exists (> 0), honor it as the authoritative threshold.
+        // 2. If official supplier assigned without explicit min_stock, use standard safety buffer (10).
+        // 3. If item is marked low-stock/out-of-stock in warehouse inventory or stock is 0, provide standard buffer (10) so procurement can take action.
+        // 4. Otherwise default to 0.
+        const rawStatus = String(invData?.invRecord?.status || "").toLowerCase().trim();
+        const isWarehouseShortage = rawStatus === "out-of-stock" || rawStatus === "out_of_stock" || rawStatus === "low-stock" || rawStatus === "low_stock" || usableStock === 0;
+
         let effectiveMinStock = 0;
-        if (hasOfficialSupplier) {
-            effectiveMinStock = (invData?.configuredMinStock && invData.configuredMinStock > 0)
-                ? invData.configuredMinStock
-                : 10;
+        if (invData?.configuredMinStock && invData.configuredMinStock > 0) {
+            effectiveMinStock = invData.configuredMinStock;
+        } else if (hasOfficialSupplier || isWarehouseShortage) {
+            effectiveMinStock = 10;
         } else {
             effectiveMinStock = 0;
         }
@@ -588,7 +607,7 @@ export function calculateGroupedStockShortages({
         const totalCoveredQty = poCoverageEntry ? poCoverageEntry.totalCoverageQty : 0;
         const coveringOrders = poCoverageEntry ? poCoverageEntry.orders : [];
 
-        // Calculate Deficits from Outstanding Demand (Section 4):
+        // Calculate Deficits from Outstanding Demand:
         // 1. Usable stock accounts for reservations/deliveries already in inventory.
         // 2. Active POs cover demand on the way without double counting.
         // 3. Delivered POs already stocked into usableStock do not subtract again.
@@ -600,20 +619,21 @@ export function calculateGroupedStockShortages({
 
         if (totalApprovedDemand > 0) {
             if (usableStock >= totalApprovedDemand) {
-                // Scenario B: Usable stock is sufficient! Request stays in warehousing, no immediate procurement deficit.
+                // Usable stock is sufficient! Request stays in warehousing, no immediate procurement deficit.
                 grossRequirement = 0;
                 replenishmentBuffer = 0;
             } else {
-                // Scenario C / D: Immediate shortage exists
-                // Scenario C: official supplier assigned -> add minStock buffer (10)
-                // Scenario D: no official supplier -> buffer is 0
-                replenishmentBuffer = hasOfficialSupplier ? effectiveMinStock : 0;
+                // Immediate shortage exists
+                replenishmentBuffer = (hasOfficialSupplier || isWarehouseShortage) ? effectiveMinStock : 0;
                 grossRequirement = immediateShortage + replenishmentBuffer;
             }
         } else {
-            // No demand: pure safety stock replenishment (Scenario B post-issue or low-stock item)
-            if (hasOfficialSupplier && usableStock < effectiveMinStock) {
+            // No demand: warehouse stock replenishment (low-stock or out-of-stock items)
+            if (effectiveMinStock > 0 && usableStock < effectiveMinStock) {
                 replenishmentBuffer = Math.max(0, effectiveMinStock - usableStock);
+                grossRequirement = replenishmentBuffer;
+            } else if (isWarehouseShortage) {
+                replenishmentBuffer = Math.max(1, (effectiveMinStock || 10) - usableStock);
                 grossRequirement = replenishmentBuffer;
             } else {
                 grossRequirement = 0;
@@ -657,8 +677,9 @@ export function calculateGroupedStockShortages({
         const awardInfo = awardedBidMap.get(canonicalKey);
         const isBidAwarded = Boolean(awardInfo);
 
-        // Price estimation: If no official supplier assigned, price is 0 (will be enriched if previous supplier exists)
-        const unitPrice = hasOfficialSupplier ? Number(invData?.price || 0) : 0;
+        // Price estimation: If recorded in inventory, use it; otherwise use official supplier price or fallback
+        const recordedPrice = Number(invData?.price || invData?.invRecord?.purchase_price || 0);
+        const unitPrice = recordedPrice > 0 ? recordedPrice : (hasOfficialSupplier ? Number(invData?.price || 0) : 0);
         const estimatedReorderCost = (remainingDeficit > 0 ? remainingDeficit : 0) * unitPrice;
 
         const sourceReqString = group.sourceRequestNumbers.size > 0 
@@ -686,6 +707,11 @@ export function calculateGroupedStockShortages({
             ? [officialSupplier.name] 
             : matchingCategorySuppliers.map((s: any) => s.name || s.company_name).filter(Boolean);
 
+        const status: 'available' | 'low-stock' | 'out-of-stock' = 
+            usableStock === 0 || rawStatus === "out-of-stock" || rawStatus === "out_of_stock"
+                ? "out-of-stock"
+                : "low-stock";
+
         const rowItem: StockShortageItem = {
             id: `grouped_${canonicalKey}`,
             item_code: invData?.itemCode || `GRP-${canonicalKey.slice(0, 8).toUpperCase()}`,
@@ -695,8 +721,9 @@ export function calculateGroupedStockShortages({
             unit: group.unit,
             minimum_stock: effectiveMinStock,
             storage_location: invData?.storageLocation || "Central Warehouse",
-            status: usableStock === 0 ? "out-of-stock" : "low-stock",
+            status: status,
             updated_at: new Date().toISOString(),
+            supplier: invData?.supplierName || officialSupplier?.name || undefined,
             purchase_price: unitPrice,
             // Deficit represents the actual remaining uncovered quantity!
             deficit: remainingDeficit,

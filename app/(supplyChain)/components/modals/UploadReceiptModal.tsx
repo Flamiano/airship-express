@@ -312,7 +312,16 @@ export function UploadReceiptModal({
         const selected = e.target.files?.[0];
         if (!selected) return;
 
-        if (!selected.type.startsWith('image/') && selected.type !== 'application/pdf') {
+        const isOdf = /\.(odf|odt|ods|odp)$/i.test(selected.name);
+        if (isOdf) {
+            toast.warning('OpenDocument (.odf) format cannot be scanned by OCR. Please save or export the document as a PDF or picture (PNG/JPG).');
+            return;
+        }
+
+        const isPdf = selected.type === 'application/pdf' || selected.type === 'application/x-pdf' || /\.pdf$/i.test(selected.name);
+        const isImage = selected.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(selected.name);
+
+        if (!isImage && !isPdf) {
             toast.warning('Please upload an image (PNG, JPG, WebP) or PDF receipt.');
             return;
         }
@@ -337,8 +346,17 @@ export function UploadReceiptModal({
         const dropped = e.dataTransfer.files?.[0];
         if (!dropped) return;
 
-        if (!dropped.type.startsWith('image/') && dropped.type !== 'application/pdf') {
-            toast.warning('Please drop an image or PDF receipt.');
+        const isOdf = /\.(odf|odt|ods|odp)$/i.test(dropped.name);
+        if (isOdf) {
+            toast.warning('OpenDocument (.odf) format cannot be scanned by OCR. Please save or export the document as a PDF or picture (PNG/JPG).');
+            return;
+        }
+
+        const isPdf = dropped.type === 'application/pdf' || dropped.type === 'application/x-pdf' || /\.pdf$/i.test(dropped.name);
+        const isImage = dropped.type.startsWith('image/') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(dropped.name);
+
+        if (!isImage && !isPdf) {
+            toast.warning('Please drop an image (PNG, JPG, WebP) or PDF receipt.');
             return;
         }
 
@@ -685,21 +703,54 @@ export function UploadReceiptModal({
                                     type="file"
                                     ref={fileInputRef}
                                     onChange={handleFileChange}
-                                    accept="image/*,application/pdf"
+                                    accept="image/*,application/pdf,.pdf"
                                     disabled={secondsRemaining > 0}
                                     className="hidden"
                                 />
 
-                                {previewUrl && file?.type.startsWith('image/') ? (
-                                    <div className="space-y-2">
-                                        <img
-                                            src={previewUrl}
-                                            alt="Receipt preview"
-                                            className="max-h-48 mx-auto rounded-xl shadow-md object-contain border border-slate-200 dark:border-slate-700"
-                                        />
-                                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                                            {file.name} ({(file.size / 1024).toFixed(1)} KB)
-                                        </p>
+                                {file ? (
+                                    <div className="space-y-3">
+                                        {file.type.startsWith('image/') && previewUrl ? (
+                                            <div className="space-y-2">
+                                                <img
+                                                    src={previewUrl}
+                                                    alt="Receipt preview"
+                                                    className="max-h-48 mx-auto rounded-xl shadow-md object-contain border border-slate-200 dark:border-slate-700"
+                                                />
+                                                <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                                                    {file.name} ({(file.size / 1024).toFixed(1)} KB)
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm max-w-sm mx-auto">
+                                                <div className="w-12 h-12 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 flex items-center justify-center text-2xl mb-2">
+                                                    <i className="fas fa-file-pdf"></i>
+                                                </div>
+                                                <p className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate max-w-[260px]">
+                                                    {file.name}
+                                                </p>
+                                                <span className="text-[10px] text-slate-400 mt-0.5">
+                                                    PDF Document ({(file.size / 1024).toFixed(1)} KB)
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-center gap-2">
+                                            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                                <i className="fas fa-check-circle"></i> File loaded & ready
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setFile(null);
+                                                    setPreviewUrl(null);
+                                                    if (fileInputRef.current) fileInputRef.current.value = '';
+                                                }}
+                                                className="text-xs text-rose-500 hover:text-rose-600 underline cursor-pointer ml-2"
+                                            >
+                                                Change file
+                                            </button>
+                                        </div>
                                     </div>
                                 ) : (
                                     <>
@@ -711,7 +762,7 @@ export function UploadReceiptModal({
                                                 Click to upload or drag & drop receipt
                                             </p>
                                             <p className="text-xs text-slate-400 mt-1">
-                                                Supports PNG, JPG, WebP, PDF (receipts, delivery invoices)
+                                                Supports PDF documents, PNG, JPG, WebP receipts
                                             </p>
                                         </div>
                                     </>

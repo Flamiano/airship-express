@@ -2570,14 +2570,7 @@ export function PotentialSuppliersTab({
                                                                         </div>
                                                                     )}
 
-                                                                    {/* Notes if any */}
-                                                                    {supplier.submittedQuote.notes && (
-                                                                        <p className="text-[11px] text-slate-700 dark:text-slate-200 italic bg-[#e8eef6] dark:bg-[#181a29] p-2.5 rounded-xl border border-pink-500/25 shadow-[inset_1.5px_1.5px_4px_rgba(163,177,198,0.25),_inset_-1.5px_-1.5px_4px_rgba(255,255,255,0.7)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.4)]">
-                                                                            &ldquo;{supplier.submittedQuote.notes}&rdquo;
-                                                                        </p>
-                                                                    )}
-
-                                                                    {/* Review Proposal Button (View Only Modal) */}
+                                                                     {/* Review Proposal Button (View Only Modal) */}
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => setViewQuotationModal({ supplier, quote: supplier.submittedQuote })}
@@ -2586,19 +2579,6 @@ export function PotentialSuppliersTab({
                                                                         <Eye className="w-3.5 h-3.5" />
                                                                         <span>Review Vendor Quotation &amp; Files</span>
                                                                     </button>
-
-                                                                    {/* Reorder Button - ONLY shown to previous supplier that won the bid with the same item name */}
-                                                                    {onReorder && supplier.submittedQuote && isPreviousBidWinner(group.itemName, supplier.name, supplier.dbSupplierId || supplier.id, supplier.submittedQuote) && (
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => onReorder(group, supplier, supplier.submittedQuote)}
-                                                                            className="w-full mt-1.5 py-2 px-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-[-2px_-2px_6px_rgba(255,255,255,0.4),_2px_2px_8px_rgba(37,99,235,0.35)] active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.2)]"
-                                                                            title="Reorder remaining deficit directly from the previous winning supplier"
-                                                                        >
-                                                                            <RotateCw className="w-3.5 h-3.5" />
-                                                                            <span>Reorder Remaining Deficit</span>
-                                                                        </button>
-                                                                    )}
                                                                 </div>
                                                             ) : (
                                                                 /* Structured Non-Stretching Outreach & RFQ Panel for Sourced Leads Awaiting Quote */

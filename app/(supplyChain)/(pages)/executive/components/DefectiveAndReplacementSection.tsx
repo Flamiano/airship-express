@@ -10,6 +10,7 @@ import {
     type DefectiveIncidentAnalyticsItem,
     type ReplacementCaseAnalyticsItem
 } from "../hooks/useExecutiveData";
+import ExecutiveInfoModal, { ExecutiveModalContentType } from "./modals/ExecutiveInfoModal";
 
 interface DefectiveAndReplacementSectionProps {
     data?: ExecutiveDataPayload;
@@ -33,6 +34,10 @@ export default function DefectiveAndReplacementSection({
 
     const [replacementSearch, setReplacementSearch] = useState("");
     const [replacementStatusFilter, setReplacementStatusFilter] = useState<string>("all");
+
+    const [selectedIncident, setSelectedIncident] = useState<DefectiveIncidentAnalyticsItem | null>(null);
+    const [selectedReturn, setSelectedReturn] = useState<ReplacementCaseAnalyticsItem | null>(null);
+    const [infoModalContent, setInfoModalContent] = useState<ExecutiveModalContentType | null>(null);
 
     // Defective Incidents Filtering
     const allIncidents = useMemo(() => {
@@ -155,19 +160,21 @@ export default function DefectiveAndReplacementSection({
 
                     <div className="flex items-center gap-2">
                         <Link
-                            href="/warehousing"
+                            href="?tab=operations"
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-600 transition-colors"
+                            title="Switch to Operations Tab"
                         >
-                            <i className="fas fa-warehouse text-[10px]" />
-                            <span>Warehousing</span>
+                            <i className="fas fa-boxes-stacked text-[10px]" />
+                            <span>Operations</span>
                         </Link>
-                        <Link
-                            href="/procurement?stage=4"
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors"
+                        <button
+                            type="button"
+                            onClick={() => setActiveSubTab("replacements")}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors cursor-pointer"
                         >
+                            <i className="fas fa-arrows-rotate text-[10px]" />
                             <span>Supplier Returns</span>
-                            <i className="fas fa-arrow-up-right-from-square text-[10px]" />
-                        </Link>
+                        </button>
                     </div>
                 </div>
 
@@ -468,13 +475,14 @@ export default function DefectiveAndReplacementSection({
                                                     </StatusBadge>
                                                 </td>
                                                 <td className="py-3 px-4 text-right">
-                                                    <Link
-                                                        href="/warehousing"
-                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700"
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSelectedIncident(inc)}
+                                                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700 cursor-pointer active:scale-95 transition-all"
                                                     >
                                                         <span>Inspect</span>
                                                         <i className="fas fa-chevron-right text-[9px]" />
-                                                    </Link>
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))
@@ -685,13 +693,14 @@ export default function DefectiveAndReplacementSection({
                                                         </StatusBadge>
                                                     </td>
                                                     <td className="py-3 px-4 text-right">
-                                                        <Link
-                                                            href="/procurement?stage=4"
-                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700"
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSelectedReturn(rep)}
+                                                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_4px_rgba(166,175,195,0.25)] hover:text-pink-700 cursor-pointer active:scale-95 transition-all"
                                                         >
-                                                            <span>Manage</span>
+                                                            <span>Inspect</span>
                                                             <i className="fas fa-chevron-right text-[9px]" />
-                                                        </Link>
+                                                        </button>
                                                     </td>
                                                 </tr>
                                             );
@@ -703,6 +712,22 @@ export default function DefectiveAndReplacementSection({
                     </div>
                 </div>
             )}
+
+            <ExecutiveInfoModal
+                isOpen={!!selectedIncident || !!selectedReturn || !!infoModalContent}
+                onClose={() => {
+                    setSelectedIncident(null);
+                    setSelectedReturn(null);
+                    setInfoModalContent(null);
+                }}
+                content={
+                    selectedIncident
+                        ? { type: "incident", data: selectedIncident }
+                        : selectedReturn
+                        ? { type: "return", data: selectedReturn }
+                        : infoModalContent
+                }
+            />
         </div>
     );
 }
