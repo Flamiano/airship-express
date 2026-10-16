@@ -17,6 +17,10 @@ import {
     ChevronDown,
     Menu,
     X,
+    Headphones,
+    AlertCircle,
+    Star,
+    LifeBuoy,
 } from "lucide-react"
 import { useState } from "react"
 import { logout } from "../../actions/auth"
@@ -25,6 +29,7 @@ import type { Customers as Customer } from "../../types/customer"
 import type { User as AuthUser } from "@supabase/supabase-js"
 import Image from "next/image"
 import AirshipExpressLogo from "../../../../public/images/airship.png"
+import { NotificationBell } from "../customer/NotificationBell"
 
 // Portal navigation.
 //
@@ -39,7 +44,12 @@ const nav = [
     { href: "/customer/shipment-history", label: "Shipment History", icon: ClipboardList },
     { href: "/customer/shipments", label: "Active Shipments", icon: Package },
     { href: "/customer/documents", label: "Documents", icon: FileText },
-    { href: "/customer/notifications", label: "Notifications", icon: Bell },
+]
+
+const supportNav = [
+    { href: "/customer/support", label: "Customer Service Chat", icon: Headphones },
+    { href: "/customer/complaints", label: "Complaints", icon: AlertCircle },
+    { href: "/customer/shipment-history#completed", label: "Feedback", icon: Star },
 ]
 
 type CustomerNavbarProps = {
@@ -57,6 +67,7 @@ export default function CustomerNavbar({ customer, user }: CustomerNavbarProps) 
     const { theme, toggleTheme } = useTheme()
     const [menuOpen, setMenuOpen] = useState(false)
     const [drawerOpen, setDrawerOpen] = useState(false)
+    const [supportOpen, setSupportOpen] = useState(false)
 
     // Display identity: prefer the CRM record, fall back to auth/profile data.
     const displayName = customer?.full_name ?? user?.user_metadata?.full_name ?? user?.email ?? "Customer"
@@ -88,10 +99,52 @@ export default function CustomerNavbar({ customer, user }: CustomerNavbarProps) 
                             </Link>
                         )
                     })}
+
+                    {/* Support group dropdown */}
+                    <div className="relative">
+                        <button
+                            onClick={() => setSupportOpen((o) => !o)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] transition-colors cursor-pointer ${
+                                supportNav.some((s) => pathname === s.href)
+                                    ? "bg-accent/10 text-accent font-medium"
+                                    : "text-muted hover:text-foreground hover:bg-line/50"
+                            }`}
+                        >
+                            <LifeBuoy size={14} className="shrink-0" />
+                            Support
+                            <ChevronDown size={12} className={`transition-transform ${supportOpen ? "rotate-180" : ""}`} />
+                        </button>
+
+                        {supportOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setSupportOpen(false)} />
+                                <div className="absolute left-0 top-full mt-1.5 z-50 w-48 rounded-xl border border-line bg-background shadow-lg py-1 overflow-hidden">
+                                    {supportNav.map(({ href, label, icon: Icon }) => (
+                                        <Link
+                                            key={href}
+                                            href={href}
+                                            onClick={() => setSupportOpen(false)}
+                                            className={`flex items-center gap-2.5 px-3 py-2 text-[13px] transition-colors ${
+                                                pathname === href
+                                                    ? "text-accent font-medium bg-accent/5"
+                                                    : "text-muted hover:text-foreground hover:bg-line/50"
+                                            }`}
+                                        >
+                                            <Icon size={13} className="shrink-0" />
+                                            {label}
+                                        </Link>
+                                    ))}
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </nav>
 
                 {/* Right side */}
                 <div className="ml-auto flex items-center gap-1">
+                    {/* Notification bell */}
+                    <NotificationBell />
+
                     {/* Theme toggle */}
                     <button
                         onClick={toggleTheme}
@@ -213,6 +266,26 @@ export default function CustomerNavbar({ customer, user }: CustomerNavbarProps) 
                                     </Link>
                                 )
                             })}
+
+                            {/* Support group — mobile */}
+                            <div>
+                                <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Support</p>
+                                {supportNav.map(({ href, label, icon: Icon }) => (
+                                    <Link
+                                        key={href}
+                                        href={href}
+                                        onClick={() => setDrawerOpen(false)}
+                                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                                            pathname === href
+                                                ? "bg-accent/10 text-accent font-medium"
+                                                : "text-muted hover:text-foreground hover:bg-line/50"
+                                        }`}
+                                    >
+                                        <Icon size={16} className="shrink-0" />
+                                        {label}
+                                    </Link>
+                                ))}
+                            </div>
                         </nav>
 
                         {/* Bottom actions */}

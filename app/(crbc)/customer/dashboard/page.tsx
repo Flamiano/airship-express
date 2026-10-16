@@ -7,6 +7,9 @@ import {
   PlusCircle,
   Bell,
   ArrowRight,
+  Clock,
+  CheckCircle2,
+  UserCircle,
 } from "lucide-react";
 import { getCurrentUser } from "../../library/auth/getCurrentUser";
 import { getBookingRequests } from "../../services/booking-request.service";
@@ -26,7 +29,6 @@ import {
   StatusPill,
 } from "../../components/customer/PortalUI";
 
-
 export default async function CustomerDashboard() {
   const currentUser = await getCurrentUser();
   if (!currentUser) redirect("/customerportalAuth/login");
@@ -34,8 +36,6 @@ export default async function CustomerDashboard() {
 
   const customer = currentUser.customer;
 
-  // No CRM record yet is a valid state: the account exists but no booking has
-  // ever been made for them on any channel.
   if (!customer) {
     return (
       <div className="mx-auto max-w-4xl space-y-6 py-6">
@@ -48,7 +48,6 @@ export default async function CustomerDashboard() {
             Your Airship Express customer account.
           </p>
         </div>
-
         <Panel>
           <EmptyState
             icon={<Package size={16} />}
@@ -86,11 +85,37 @@ export default async function CustomerDashboard() {
   const delivered = shipments.filter((s) => s.actual_delivery !== null);
 
   const stats = [
-    { label: "Active shipment requests", value: activeRequests.length },
-    { label: "Shipments in transit", value: inTransit.length },
-    { label: "Delivered", value: delivered.length },
-    { label: "Documents", value: documents.length },
+    {
+      label: "Active Requests",
+      value: activeRequests.length,
+      icon: Package,
+      iconColor: "text-blue-500",
+      iconBg: "bg-blue-50 dark:bg-blue-950/40",
+    },
+    {
+      label: "In Transit",
+      value: inTransit.length,
+      icon: Truck,
+      iconColor: "text-amber-500",
+      iconBg: "bg-amber-50 dark:bg-amber-950/40",
+    },
+    {
+      label: "Delivered",
+      value: delivered.length,
+      icon: CheckCircle2,
+      iconColor: "text-emerald-500",
+      iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
+    },
+    {
+      label: "Documents",
+      value: documents.length,
+      icon: FileText,
+      iconColor: "text-foreground/50",
+      iconBg: "bg-foreground/5",
+    },
   ];
+
+  const hasActivity = stats.some((s) => s.value > 0);
 
   const recentRequests = requests.slice(0, 5);
   const recentNotifications = notifications.slice(0, 5);
@@ -103,9 +128,7 @@ export default async function CustomerDashboard() {
           <h1 className="font-bricolage text-xl font-semibold text-foreground sm:text-2xl">
             Welcome, {customer.full_name ?? currentUser.profile.full_name}
           </h1>
-          <p className="mt-1 text-sm text-muted">
-            {customer.customer_id}
-          </p>
+          <p className="mt-1 text-sm text-muted">{customer.customer_id}</p>
         </div>
         <PrimaryLink href="/customer/shipments/new">
           <PlusCircle size={14} />
@@ -113,24 +136,30 @@ export default async function CustomerDashboard() {
         </PrimaryLink>
       </div>
 
-      {/* Counts — only what the customer's own records say */}
-      {stats.some((s) => s.value > 0) && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {stats.map((s) => (
-            <div
-              key={s.label}
-              className="rounded-lg border border-line bg-background px-4 py-3"
-            >
-              <p className="text-xs text-muted">{s.label}</p>
-              <p className="mt-1 text-xl font-semibold text-foreground">
-                {s.value}
-              </p>
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {stats.map(({ label, value, icon: Icon, iconColor, iconBg }) => (
+          <div
+            key={label}
+            className="rounded-lg border border-line bg-background px-4 py-3 flex items-center gap-3"
+          >
+            <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+              <Icon size={15} className={iconColor} />
             </div>
-          ))}
-        </div>
+            <div>
+              <p className="text-xs text-muted">{label}</p>
+              <p className="text-xl font-semibold text-foreground">{value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      {!hasActivity && (
+        <p className="text-xs text-muted">
+          No activity yet — create your first shipment request to get started.
+        </p>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid gap-5 lg:grid-cols-3">
         {/* Recent booking requests */}
         <Panel
           title="Recent shipment requests"
@@ -151,22 +180,19 @@ export default async function CustomerDashboard() {
                   <li key={r.id}>
                     <Link
                       href={`/customer/shipment-history/${r.request_id}`}
-                      className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-line/20"
+                      className="flex items-center justify-between gap-4 px-5 py-3.5 transition-colors hover:bg-line/20 group"
                     >
-                      <div className="min-w-0">
-                        <p className="font-mono text-xs text-accent">
-                          {r.request_id}
-                        </p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-xs text-accent">{r.request_id}</p>
                         <p className="mt-0.5 truncate text-xs text-muted">
                           To {r.receiver.name} ·{" "}
-                          {r.receiver.address.city ||
-                            r.receiver.address.province ||
-                            "—"}
+                          {r.receiver.address.city || r.receiver.address.province || "—"}
                         </p>
                       </div>
-                      <StatusPill
-                        status={REQUEST_STATUS_LABELS[status] ?? r.status}
-                      />
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusPill status={REQUEST_STATUS_LABELS[status] ?? r.status} />
+                        <ArrowRight size={13} className="text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+                      </div>
                     </Link>
                   </li>
                 );
@@ -178,7 +204,6 @@ export default async function CustomerDashboard() {
         {/* Notifications */}
         <Panel
           title="Recent updates"
-          action={<SecondaryLink href="/customer/notifications">View all</SecondaryLink>}
         >
           {recentNotifications.length === 0 ? (
             <EmptyState
@@ -192,17 +217,19 @@ export default async function CustomerDashboard() {
                 <li key={n.id}>
                   <Link
                     href={n.href}
-                    className="block px-5 py-3 transition-colors hover:bg-line/20"
+                    className="flex items-start gap-3 px-5 py-3.5 transition-colors hover:bg-line/20"
                   >
-                    <p className="text-xs font-medium text-foreground">
-                      {n.title}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {new Date(n.at).toLocaleDateString("en-PH", {
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </p>
+                    <div className="w-1.5 h-1.5 rounded-full bg-accent mt-1.5 shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-foreground leading-snug">{n.title}</p>
+                      <p className="mt-0.5 text-[11px] text-muted flex items-center gap-1">
+                        <Clock size={10} />
+                        {new Date(n.at).toLocaleDateString("en-PH", {
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </p>
+                    </div>
                   </Link>
                 </li>
               ))}
@@ -213,43 +240,47 @@ export default async function CustomerDashboard() {
 
       {/* Shortcuts */}
       <div className="grid gap-3 sm:grid-cols-3">
-        <Link
-          href="/customer/shipments"
-          className="flex items-center gap-3 rounded-lg border border-line bg-background px-4 py-3.5 transition-colors hover:bg-line/20"
-        >
-          <Truck size={16} className="shrink-0 text-muted" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm text-foreground">Your shipments</span>
-            <span className="block text-xs text-muted">
-              Status and tracking
+        {[
+          {
+            href: "/customer/shipments",
+            icon: Truck,
+            iconColor: "text-blue-500",
+            iconBg: "bg-blue-50 dark:bg-blue-950/40",
+            label: "Your shipments",
+            sub: "Status and tracking",
+          },
+          {
+            href: "/customer/documents",
+            icon: FileText,
+            iconColor: "text-violet-500",
+            iconBg: "bg-violet-50 dark:bg-violet-950/40",
+            label: "Documents",
+            sub: "Proof of Delivery",
+          },
+          {
+            href: "/customer/profile",
+            icon: UserCircle,
+            iconColor: "text-emerald-500",
+            iconBg: "bg-emerald-50 dark:bg-emerald-950/40",
+            label: "Your profile",
+            sub: "Name and address",
+          },
+        ].map(({ href, icon: Icon, iconColor, iconBg, label, sub }) => (
+          <Link
+            key={href}
+            href={href}
+            className="flex items-center gap-3 rounded-lg border border-line bg-background px-4 py-4 transition-colors hover:bg-line/20 group"
+          >
+            <div className={`w-9 h-9 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+              <Icon size={16} className={iconColor} />
+            </div>
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium text-foreground">{label}</span>
+              <span className="block text-xs text-muted">{sub}</span>
             </span>
-          </span>
-          <ArrowRight size={14} className="shrink-0 text-muted" />
-        </Link>
-
-        <Link
-          href="/customer/documents"
-          className="flex items-center gap-3 rounded-lg border border-line bg-background px-4 py-3.5 transition-colors hover:bg-line/20"
-        >
-          <FileText size={16} className="shrink-0 text-muted" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm text-foreground">Documents</span>
-            <span className="block text-xs text-muted">Proof of Delivery</span>
-          </span>
-          <ArrowRight size={14} className="shrink-0 text-muted" />
-        </Link>
-
-        <Link
-          href="/customer/profile"
-          className="flex items-center gap-3 rounded-lg border border-line bg-background px-4 py-3.5 transition-colors hover:bg-line/20"
-        >
-          <Package size={16} className="shrink-0 text-muted" />
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm text-foreground">Your profile</span>
-            <span className="block text-xs text-muted">Name and address</span>
-          </span>
-          <ArrowRight size={14} className="shrink-0 text-muted" />
-        </Link>
+            <ArrowRight size={14} className="shrink-0 text-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+          </Link>
+        ))}
       </div>
     </div>
   );

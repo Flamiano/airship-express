@@ -246,6 +246,70 @@ export async function getBookingRequestsByCustomerId(
 }
 
 
+/** Customers who have a portal account (auth_user_id set) — shown in the staff chat inbox. */
+export async function getOnlineCustomers(): Promise<Customers[]> {
+  const supabase = await createClient();
+
+  // Fetch customers with portal accounts
+  const { data: customers, error: customersError } = await supabase
+    .from("customers")
+    .select("id, customer_id, full_name, email, auth_user_id, created_at, updated_at, role")
+    .not("auth_user_id", "is", null)
+    .order("updated_at", { ascending: false });
+
+  if (customersError) throw new Error("Failed to fetch online customers");
+
+  if (!customers || customers.length === 0) {
+    return [];
+  }
+
+  // Fetch all unread messages for these customers in one query
+  const authUserIds = customers.map((c) => c.auth_user_id).filter(Boolean);
+  const { data: messages, error: messagesError } = await supabase
+    .from("chat_messages")
+    .select("id, conversation_id, sender_role, read_at, created_at")
+    .in("conversation_id", authUserIds)
+    .is("read_at", null)
+    .eq("sender_role", "customer");
+
+  if (messagesError) {
+    console.error("Failed to fetch unread messages:", messagesError);
+    // Don't throw — return customers without unread counts
+  }
+
+  // Fetch latest message timestamp per conversation for sorting
+  const { data: latestMessages, error: latestError } = await supabase
+    .from("chat_messages")
+    .select("conversation_id, created_at")
+    .in("conversation_id", authUserIds)
+    .order("created_at", { ascending: false });
+
+  if (latestError) {
+    console.error("Failed to fetch latest messages:", latestError);
+  }
+
+  // Build lookup maps
+  const unreadCounts = new Map<string, number>();
+  (messages ?? []).forEach((m) => {
+    const count = unreadCounts.get(m.conversation_id) ?? 0;
+    unreadCounts.set(m.conversation_id, count + 1);
+  });
+
+  const latestMessageAt = new Map<string, string>();
+  (latestMessages ?? []).forEach((m) => {
+    if (!latestMessageAt.has(m.conversation_id)) {
+      latestMessageAt.set(m.conversation_id, m.created_at);
+    }
+  });
+
+  // Transform customers with unread counts and latest activity
+  return customers.map((customer) => ({
+    ...customer,
+    unread_count: customer.auth_user_id ? unreadCounts.get(customer.auth_user_id) ?? 0 : 0,
+    latest_message_at: customer.auth_user_id ? latestMessageAt.get(customer.auth_user_id) ?? customer.updated_at : customer.updated_at,
+  })) as Customers[];
+}
+
 export async function getCustomerById( id: string ): Promise<Customers | null> {
   const supabase = await createClient();
 
@@ -263,7 +327,8 @@ export async function getCustomerById( id: string ): Promise<Customers | null> {
       barangay,
       full_address,
       role,
-      created_at
+      created_at,
+      updated_at
       `
     )
     .eq("customer_id", id)
@@ -273,7 +338,7 @@ export async function getCustomerById( id: string ): Promise<Customers | null> {
     throw new Error("Failed to fetch customer");
   }
 
-  return data ?? null;
+  return (data ?? null) as Customers | null;
 }
 
 export async function getShipmentsByCustomerId(customerId: string): Promise<BookingRequest[]> {

@@ -81,14 +81,14 @@ export function PrimaryLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-foreground/90"
+      className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors"
     >
       {children}
     </Link>
   );
 }
 
-/** Quiet action button for secondary navigation. */
+/** Secondary action button (ghost style). */
 export function SecondaryLink({
   href,
   children,
@@ -99,77 +99,194 @@ export function SecondaryLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-line/50 hover:text-foreground"
+      className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-foreground bg-background border border-line rounded-lg hover:bg-line/50 transition-colors"
     >
       {children}
     </Link>
   );
 }
 
-/**
- * Empty state. Every list in the portal uses this rather than showing a bare
- * blank area, so the customer always knows what to do next.
- */
+/** Simple empty state. */
 export function EmptyState({
   icon,
   title,
   description,
   action,
 }: {
-  icon?: ReactNode;
+  icon: ReactNode;
   title: string;
   description?: string;
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
-      {icon && (
-        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full border border-line text-muted">
-          {icon}
-        </div>
-      )}
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      {description && (
-        <p className="mt-1 max-w-sm text-xs text-muted">{description}</p>
-      )}
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <div className="text-muted mb-3">{icon}</div>
+      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      {description && <p className="mt-1 text-sm text-muted">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
 }
 
-const STATUS_TONE: Record<string, string> = {
-  PENDING: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  SUBMITTED: "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
-  ACCEPTED: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  REJECTED: "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300",
-  CANCELLED: "bg-line/60 text-muted",
-  DRAFT: "bg-line/60 text-muted",
+/** Input field matching portal style. */
+export function Input({
+  className = "",
+  ...props
+}: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      className={`w-full px-3 py-2 text-sm bg-foreground/5 border border-foreground/10 rounded-lg outline-none focus:border-accent/50 placeholder:text-foreground/30 ${className}`}
+      {...props}
+    />
+  );
+}
 
-  Booked: "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  Intake: "bg-zinc-100 text-zinc-700 dark:bg-zinc-900 dark:text-zinc-300",
-  Batched: "bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
-  "Handed Over": "bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
-  "In Transit": "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
-  "Customs Hold": "bg-purple-50 text-purple-700 dark:bg-purple-950 dark:text-purple-300",
-  Delayed: "bg-orange-50 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
-  Delivered: "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  Archived: "bg-line/60 text-muted",
-};
+/** Textarea matching portal style. */
+export function Textarea({
+  className = "",
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      className={`w-full px-3 py-2 text-sm bg-foreground/5 border border-foreground/10 rounded-lg outline-none focus:border-accent/50 placeholder:text-foreground/30 resize-none ${className}`}
+      {...props}
+    />
+  );
+}
 
-/** Status pill. One component so booking and shipment statuses stay consistent. */
-export function StatusPill({ status }: { status: string }) {
+/** Select dropdown matching portal style. */
+export function Select({
+  className = "",
+  children,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <select
+      className={`w-full px-3 py-2 text-sm bg-foreground/5 border border-foreground/10 rounded-lg outline-none focus:border-accent/50 ${className}`}
+      {...props}
+    >
+      {children}
+    </select>
+  );
+}
+
+/** Option for Select. */
+export function SelectOption({
+  value,
+  children,
+}: {
+  value: string;
+  children: ReactNode;
+}) {
+  return <option value={value}>{children}</option>;
+}
+
+/** Primary button (not a link) for forms. */
+export function PrimaryButton({
+  className = "",
+  type = "button",
+  disabled,
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-white bg-accent rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function SecondaryButton({
+  className = "",
+  type = "button",
+  disabled,
+  children,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type={type}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-foreground bg-background border border-line rounded-lg hover:bg-line/50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+function initials(name: string) {
+  return name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+}
+
+export function Avatar({
+  name,
+  size = 32,
+}: {
+  name: string;
+  size?: number;
+}) {
+  return (
+    <div
+      className="rounded-full bg-foreground/8 border border-foreground/10 flex items-center justify-center font-semibold text-foreground shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.35 }}
+    >
+      {initials(name)}
+    </div>
+  );
+}
+
+const PILL_TONES = {
+  neutral: "bg-line/60 text-muted",
+  info: "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400",
+  warning: "bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400",
+  success: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400",
+  danger: "bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400",
+} as const;
+
+function toneFor(status: string): keyof typeof PILL_TONES {
+  const s = status.toLowerCase().replace(/[\s-]+/g, "_");
+  if (["completed", "delivered", "resolved", "approved", "confirmed"].includes(s)) return "success";
+  if (["pending", "in_progress", "processing", "scheduled", "in_transit"].includes(s)) return "warning";
+  if (["new", "submitted", "open", "assigned"].includes(s)) return "info";
+  if (["cancelled", "canceled", "rejected", "failed", "declined"].includes(s)) return "danger";
+  return "neutral";
+}
+
+export function StatusPill({
+  status,
+  label,
+  className = "",
+}: {
+  status: string;
+  label?: string;
+  className?: string;
+}) {
+  const text = label ?? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   return (
     <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
-        STATUS_TONE[status] ?? "bg-line/60 text-muted"
-      }`}
+      className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${PILL_TONES[toneFor(status)]} ${className}`}
     >
-      {status}
+      {text}
     </span>
   );
 }
 
-/** Label/value pair used across the profile and detail panels. */
+export function Caption({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return <p className={`text-xs text-muted ${className}`}>{children}</p>;
+}
+
 export function DataRow({
   label,
   value,
@@ -178,14 +295,9 @@ export function DataRow({
   value: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-baseline justify-between gap-2 py-2">
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="text-sm text-foreground">{value}</dd>
+    <div className="flex items-start justify-between gap-4 py-2.5 text-sm">
+      <dt className="shrink-0 text-muted">{label}</dt>
+      <dd className="min-w-0 wrap-break-word text-right text-foreground">{value}</dd>
     </div>
   );
-}
-
-/** Small caption used under a page or section heading. */
-export function Caption({ children }: { children: ReactNode }) {
-  return <p className="text-xs text-muted">{children}</p>;
 }

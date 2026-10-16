@@ -4,6 +4,7 @@ import { getShipmentsByCustomerId } from "./shipment.service";
 import { getShipmentTracking } from "./freight-ops.service";
 import type { BookingRequest } from "./booking-request.service";
 import { REQUEST_STATUS_LABELS } from "../types/booking-request";
+import type { Concern, ConcernStatus, ConcernPriority } from "../types/concern";
 
 
 export type NotificationKind =
@@ -12,7 +13,11 @@ export type NotificationKind =
   | "request_cancelled"
   | "shipment_updated"
   | "shipment_delivered"
-  | "pod_available";
+  | "pod_available"
+  | "concern_created"
+  | "concern_updated"
+  | "concern_resolved"
+  | "concern_closed";
 
 export type CustomerNotification = {
   id: string;
@@ -153,6 +158,104 @@ export async function getCustomerNotifications(
 
 export async function getShipmentTimeline(shipmentId: string) {
   return getShipmentTracking(shipmentId);
+}
+
+function concernNotification(
+  concernId: string,
+  concernNumber: string,
+  subject: string,
+  kind: "concern_created" | "concern_updated" | "concern_resolved" | "concern_closed",
+  detail: string,
+  at: string
+): CustomerNotification {
+  return {
+    id: `cnc-${concernId}-${kind}`,
+    kind,
+    title: `Concern ${kind.replace("concern_", "").replace("_", " ")}`,
+    detail,
+    at,
+    href: `/customer/complaints/${concernNumber}`,
+    read: false,
+  };
+}
+
+export async function getConcernNotifications(
+  customerUuid: string
+): Promise<CustomerNotification[]> {
+  const supabase = await createClient();
+
+  // Get customer's concerns
+  const { data: customer } = await supabase
+    .from("customers")
+    .select("id")
+    .eq("profile_id", customerUuid)
+    .maybeSingle();
+
+  if (!customer) {
+    return [];
+  }
+
+  const { data: concerns } = await supabase
+    .from("concerns")
+    .select("id, concern_number, subject, status, updated_at, created_at")
+    .eq("customer_id", customer.id)
+    .order("updated_at", { ascending: false });
+
+  if (!concerns || concerns.length === 0) {
+    return [];
+  }
+
+  const notifications: CustomerNotification[] = [];
+
+  for (const concern of concerns) {
+    // Created notification
+    notifications.push(concernNotification(
+      concern.id,
+      concern.concern_number,
+      concern.subject,
+      "concern_created",
+      `Your concern "${concern.subject}" (${concern.concern_number}) has been submitted and is being reviewed.`,
+      concern.created_at
+    ));
+
+    // Updated notification (if updated_at differs from created_at)
+    if (concern.updated_at !== concern.created_at) {
+      notifications.push(concernNotification(
+        concern.id,
+        concern.concern_number,
+        concern.subject,
+        "concern_updated",
+        `Your concern "${concern.subject}" (${concern.concern_number}) has been updated.`,
+        concern.updated_at
+      ));
+    }
+
+    // Resolved notification
+    if (concern.status === "resolved") {
+      notifications.push(concernNotification(
+        concern.id,
+        concern.concern_number,
+        concern.subject,
+        "concern_resolved",
+        `Your concern "${concern.subject}" (${concern.concern_number}) has been resolved.`,
+        concern.updated_at
+      ));
+    }
+
+    // Closed notification
+    if (concern.status === "closed") {
+      notifications.push(concernNotification(
+        concern.id,
+        concern.concern_number,
+        concern.subject,
+        "concern_closed",
+        `Your concern "${concern.subject}" (${concern.concern_number}) has been closed.`,
+        concern.updated_at
+      ));
+    }
+  }
+
+  return notifications.sort((a, b) => b.at.localeCompare(a.at));
 }
 
 export { REQUEST_STATUS_LABELS };

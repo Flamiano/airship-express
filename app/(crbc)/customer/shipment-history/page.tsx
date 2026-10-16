@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, PlusCircle, CheckCircle2 } from "lucide-react";
+import { Package, PlusCircle } from "lucide-react";
 import { getCurrentUser } from "../../library/auth/getCurrentUser";
 import { getBookingRequests } from "../../services/booking-request.service";
 import { getSLAPoliciesFromStore } from "../../services/sla-policies.store";
@@ -17,6 +17,8 @@ import {
   SecondaryLink,
   StatusPill,
 } from "../../components/customer/PortalUI";
+import { CompletedShipmentsWithFeedback } from "../../components/customer/CompletedShipmentsWithFeedback";
+import { getCustomerDeliveredShipments, getCustomerFeedback } from "../../actions/feedback";
 
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -65,11 +67,14 @@ export default async function ShipmentHistoryPage() {
   }
 
 
-  const [historyRequests, pendingRequests, slaPolicies] = await Promise.all([
-    getBookingRequests({ customerUuid: customer.id }),
-    getBookingRequests({ customerUuid: customer.id, status: "PENDING" }),
-    getSLAPoliciesFromStore(),
-  ]);
+  const [historyRequests, pendingRequests, slaPolicies, feedbackData, feedbackSubmitted] =
+    await Promise.all([
+      getBookingRequests({ customerUuid: customer.id }),
+      getBookingRequests({ customerUuid: customer.id, status: "PENDING" }),
+      getSLAPoliciesFromStore(),
+      getCustomerDeliveredShipments(),
+      getCustomerFeedback(),
+    ]);
 
   const requests = [...historyRequests];
   const seenRequestIds = new Set(requests.map((r) => r.request_id));
@@ -84,16 +89,16 @@ export default async function ShipmentHistoryPage() {
     slaPolicies
   );
 
-  // COMPLETED — a real Freight Ops shipment with a Delivered event.
-  const completed = shipments
-    .filter((s) => s.actual_delivery !== null)
-    .sort((a, b) => (b.actual_delivery ?? "").localeCompare(a.actual_delivery ?? ""));
+  // COMPLETED — freight ops delivered OR booking status DELIVERED
+  const freightOpsDeliveredIds = new Set(
+    shipments.filter((s) => s.actual_delivery !== null).map((s) => s.request_id)
+  );
+  const completedRequestIds = new Set([
+    ...freightOpsDeliveredIds,
+    ...requests.filter((r) => r.status === "DELIVERED").map((r) => r.request_id),
+  ]);
 
-  const completedRequestIds = new Set(completed.map((s) => s.request_id));
-
-  // PROCESSING — every request not represented by a delivered shipment.
-  // Includes in-transit parcels, accepted-but-unprocessed requests, requests
-  // with no shipment at all, and the terminal Rejected/Cancelled outcomes.
+  // PROCESSING — every request not in the completed set
   const processing = requests.filter(
     (r) => !completedRequestIds.has(r.request_id)
   );
@@ -259,47 +264,14 @@ export default async function ShipmentHistoryPage() {
 
       {/* ── COMPLETED ──────────────────────────────────────────────── */}
       <Panel
-        title={`Completed (${completed.length})`}
-        description="Parcels Freight Operations has delivered."
+        title={`Completed (${feedbackData.shipments.length})`}
+        description="Parcels delivered — leave feedback to help us improve."
       >
-        {completed.length === 0 ? (
-          <EmptyState
-            icon={<CheckCircle2 size={16} />}
-            title="No completed shipments yet"
-            description="Once a parcel is delivered, it appears here with its full tracking history."
-            action={<SecondaryLink href="/customer/shipments">View Active Shipments</SecondaryLink>}
-          />
-        ) : (
-          <ul className="divide-y divide-line">
-            {completed.map((s) => (
-              <li
-                key={s.shipment_id}
-                className="transition-colors hover:bg-line/20"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-xs text-accent">
-                        {s.tracking_number ?? s.reference}
-                      </span>
-                      <StatusPill status={s.status} />
-                      <StatusPill status={s.sla_status} />
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted">
-                      Delivered {shortDate(s.actual_delivery!)}
-                      {" · "}
-                      {s.origin} → {s.destination}
-                    </p>
-                  </div>
-
-                  <SecondaryLink href={`/customer/shipments/${s.request_id}`}>
-                    View Shipment
-                  </SecondaryLink>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <CompletedShipmentsWithFeedback
+          shipments={feedbackData.shipments}
+          submittedIds={feedbackData.submittedIds}
+          existingFeedback={feedbackSubmitted.feedback}
+        />
       </Panel>
     </div>
   );

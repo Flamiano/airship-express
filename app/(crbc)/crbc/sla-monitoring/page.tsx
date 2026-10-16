@@ -1,23 +1,51 @@
 import { getSlaOverviewData } from "../../services/sla.service"
 import { CheckCircle, AlertTriangle, Clock, HelpCircle, Truck } from "lucide-react"
+import SlaTableClient from "../../components/sla/SlaTableClient"
 
-const slaStatusStyle: Record<string, string> = {
-  "On Time": "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400",
-  Delayed: "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-400",
-  Pending: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400",
-}
+const DEFAULT_PAGE_SIZE = 10
 
-export default async function SLAPage() {
-  // One call: policies are read once and reused for records and summary.
+export default async function SLAPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string; pageSize?: string; search?: string; status?: string }>
+}) {
+  const sp = await searchParams
   const { records, summary } = await getSlaOverviewData()
 
+  // Parse params
+  const page       = Math.max(1, parseInt(sp.page ?? "1", 10) || 1)
+  const pageSize   = [10, 20, 50].includes(parseInt(sp.pageSize ?? "", 10))
+    ? parseInt(sp.pageSize!, 10)
+    : DEFAULT_PAGE_SIZE
+  const search       = sp.search?.trim() ?? ""
+  const statusFilter = sp.status ?? "all"
+
+  // Filter
+  const filtered = records.filter((r) => {
+    if (statusFilter !== "all" && r.slaStatus !== statusFilter) return false
+    if (search) {
+      const q = search.toLowerCase()
+      return (
+        r.shipmentId.toLowerCase().includes(q) ||
+        (r.region ?? "not evaluable").toLowerCase().includes(q)
+      )
+    }
+    return true
+  })
+
+  // Paginate
+  const totalCount = filtered.length
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
+  const safePage   = Math.min(page, totalPages)
+  const pageRows   = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+
   const kpis = [
-    { label: "SLA Compliance", value: `${summary.compliance}%`, icon: CheckCircle, color: "text-emerald-500" },
-    { label: "On Time", value: summary.onTime, icon: CheckCircle, color: "text-blue-500" },
-    { label: "Late Delivery", value: summary.late, icon: AlertTriangle, color: "text-red-500" },
-    { label: "Overdue In-Transit", value: summary.overdue, icon: Truck, color: "text-orange-500" },
-    { label: "Pending", value: summary.pending, icon: Clock, color: "text-amber-500" },
-    { label: "Not Evaluable", value: summary.notEvaluable, icon: HelpCircle, color: "text-zinc-500" },
+    { label: "SLA Compliance",    value: `${summary.compliance}%`, icon: CheckCircle, color: "text-emerald-500" },
+    { label: "On Time",           value: summary.onTime,           icon: CheckCircle, color: "text-blue-500" },
+    { label: "Late Delivery",     value: summary.late,             icon: AlertTriangle, color: "text-red-500" },
+    { label: "Overdue In-Transit",value: summary.overdue,          icon: Truck,       color: "text-orange-500" },
+    { label: "Pending",           value: summary.pending,          icon: Clock,       color: "text-amber-500" },
+    { label: "Not Evaluable",     value: summary.notEvaluable,     icon: HelpCircle,  color: "text-zinc-500" },
   ]
 
   return (
@@ -42,52 +70,19 @@ export default async function SLAPage() {
         ))}
       </div>
 
-      <div className="bg-background border border-line rounded-xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-line">
+      <div>
+        <div className="px-1 pb-3">
           <h2 className="text-foreground text-sm font-medium">SLA Records</h2>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left">
-                {["Shipment No.", "Region", "Expected Delivery", "Actual Delivery", "Variance", "SLA Status"].map((h) => (
-                  <th key={h} className="px-4 py-3 font-medium text-xs text-muted uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {records.map((r) => (
-                <tr key={r.shipmentId} className="border-b border-line last:border-0 hover:bg-line/30 transition-colors">
-                  <td className="px-4 py-3 font-medium text-accent text-xs">{r.shipmentId}</td>
-                  <td className="px-4 py-3 text-muted text-xs">
-                    {r.region ?? (
-                      <span
-                        className="text-zinc-500"
-                        title="Not Evaluable — destination province is missing"
-                      >
-                        Not Evaluable
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted text-xs">{r.expectedDelivery ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted text-xs">{r.actualDelivery ?? "—"}</td>
-                  <td className="px-4 py-3 text-xs">
-                    {r.daysVariance === null ? (
-                      <span className="text-muted">—</span>
-                    ) : r.daysVariance <= 0 ? (
-                      <span className="text-emerald-600 dark:text-emerald-400">{Math.abs(r.daysVariance)}d early</span>
-                    ) : (
-                      <span className="text-red-500 dark:text-red-400">+{r.daysVariance}d late</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${slaStatusStyle[r.slaStatus]}`}>{r.slaStatus}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SlaTableClient
+          rows={pageRows}
+          page={safePage}
+          pageSize={pageSize}
+          totalCount={totalCount}
+          totalPages={totalPages}
+          search={search}
+          statusFilter={statusFilter}
+        />
       </div>
     </div>
   )

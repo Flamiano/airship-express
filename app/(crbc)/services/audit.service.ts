@@ -25,7 +25,15 @@ export type AuditAction =
   | "sla_policy.created"
   | "sla_policy.updated"
   | "sla_policy.deleted"
-  | "compliance.reviewed";
+  | "compliance.reviewed"
+  // Concerns
+  | "concern.created"
+  | "concern.updated"
+  | "concern.status_changed"
+  | "concern.resolved"
+  | "concern.closed"
+  | "concern.customer_update.created"
+  | "concern.internal_note.created";
 
 export type AuditTargetType =
   | "profile"

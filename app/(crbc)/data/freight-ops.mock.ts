@@ -35,6 +35,7 @@ const MOCK_REQUEST_IDS: string[] = [
   "REQ-0014", "REQ-0015", "REQ-0016", "REQ-0017", "REQ-0018", "REQ-0019", "REQ-0020",
   "REQ-0021", "REQ-0022", "REQ-0023", "REQ-0024", "REQ-0025", "REQ-0026", "REQ-0027",
   "REQ-0028", "REQ-0029", "REQ-0030", "REQ-0031", "REQ-0032", "REQ-0033",
+  "REQ-0039", "REQ-0040", "REQ-0043",
 ];
 
 
@@ -79,6 +80,9 @@ const SCENARIOS: Scenario[] = [
   { clientName: "Dominic Reyes", consignee: "Dominic Reyes", destination: "Mandaluyong, Metro Manila", originHub: HUB_MNL, platform: "Shopee Drop-Off", serviceType: "Standard", mode: "Road", status: "Delivered", etaOffsetDays: 2, deliveredOn: "2026-09-19", weightKg: 0.9, volumeCbm: 0.002, itemCategory: "Legal contracts", batchRef: "BATCH-2026-0006", riderName: "Alvin Ramos" },
   { clientName: "Isabelle Santos", consignee: "Isabelle Santos", destination: "Cagayan de Oro, Misamis Oriental", originHub: HUB_MNL, platform: "Custom Partner", serviceType: "Standard", mode: "Air", status: "In Transit", etaOffsetDays: 5, deliveredOn: null, weightKg: 88, volumeCbm: 0.172, itemCategory: "Medical supplies", batchRef: "BATCH-2026-0007", riderName: "Rhea Domingo" },
   { clientName: "Rodrigo Garcia", consignee: "Rodrigo Garcia", destination: "Butuan City, Agusan del Norte", originHub: HUB_DVO, platform: "Lazada Drop-Off", serviceType: "Standard", mode: "Road", status: "Batched", etaOffsetDays: 5, deliveredOn: null, noHandover: true, weightKg: 26.4, volumeCbm: 0.052, itemCategory: "Agri products", batchRef: "BATCH-2026-0008", riderName: "Rhea Domingo" },
+  { clientName: "Pradilla Toledo", consignee: "Pradilla Toledo", destination: "Makati City, Metro Manila", originHub: HUB_MNL, platform: "LBC Express", serviceType: "Standard", mode: "Road", status: "Delivered", etaOffsetDays: 2, deliveredOn: "2026-09-20", weightKg: 1.5, volumeCbm: 0.003, itemCategory: "Personal items", batchRef: "BATCH-2026-0009", riderName: "Rex Manuel" },
+  { clientName: "Pradilla Toledo", consignee: "Pradilla Toledo", destination: "Quezon City, Metro Manila", originHub: HUB_MNL, platform: "J&T Express", serviceType: "Standard", mode: "Road", status: "Delivered", etaOffsetDays: 1, deliveredOn: "2026-09-25", weightKg: 0.8, volumeCbm: 0.002, itemCategory: "Documents", batchRef: "BATCH-2026-0009", riderName: "Alvin Ramos" },
+  { clientName: "Pradilla Toledo", consignee: "Pradilla Toledo", destination: "Pasig City, Metro Manila", originHub: HUB_MNL, platform: "Flash Express", serviceType: "Standard", mode: "Road", status: "Delivered", etaOffsetDays: 2, deliveredOn: "2026-10-01", weightKg: 2.0, volumeCbm: 0.004, itemCategory: "Retail goods", batchRef: "BATCH-2026-0009", riderName: "Carlo Nolasco" },
 ];
 
 
@@ -147,6 +151,7 @@ const BOOKING_DATES: string[] = [
   "2026-08-22", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27",
   "2026-08-28", "2026-08-31", "2026-09-02", "2026-09-05", "2026-09-08",
   "2026-09-11", "2026-09-15", "2026-09-18", "2026-09-22", "2026-09-25",
+  "2026-09-18", "2026-09-24", "2026-09-29",
 ];
 
 function handoverDateFor(index: number): string {
@@ -173,7 +178,7 @@ function build(): BuiltRecord[] {
     const trackingNumber = `PKG-2026-${String(seq).padStart(6, "0")}`;
 
     const handoverDate = handoverDateFor(index);
-    const handoverAt = at(handoverDate, ["14:00", "09:30", "10:00", "08:15", "13:40", "08:30", "09:20", "15:00", "10:30", "11:15", "11:45", "08:00", "16:30", "10:00", "09:45", "08:50", "12:10", "07:40", "17:05", "11:20"][index]);
+    const handoverAt = at(handoverDate, ["14:00", "09:30", "10:00", "08:15", "13:40", "08:30", "09:20", "15:00", "10:30", "11:15", "11:45", "08:00", "16:30", "10:00", "09:45", "08:50", "12:10", "07:40", "17:05", "11:20", "10:00", "09:00", "11:00"][index] ?? "10:00");
 
     const eta = addDays(handoverDate, s.etaOffsetDays);
 

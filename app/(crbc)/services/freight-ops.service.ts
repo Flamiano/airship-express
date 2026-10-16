@@ -161,7 +161,7 @@ function mapToViewModel(
     }
   }
 
-  const customer = booking.customers?.[0];
+  const customer = booking.customers;
 
   return {
     requestId: booking.request_id,

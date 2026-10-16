@@ -19,8 +19,13 @@ export type Customers = {
   full_address?: string | null;
   role: string;
   created_at: string;
+  updated_at: string;
   profile_id?: string | null;
-  auth_user_id?: string | null; 
+  auth_user_id?: string | null;
+  /** Number of unread messages from this customer (staff side only) */
+  unread_count?: number;
+  /** ISO timestamp of the latest message in this conversation (for sorting) */
+  latest_message_at?: string;
 };
 
 export interface Customer {

@@ -1,12 +1,14 @@
 import { createClient } from "../library/supabase/server";
 import { getBookingAnalytics } from "./analytics.service";
 import { getSlaOverview } from "./shipment.service";
+import { getCustomerAnalytics } from "./customer-analytics.service";
 
 
 export type ReportType =
   | "customer-booking"
   | "freight-sla"
-  | "customer-activity";
+  | "customer-activity"
+  | "customer-analytics";
 
 export type ReportRow = Record<string, string | number | null>;
 
@@ -299,6 +301,73 @@ async function customerActivityReport(
   };
 }
 
+async function customerAnalyticsReport(): Promise<Report> {
+  const data = await getCustomerAnalytics();
+
+  const resolutionRate = data.totalConcerns > 0
+    ? `${Math.round((data.resolvedConcerns / data.totalConcerns) * 100)}%`
+    : "—";
+
+  return {
+    type: "customer-analytics",
+    title: "Customer Analytics Report",
+    description:
+      "Customer engagement, satisfaction, and service performance across all channels.",
+    kpis: [
+      { label: "Total Customers", value: fmt(data.totalCustomers) },
+      { label: "Active (30d)", value: fmt(data.activeCustomers) },
+      { label: "Total Bookings", value: fmt(data.totalBookings) },
+      { label: "Avg. Rating", value: data.totalFeedback > 0 ? `${data.avgRating} / 5` : "—" },
+      { label: "Open Concerns", value: fmt(data.openConcerns) },
+      { label: "Resolution Rate", value: resolutionRate },
+    ],
+    blocks: [
+      {
+        title: "Customer Growth (last 6 months)",
+        columns: [{ key: "month", label: "Month" }, { key: "value", label: "New Customers" }],
+        rows: data.customerGrowth,
+      },
+      {
+        title: "Booking Trend (last 6 months)",
+        columns: [{ key: "month", label: "Month" }, { key: "value", label: "Bookings" }],
+        rows: data.bookingTrend,
+      },
+      {
+        title: "Bookings by Channel",
+        columns: [{ key: "label", label: "Channel" }, { key: "value", label: "Bookings" }],
+        rows: data.bookingsByChannel,
+      },
+      {
+        title: "Interaction Trend (last 6 months)",
+        columns: [{ key: "month", label: "Month" }, { key: "value", label: "Interactions" }],
+        rows: data.interactionTrend,
+      },
+      {
+        title: "Rating Distribution",
+        columns: [{ key: "label", label: "Rating" }, { key: "value", label: "Reviews" }],
+        rows: data.ratingDistribution,
+      },
+      {
+        title: "Feedback Trend (last 6 months)",
+        columns: [{ key: "month", label: "Month" }, { key: "value", label: "Reviews" }],
+        rows: data.feedbackTrend,
+      },
+      {
+        title: "Concerns by Status",
+        columns: [{ key: "label", label: "Status" }, { key: "value", label: "Count" }],
+        rows: data.concernsByStatus,
+      },
+      {
+        title: "Concern Volume Trend (last 6 months)",
+        columns: [{ key: "month", label: "Month" }, { key: "value", label: "Concerns" }],
+        rows: data.concernTrend,
+      },
+    ],
+    generatedAt: new Date().toISOString(),
+    isDevData: false,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Public API
  * ------------------------------------------------------------------ */
@@ -307,12 +376,14 @@ export const REPORT_TYPES: ReportType[] = [
   "customer-booking",
   "freight-sla",
   "customer-activity",
+  "customer-analytics",
 ];
 
 export const REPORT_LABELS: Record<ReportType, string> = {
   "customer-booking": "Customer & Booking Report",
   "freight-sla": "Freight / SLA Report",
   "customer-activity": "Customer Activity Report",
+  "customer-analytics": "Customer Analytics Report",
 };
 
 export async function getReport(
@@ -324,6 +395,8 @@ export async function getReport(
       return freightSlaReport(filters);
     case "customer-activity":
       return customerActivityReport(filters);
+    case "customer-analytics":
+      return customerAnalyticsReport();
     case "customer-booking":
     default:
       return customerBookingReport(filters);
