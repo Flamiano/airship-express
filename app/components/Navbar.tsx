@@ -281,15 +281,27 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                 animate={ready ? "show" : "hidden"}
                 className="group relative"
               >
-                <Link
-                  href={link.href}
-                  className="flex items-center gap-1 rounded-md px-2.5 py-2 font-rethink text-sm font-medium text-muted transition-colors hover:bg-line/40 hover:text-ink dark:text-paper/60 dark:hover:bg-paper/10 dark:hover:text-paper"
-                >
-                  {link.label}
-                  {link.children && (
-                    <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform duration-200 group-hover:rotate-180 dark:text-paper/40" />
-                  )}
-                </Link>
+                {link.href === "/careers" ? (
+                  <a
+                    href={link.href}
+                    className="flex items-center gap-1 rounded-md px-2.5 py-2 font-rethink text-sm font-medium text-muted transition-colors hover:bg-line/40 hover:text-ink dark:text-paper/60 dark:hover:bg-paper/10 dark:hover:text-paper"
+                  >
+                    {link.label}
+                    {link.children && (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform duration-200 group-hover:rotate-180 dark:text-paper/40" />
+                    )}
+                  </a>
+                ) : (
+                  <Link
+                    href={link.href}
+                    className="flex items-center gap-1 rounded-md px-2.5 py-2 font-rethink text-sm font-medium text-muted transition-colors hover:bg-line/40 hover:text-ink dark:text-paper/60 dark:hover:bg-paper/10 dark:hover:text-paper"
+                  >
+                    {link.label}
+                    {link.children && (
+                      <ChevronDown className="h-3.5 w-3.5 text-muted transition-transform duration-200 group-hover:rotate-180 dark:text-paper/40" />
+                    )}
+                  </Link>
+                )}
 
                 {link.children && (
                   <div
@@ -424,18 +436,33 @@ export default function Navbar({ onMenuOpenChange, ready = true }: NavbarProps) 
                     className="border-b border-dashed border-line last:border-none dark:border-paper/10"
                   >
                     <div className="flex items-center justify-between">
-                      <Link
-                        href={link.href}
-                        onClick={() => !link.children && closeMobileMenu()}
-                        className="flex flex-1 items-baseline gap-3 py-3.5"
-                      >
-                        <span className="font-mono text-[11px] font-semibold text-accent">
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <span className="font-bricolage text-lg font-bold tracking-[-0.01em] text-ink dark:text-paper">
-                          {link.label}
-                        </span>
-                      </Link>
+                      {link.href === "/careers" ? (
+                        <a
+                          href={link.href}
+                          onClick={() => !link.children && closeMobileMenu()}
+                          className="flex flex-1 items-baseline gap-3 py-3.5"
+                        >
+                          <span className="font-mono text-[11px] font-semibold text-accent">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <span className="font-bricolage text-lg font-bold tracking-[-0.01em] text-ink dark:text-paper">
+                            {link.label}
+                          </span>
+                        </a>
+                      ) : (
+                        <Link
+                          href={link.href}
+                          onClick={() => !link.children && closeMobileMenu()}
+                          className="flex flex-1 items-baseline gap-3 py-3.5"
+                        >
+                          <span className="font-mono text-[11px] font-semibold text-accent">
+                            {String(i + 1).padStart(2, "0")}
+                          </span>
+                          <span className="font-bricolage text-lg font-bold tracking-[-0.01em] text-ink dark:text-paper">
+                            {link.label}
+                          </span>
+                        </Link>
+                      )}
                       {link.children && (
                         <button
                           type="button"

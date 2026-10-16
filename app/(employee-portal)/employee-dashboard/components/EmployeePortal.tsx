@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { Target, LogOut, ChevronRight } from "lucide-react";
+import { Target, ClipboardList, LogOut, ChevronRight } from "lucide-react";
 import { supabase } from "@/app/(hr-dashboard)/supabase/client";
 
 type EmployeePortalProps = {
@@ -14,6 +14,14 @@ type EmployeePortalProps = {
 };
 
 const EMPLOYEE_MODULES = [
+  {
+    key: "manpower-request",
+    name: "Manpower Request",
+    description:
+      "Submit your department's hiring need, job description, qualifications, and proposed salary for HR review.",
+    href: "/department/manpower-request",
+    icon: ClipboardList,
+  },
   {
     key: "performance-development",
     name: "Performance & Development",

@@ -33,11 +33,19 @@ export async function POST(request: Request) {
       .eq("employee_id", employeeId)
       .single();
 
-    if (employeeError || !employee) {
+    if (employeeError?.code === "PGRST116" || (!employeeError && !employee)) {
       console.error("Employee lookup error:", employeeError);
       return NextResponse.json(
         { message: "Employee ID not found. Please check your ID." },
         { status: 401 }
+      );
+    }
+
+    if (employeeError) {
+      console.error("Employee lookup failed:", employeeError);
+      return NextResponse.json(
+        { message: "Unable to check your employee ID right now. Please try again shortly." },
+        { status: 503 }
       );
     }
 

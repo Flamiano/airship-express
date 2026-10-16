@@ -125,9 +125,17 @@ export default function Footer() {
                         <ul className="flex flex-col gap-2.5 font-rethink text-sm text-paper/55">
                             {col.links.map((l) => (
                                 <li key={l.label}>
-                                    <Link href={l.href} className="transition-colors hover:text-accent">
-                                        {l.label}
-                                    </Link>
+                                    {l.href === "/careers" ||
+                                    l.href === "/application-guide" ||
+                                    l.href === "/application-status" ? (
+                                        <a href={l.href} className="transition-colors hover:text-accent">
+                                            {l.label}
+                                        </a>
+                                    ) : (
+                                        <Link href={l.href} className="transition-colors hover:text-accent">
+                                            {l.label}
+                                        </Link>
+                                    )}
                                 </li>
                             ))}
                         </ul>
