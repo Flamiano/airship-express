@@ -190,13 +190,6 @@ export default function SupplyChainLoginPage() {
     // Check existing active or remembered session on mount
     useEffect(() => {
         const checkExistingSession = async () => {
-            const sessionToken = user.getSessionToken();
-
-            if (!sessionToken) {
-                setIsLoading(false);
-                return;
-            }
-
             const now = Date.now();
             const lastCheck = lastCheckRef.current;
             if (lastCheck && (now - lastCheck) < checkCacheDuration) {
@@ -211,8 +204,8 @@ export default function SupplyChainLoginPage() {
                 const urlParams = new URLSearchParams(window.location.search);
                 const redirectQuery = urlParams.get('redirect') || urlParams.get('returnUrl');
 
-                // 1. First check if user has an active, valid session
-                const { ok: validOk, data: validData } = await validateSessionApi(sessionToken);
+                // 1. First check if user has an active, valid session (HttpOnly cookie sent automatically)
+                const { ok: validOk, data: validData } = await validateSessionApi();
                 lastCheckRef.current = now;
 
                 if (validOk && validData?.valid && validData?.user) {
@@ -245,7 +238,7 @@ export default function SupplyChainLoginPage() {
                 }
 
                 // 2. Fallback: check remembered session (exclusively for Suppliers)
-                const { ok, data } = await checkRememberedSessionApi(sessionToken);
+                const { ok, data } = await checkRememberedSessionApi();
 
                 if (ok && data?.remembered) {
                     const userRole = (data.user?.role || '').toLowerCase();

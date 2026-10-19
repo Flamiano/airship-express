@@ -21,9 +21,9 @@ export function OfflineDetector({
     children,
     showToast = true,
     autoReconnect = true,
-    reconnectInterval = 30000,
-    pingUrl = 'https://www.google.com/favicon.ico',
-    pingTimeout = 5000,
+    reconnectInterval = 45000,
+    pingUrl = '/favicon.ico',
+    pingTimeout = 12000,
     blurAmount = 4,
 }: OfflineDetectorProps) {
     const pathname = usePathname();
@@ -51,6 +51,11 @@ export function OfflineDetector({
 
     // check network connectivity
     const checkConnectivity = useCallback(async (): Promise<boolean> => {
+        // Fast-path: if browser reports offline, trust it immediately
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            return false;
+        }
+
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), pingTimeout);
@@ -65,6 +70,10 @@ export function OfflineDetector({
             clearTimeout(timeoutId);
             return true;
         } catch (error) {
+            // If the ping timed out or was aborted, only report offline if navigator confirms it
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                return true;
+            }
             return false;
         }
     }, [pingUrl, pingTimeout]);
@@ -368,8 +377,10 @@ export function OfflineDetector({
         initialCheck();
 
         const intervalId = setInterval(() => {
-            checkConnection();
-        }, 10000);
+            if (typeof document === 'undefined' || !document.hidden) {
+                checkConnection();
+            }
+        }, 45000);
 
         if (autoReconnect && !isOnline) {
             if (reconnectTimerRef.current) {
@@ -777,11 +788,15 @@ export function useOnlineStatus() {
 
     useEffect(() => {
         const checkStatus = async () => {
+            if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                setIsOnline(false);
+                return;
+            }
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 12000);
 
-                await fetch('https://www.google.com/favicon.ico', {
+                await fetch('/favicon.ico', {
                     method: 'HEAD',
                     mode: 'no-cors',
                     cache: 'no-store',
@@ -791,13 +806,21 @@ export function useOnlineStatus() {
                 clearTimeout(timeoutId);
                 setIsOnline(true);
             } catch {
-                setIsOnline(false);
+                if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                    setIsOnline(false);
+                } else {
+                    setIsOnline(true);
+                }
             }
         };
 
         checkStatus();
 
-        const interval = setInterval(checkStatus, 10000);
+        const interval = setInterval(() => {
+            if (typeof document === 'undefined' || !document.hidden) {
+                checkStatus();
+            }
+        }, 45000);
 
         const handleOnline = () => checkStatus();
         const handleOffline = () => setIsOnline(false);

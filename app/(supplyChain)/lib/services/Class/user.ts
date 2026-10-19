@@ -16,6 +16,8 @@ interface UserData {
 
 class UserService {
     private static instance: UserService;
+    private inMemoryUser: UserData | null = null;
+    private inMemoryToken: string | null = null;
 
     private constructor() { }
 
@@ -51,94 +53,52 @@ class UserService {
         const userAgent = data.userAgent || navigator.userAgent || 'Unknown';
         const ipAddress = data.ipAddress || '';
 
-        localStorage.setItem('user_name', data.name || 'User');
-        localStorage.setItem('user_role', data.role || 'Employee');
-        localStorage.setItem('user_email', data.email || '');
-        localStorage.setItem('session_token', data.sessionToken);
-        localStorage.setItem('sc_session_token', data.sessionToken);
-        localStorage.setItem('session_expires', data.expiresAt || '');
-        localStorage.setItem('logged_in_email', data.email || '');
-        localStorage.setItem('user_agent', userAgent);
-        localStorage.setItem('user_ip', ipAddress);
-        localStorage.setItem('user_id', data.userId || '');
-        if (data.allowedTimeEnd) localStorage.setItem('user_allowed_time_end', data.allowedTimeEnd);
-        if (data.allowedTimeStart) localStorage.setItem('user_allowed_time_start', data.allowedTimeStart);
-        if (data.allowedDays) {
-            const daysStr = Array.isArray(data.allowedDays) ? JSON.stringify(data.allowedDays) : data.allowedDays;
-            localStorage.setItem('user_allowed_days', daysStr);
-        }
-
-        // Session backup object
-        const backup = {
-            session_token: data.sessionToken,
-            user_role: data.role,
-            user_name: data.name,
-            user_email: data.email,
-            user_agent: userAgent,
-            user_ip: ipAddress,
-            session_expires: data.expiresAt,
-            user_id: data.userId || '',
-            backed_up_at: new Date().toISOString(),
-            checksum: btoa(data.sessionToken + (data.role || '') + (data.email || '')),
+        // Store active session token and user in memory
+        this.inMemoryToken = data.sessionToken || null;
+        this.inMemoryUser = {
+            name: data.name || 'User',
+            role: data.role || 'User',
+            email: data.email || '',
+            sessionToken: data.sessionToken || null,
+            expiresAt: data.expiresAt || null,
+            userAgent,
+            ipAddress,
+            userId: data.userId || null,
+            allowedTimeEnd: data.allowedTimeEnd || null,
+            allowedTimeStart: data.allowedTimeStart || null,
+            allowedDays: Array.isArray(data.allowedDays) ? data.allowedDays : (data.allowedDays ? [data.allowedDays] : null),
         };
-        const backupStr = JSON.stringify(backup);
-        localStorage.setItem('session_backup', backupStr);
-        localStorage.setItem('session_backup_2', backupStr);
-        localStorage.setItem('session_backup_3', backupStr);
+
+        // Cache non-sensitive display values in sessionStorage (automatically cleared when tab closes)
         try {
-            sessionStorage.setItem('session_backup', backupStr);
-            sessionStorage.setItem('session_token', data.sessionToken);
+            sessionStorage.setItem('user_name', data.name || 'User');
+            sessionStorage.setItem('user_role', data.role || 'User');
+            sessionStorage.setItem('user_email', data.email || '');
+            sessionStorage.setItem('user_id', data.userId || '');
+            if (data.allowedTimeEnd) sessionStorage.setItem('user_allowed_time_end', data.allowedTimeEnd);
+            if (data.allowedTimeStart) sessionStorage.setItem('user_allowed_time_start', data.allowedTimeStart);
+            if (data.allowedDays) {
+                const daysStr = Array.isArray(data.allowedDays) ? JSON.stringify(data.allowedDays) : data.allowedDays;
+                sessionStorage.setItem('user_allowed_days', daysStr);
+            }
         } catch (e) {}
 
-        if (data.rememberMe) {
-            localStorage.setItem(`sc_remember_token_${data.email.toLowerCase()}`, data.sessionToken);
-            try {
-                const existing = JSON.parse(localStorage.getItem('sc_remember_tokens') || '{}');
-                existing[data.email.toLowerCase()] = data.sessionToken;
-                localStorage.setItem('sc_remember_tokens', JSON.stringify(existing));
-            } catch (e) {}
-        } else {
-            localStorage.removeItem(`sc_remember_token_${data.email.toLowerCase()}`);
-            try {
-                const existing = JSON.parse(localStorage.getItem('sc_remember_tokens') || '{}');
-                delete existing[data.email.toLowerCase()];
-                localStorage.setItem('sc_remember_tokens', JSON.stringify(existing));
-            } catch (e) {}
-        }
-
-        const maxAge = data.rememberMe ? 15 * 24 * 60 * 60 : 24 * 60 * 60;
-        document.cookie = `session_token=${data.sessionToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
-        document.cookie = `sc_session_token=${data.sessionToken}; path=/; max-age=${maxAge}; SameSite=Lax`;
-        document.cookie = `session_backup=${encodeURIComponent(backupStr)}; path=/; max-age=${maxAge}; SameSite=Lax`;
-        document.cookie = `user_role=${encodeURIComponent(data.role || '')}; path=/; max-age=${maxAge}; SameSite=Lax`;
+        // PURGE ALL CONFIDENTIAL DATA AND BACKUPS FROM LOCALSTORAGE & LOCAL COOKIES
+        purgeConfidentialLocalStorage();
     }
 
-    getRememberToken(email?: string): string | null {
-        if (typeof window === 'undefined') return null;
-        if (email) {
-            const token = localStorage.getItem(`sc_remember_token_${email.toLowerCase()}`);
-            if (token) return token;
-            try {
-                const map = JSON.parse(localStorage.getItem('sc_remember_tokens') || '{}');
-                if (map[email.toLowerCase()]) return map[email.toLowerCase()];
-            } catch (e) {}
-        }
-        return this.getSessionToken();
+    getRememberToken(_email?: string): string | null {
+        return null;
     }
 
     getAllRememberTokens(): Record<string, string> {
-        if (typeof window === 'undefined') return {};
-        try {
-            return JSON.parse(localStorage.getItem('sc_remember_tokens') || '{}');
-        } catch (e) {
-            return {};
-        }
+        return {};
     }
 
     forgetRememberedAccount(email: string) {
         if (typeof window === 'undefined') return;
-        localStorage.removeItem(`sc_remember_token_${email.toLowerCase()}`);
         try {
+            localStorage.removeItem(`sc_remember_token_${email.toLowerCase()}`);
             const existing = JSON.parse(localStorage.getItem('sc_remember_tokens') || '{}');
             delete existing[email.toLowerCase()];
             localStorage.setItem('sc_remember_tokens', JSON.stringify(existing));
@@ -159,50 +119,54 @@ class UserService {
             };
         }
 
-        let token = localStorage.getItem('session_token') || localStorage.getItem('sc_session_token');
-        let role = localStorage.getItem('user_role');
-        let email = localStorage.getItem('user_email');
-        let name = localStorage.getItem('user_name');
-
-        if (!token || !role || role === 'User' || !email) {
-            const resolvedToken = this.getSessionToken();
-            if (resolvedToken) {
-                token = resolvedToken;
-                role = localStorage.getItem('user_role');
-                email = localStorage.getItem('user_email');
-                name = localStorage.getItem('user_name');
-            }
+        if (this.inMemoryUser) {
+            return this.inMemoryUser;
         }
 
+        let name = '';
+        let role = '';
+        let email = '';
+        let userId: string | null = null;
+        let allowedTimeEnd: string | null = null;
+        let allowedTimeStart: string | null = null;
         let parsedDays: string[] | null = null;
-        const storedDays = localStorage.getItem('user_allowed_days');
-        if (storedDays) {
-            try { parsedDays = JSON.parse(storedDays); } catch { parsedDays = storedDays.split(','); }
-        }
+
+        try {
+            name = sessionStorage.getItem('user_name') || '';
+            role = sessionStorage.getItem('user_role') || '';
+            email = sessionStorage.getItem('user_email') || '';
+            userId = sessionStorage.getItem('user_id') || null;
+            allowedTimeEnd = sessionStorage.getItem('user_allowed_time_end') || null;
+            allowedTimeStart = sessionStorage.getItem('user_allowed_time_start') || null;
+            const storedDays = sessionStorage.getItem('user_allowed_days');
+            if (storedDays) {
+                try { parsedDays = JSON.parse(storedDays); } catch { parsedDays = storedDays.split(','); }
+            }
+        } catch (e) {}
 
         return {
             name: name || 'User',
             role: role || 'User',
             email: email || '',
-            sessionToken: token || null,
-            expiresAt: localStorage.getItem('session_expires'),
-            userAgent: localStorage.getItem('user_agent') || '',
-            ipAddress: localStorage.getItem('user_ip') || '',
-            userId: localStorage.getItem('user_id') || null,
-            allowedTimeEnd: localStorage.getItem('user_allowed_time_end') || null,
-            allowedTimeStart: localStorage.getItem('user_allowed_time_start') || null,
+            sessionToken: this.inMemoryToken,
+            expiresAt: null,
+            userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : '',
+            ipAddress: '',
+            userId: userId,
+            allowedTimeEnd,
+            allowedTimeStart,
             allowedDays: parsedDays,
         };
     }
 
     getAllowedTimeEnd(): string | null {
         if (typeof window === 'undefined') return null;
-        return localStorage.getItem('user_allowed_time_end') || null;
+        return this.getUser().allowedTimeEnd || null;
     }
 
     getAllowedTimeStart(): string | null {
         if (typeof window === 'undefined') return null;
-        return localStorage.getItem('user_allowed_time_start') || null;
+        return this.getUser().allowedTimeStart || null;
     }
 
     getUserId(): string | null {
@@ -230,52 +194,7 @@ class UserService {
     }
 
     getSessionToken(): string | null {
-        if (typeof window === 'undefined') return null;
-        let token = localStorage.getItem('session_token') || localStorage.getItem('sc_session_token');
-        if (token && token !== 'null' && token !== 'undefined' && token !== '') return token;
-
-        // Try sessionStorage
-        try {
-            token = sessionStorage.getItem('session_token') || sessionStorage.getItem('sc_session_token');
-            if (token && token !== 'null' && token !== 'undefined' && token !== '') {
-                localStorage.setItem('session_token', token);
-                return token;
-            }
-        } catch (e) {}
-
-        // Try cookies
-        const cookieToken = this.getCookie('session_token') || this.getCookie('sc_session_token');
-        if (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' && cookieToken !== '') {
-            localStorage.setItem('session_token', cookieToken);
-            return cookieToken;
-        }
-
-        // Try backup in localStorage / sessionStorage / cookie
-        const backupRaw = localStorage.getItem('session_backup') || 
-                          localStorage.getItem('session_backup_2') || 
-                          localStorage.getItem('session_backup_3') ||
-                          this.getCookie('session_backup');
-        if (backupRaw) {
-            try {
-                const parsed = JSON.parse(backupRaw);
-                if (parsed && parsed.session_token) {
-                    this.setUser({
-                        name: parsed.user_name || '',
-                        role: parsed.user_role || '',
-                        email: parsed.user_email || '',
-                        sessionToken: parsed.session_token,
-                        expiresAt: parsed.session_expires || '',
-                        userAgent: parsed.user_agent || '',
-                        ipAddress: parsed.user_ip || '',
-                        userId: parsed.user_id || '',
-                        rememberMe: true,
-                    });
-                    return parsed.session_token;
-                }
-            } catch (e) {}
-        }
-
-        return null;
+        return this.inMemoryToken;
     }
 
     getUserAgent(): string {
@@ -302,33 +221,15 @@ class UserService {
     }
 
     clearUser() {
+        this.inMemoryToken = null;
+        this.inMemoryUser = null;
         if (typeof window === 'undefined') return;
 
-        localStorage.removeItem('user_name');
-        localStorage.removeItem('user_role');
-        localStorage.removeItem('user_email');
-        localStorage.removeItem('session_token');
-        localStorage.removeItem('sc_session_token');
-        localStorage.removeItem('session_expires');
-        localStorage.removeItem('logged_in_email');
-        localStorage.removeItem('user_agent');
-        localStorage.removeItem('user_ip');
-        localStorage.removeItem('user_id');
-        localStorage.removeItem('user_allowed_time_end');
-        localStorage.removeItem('user_allowed_time_start');
-        localStorage.removeItem('user_allowed_days');
-        localStorage.removeItem('session_backup');
-        localStorage.removeItem('session_backup_2');
-        localStorage.removeItem('session_backup_3');
         try {
-            sessionStorage.removeItem('session_backup');
-            sessionStorage.removeItem('session_token');
-            sessionStorage.removeItem('sc_session_token');
+            sessionStorage.clear();
         } catch (e) {}
-        document.cookie = 'session_token=; path=/; max-age=0';
-        document.cookie = 'sc_session_token=; path=/; max-age=0';
-        document.cookie = 'session_backup=; path=/; max-age=0';
-        document.cookie = 'user_role=; path=/; max-age=0';
+
+        purgeConfidentialLocalStorage();
     }
 
     updateUser(data: Partial<{
@@ -344,21 +245,31 @@ class UserService {
     }>) {
         if (typeof window === 'undefined') return;
 
-        if (data.name) localStorage.setItem('user_name', data.name);
-        if (data.role) {
-            localStorage.setItem('user_role', data.role);
-            document.cookie = `user_role=${encodeURIComponent(data.role)}; path=/; max-age=86400; SameSite=Lax`;
+        if (this.inMemoryUser) {
+            this.inMemoryUser = {
+                ...this.inMemoryUser,
+                name: data.name ?? this.inMemoryUser.name,
+                role: data.role ?? this.inMemoryUser.role,
+                email: data.email ?? this.inMemoryUser.email,
+                userId: data.userId ?? this.inMemoryUser.userId,
+                allowedTimeEnd: data.allowedTimeEnd ?? this.inMemoryUser.allowedTimeEnd,
+                allowedTimeStart: data.allowedTimeStart ?? this.inMemoryUser.allowedTimeStart,
+                allowedDays: data.allowedDays ? (Array.isArray(data.allowedDays) ? data.allowedDays : [data.allowedDays]) : this.inMemoryUser.allowedDays,
+            };
         }
-        if (data.email) localStorage.setItem('user_email', data.email);
-        if (data.userAgent) localStorage.setItem('user_agent', data.userAgent);
-        if (data.ipAddress) localStorage.setItem('user_ip', data.ipAddress);
-        if (data.userId) localStorage.setItem('user_id', data.userId);
-        if (data.allowedTimeEnd) localStorage.setItem('user_allowed_time_end', data.allowedTimeEnd);
-        if (data.allowedTimeStart) localStorage.setItem('user_allowed_time_start', data.allowedTimeStart);
-        if (data.allowedDays) {
-            const daysStr = Array.isArray(data.allowedDays) ? JSON.stringify(data.allowedDays) : data.allowedDays;
-            localStorage.setItem('user_allowed_days', daysStr);
-        }
+
+        try {
+            if (data.name) sessionStorage.setItem('user_name', data.name);
+            if (data.role) sessionStorage.setItem('user_role', data.role);
+            if (data.email) sessionStorage.setItem('user_email', data.email);
+            if (data.userId) sessionStorage.setItem('user_id', data.userId);
+            if (data.allowedTimeEnd) sessionStorage.setItem('user_allowed_time_end', data.allowedTimeEnd);
+            if (data.allowedTimeStart) sessionStorage.setItem('user_allowed_time_start', data.allowedTimeStart);
+            if (data.allowedDays) {
+                const daysStr = Array.isArray(data.allowedDays) ? JSON.stringify(data.allowedDays) : data.allowedDays;
+                sessionStorage.setItem('user_allowed_days', daysStr);
+            }
+        } catch (e) {}
     }
 }
 
@@ -394,4 +305,62 @@ export function useUser() {
         updateUser: (data: Partial<{ name: string; role: string; email: string; userAgent: string; ipAddress: string; userId: string }>) => user.updateUser(data),
         clearUser: () => user.clearUser(),
     };
+}
+
+export function purgeConfidentialLocalStorage() {
+    if (typeof window === 'undefined') return;
+    try {
+        const sensitivePrefixes = [
+            'notifications_cache',
+            'dismissed_notifications',
+            'po_ai_compose',
+            'sc_remember_token',
+            'ocr_mismatch_rate',
+        ];
+        const sensitiveExactKeys = [
+            'sc_remember_tokens',
+            'session_token',
+            'sc_session_token',
+            'session_backup',
+            'session_backup_2',
+            'session_backup_3',
+            'user_role',
+            'user_name',
+            'user_email',
+            'user_id',
+            'logged_in_email',
+            'session_expires',
+            'user_allowed_time_end',
+            'user_allowed_time_start',
+            'user_allowed_days',
+            'notified_inventory_request_ids',
+            'supabase_user_email',
+            'supabase_refresh_token',
+            'sc_system_settings',
+        ];
+
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key) continue;
+            if (sensitiveExactKeys.includes(key) || sensitivePrefixes.some(p => key.startsWith(p))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(k => {
+            try { localStorage.removeItem(k); } catch {}
+        });
+
+        document.cookie = 'session_backup=; path=/; max-age=0';
+        document.cookie = 'session_backup_2=; path=/; max-age=0';
+        document.cookie = 'session_backup_3=; path=/; max-age=0';
+        document.cookie = 'user_role=; path=/; max-age=0';
+        document.cookie = 'user_email=; path=/; max-age=0';
+        document.cookie = 'session_token=; path=/; max-age=0';
+        document.cookie = 'sc_session_token=; path=/; max-age=0';
+    } catch (e) {}
+}
+
+if (typeof window !== 'undefined') {
+    purgeConfidentialLocalStorage();
 }

@@ -409,7 +409,7 @@ export default function PurchaseOrders() {
     useEffect(() => {
         if (actionModalOrder) {
             const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
-            const cachedAi = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+            const cachedAi = typeof window !== 'undefined' ? (sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey)) : null;
             if (cachedAi) {
                 setActionModalAiMessage(cachedAi);
                 setActionEmailMode('ai');
@@ -1294,7 +1294,8 @@ export default function PurchaseOrders() {
                 setActionEmailMode('ai');
                 const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem(cacheKey, data.message);
+                    sessionStorage.setItem(cacheKey, data.message);
+                    try { localStorage.removeItem(cacheKey); } catch {}
                 }
                 toast.success('AI message generated and saved to cache!');
             }
@@ -2807,7 +2808,8 @@ export default function PurchaseOrders() {
                                                                         setActionModalAiMessage(e.target.value);
                                                                         const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
                                                                         if (typeof window !== 'undefined') {
-                                                                            localStorage.setItem(cacheKey, e.target.value);
+                                                                            sessionStorage.setItem(cacheKey, e.target.value);
+                                                                            try { localStorage.removeItem(cacheKey); } catch {}
                                                                         }
                                                                     }}
                                                                     rows={4}

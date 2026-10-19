@@ -171,7 +171,7 @@ function LayoutContent({ children }: {
     return (
         <NavVisibilityContext.Provider value={{ isNavHidden, setIsNavHidden }}>
             <CustomCursor containerRef={containerRef}/>
-            <OfflineDetector autoReconnect={true} reconnectInterval={30000} blurAmount={4}>
+            <OfflineDetector autoReconnect={true} reconnectInterval={45000} blurAmount={4}>
                 <div ref={containerRef} className="supplychain-container relative w-full max-w-full overflow-x-hidden font-rethink bg-[#FCFBF9] dark:bg-ink min-h-screen flex flex-col justify-between">
                     {/* Ambient decorative background glows & geometric shapes constrained in overflow-hidden */}
                     {!isNavHidden && !isPortal && (

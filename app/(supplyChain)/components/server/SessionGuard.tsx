@@ -6,7 +6,7 @@ import Loader from '../../components/global/Loader';
 import Custom404 from '../global/Custom404';
 import Portal from '../client/Portal';
 import { WifiOff, RefreshCw, Clock, Monitor, ShieldAlert, Check, X, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
-import { user } from '../../lib/services/Class/user';
+import { user, purgeConfidentialLocalStorage } from '../../lib/services/Class/user';
 import { settingsService } from '../../lib/services/settingsService';
 import { supabase } from '../../lib/services/client/supabase';
 
@@ -37,7 +37,7 @@ interface SessionBackup {
 }
 const VALID_ROLES = ['Superadmin', 'Executive', 'Admin', 'Purchase Officer', 'Operator', 'Supplier', 'Staff', 'Employee'];
 const CACHE_DURATION = 60 * 1000;
-const TAMPER_POLL_INTERVAL = 30 * 1000;
+const TAMPER_POLL_INTERVAL = 60 * 1000;
 const OFFLINE_RETRY_DELAY = 5000;
 const ACTIVITY_THROTTLE_MS = 1000;
 const INACTIVITY_STORAGE_KEY = 'sc_last_activity_time';
@@ -45,138 +45,15 @@ const BACKUP_KEYS = {
     PRIMARY: 'session_backup',
 };
 type GuardState = 'loading' | 'checking' | 'authorized' | 'denied' | 'offline';
-// backup current session data
-const backupSessionData = () => {
-    try {
-        const sessionToken = user.getSessionToken();
-        if (!sessionToken || sessionToken === 'null' || sessionToken === 'undefined' || sessionToken === '') {
-            return;
-        }
-        const currentUser = user.getUser();
-        const backup: SessionBackup = {
-            session_token: sessionToken,
-            user_role: currentUser.role || '',
-            user_name: currentUser.name || '',
-            user_email: currentUser.email || '',
-            user_agent: currentUser.userAgent || '',
-            user_ip: currentUser.ipAddress || '',
-            session_expires: currentUser.expiresAt || '',
-            user_id: currentUser.userId || '',
-            backed_up_at: new Date().toISOString(),
-            checksum: btoa(sessionToken + (currentUser.role || '') + (currentUser.email || '')),
-        };
-        localStorage.setItem(BACKUP_KEYS.PRIMARY, JSON.stringify(backup));
-        try {
-            sessionStorage.setItem('session_backup', JSON.stringify(backup));
-        }
-        catch (e) { }
-        try {
-            document.cookie = `session_backup=${JSON.stringify(backup)}; path=/; max-age=300`;
-        }
-        catch (e) { }
-    }
-    catch (error) {
-        console.error('Error backing up session:', error);
-    }
-};
-// try to restore session from backup
-const restoreSessionFromBackup = (): boolean => {
-    try {
-        let backupData: string | null = null;
-        let backup: SessionBackup | null = null;
-        const backupLocations = [
-            () => localStorage.getItem(BACKUP_KEYS.PRIMARY),
-            () => sessionStorage.getItem('session_backup'),
-            () => {
-                const cookie = document.cookie
-                    .split('; ')
-                    .find(row => row.startsWith('session_backup='));
-                return cookie ? decodeURIComponent(cookie.split('=')[1]) : null;
-            },
-        ];
-        for (const getBackup of backupLocations) {
-            try {
-                const data = getBackup();
-                if (data) {
-                    backupData = data;
-                    const parsed = JSON.parse(data);
-                    if (parsed && parsed.session_token) {
-                        backup = parsed;
-                        break;
-                    }
-                }
-            }
-            catch (e) {
-                continue;
-            }
-        }
-        if (!backup || !backup.session_token)
-            return false;
-        if (backup.checksum) {
-            const expectedChecksum = btoa(backup.session_token + (backup.user_role || '') + (backup.user_email || ''));
-            if (backup.checksum !== expectedChecksum) {
-                console.warn('Backup checksum mismatch, data may be corrupted');
-                return false;
-            }
-        }
-        let restored = false;
-        const currentToken = user.getSessionToken();
-        if (!currentToken || currentToken === 'null' || currentToken === 'undefined' || currentToken === '') {
-            if (backup.session_token) {
-                user.setUser({
-                    name: backup.user_name || '',
-                    role: backup.user_role || '',
-                    email: backup.user_email || '',
-                    sessionToken: backup.session_token,
-                    expiresAt: backup.session_expires || '',
-                    userAgent: backup.user_agent || '',
-                    ipAddress: backup.user_ip || '',
-                    userId: backup.user_id || '',
-                    rememberMe: true,
-                });
-                restored = true;
-            }
-            if (restored) {
-                console.log('Session restored from backup');
-                backupSessionData();
-                toast.success('Session restored', {
-                    duration: 3000,
-                    position: 'top-right',
-                    id: 'session-restored',
-                });
-            }
-        }
-        return restored;
-    }
-    catch (error) {
-        console.error('Error restoring session from backup:', error);
-        return false;
-    }
-};
-// clean up old backups
+// Clean up any legacy vulnerable tokens and backups from localStorage & cookies
 const cleanupBackups = () => {
+    if (typeof window === 'undefined') return;
     try {
-        const keys = Object.values(BACKUP_KEYS);
-        for (const key of keys) {
-            const data = localStorage.getItem(key);
-            if (data) {
-                try {
-                    const parsed = JSON.parse(data);
-                    const currentToken = user.getSessionToken();
-                    if (currentToken && parsed.session_token !== currentToken) {
-                        localStorage.removeItem(key);
-                    }
-                }
-                catch (e) {
-                    localStorage.removeItem(key);
-                }
-            }
-        }
-    }
-    catch (error) {
-        console.error('Error cleaning up backups:', error);
-    }
+        purgeConfidentialLocalStorage();
+    } catch {}
 };
+const backupSessionData = () => {};
+const restoreSessionFromBackup = (): boolean => false;
 const deactivateSessionInDB = async (sessionToken: string): Promise<boolean> => {
     try {
         const response = await fetch('/api/supplyChain/deactivate-session', {
@@ -227,8 +104,8 @@ function OfflinePage() {
         try {
             if (navigator.onLine) {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 4000);
-                await fetch('https://www.google.com/favicon.ico', {
+                const timeoutId = setTimeout(() => controller.abort(), 12000);
+                await fetch('/favicon.ico', {
                     method: 'HEAD',
                     mode: 'no-cors',
                     cache: 'no-store',
@@ -241,7 +118,12 @@ function OfflinePage() {
                 toast.error('Still offline. Please check your connection.');
             }
         } catch {
-            toast.error('Network unreachable. Please check your connection.');
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+                toast.success('Connection restored! Reloading...');
+                window.location.reload();
+            } else {
+                toast.error('Network unreachable. Please check your connection.');
+            }
         } finally {
             setIsRetrying(false);
         }
@@ -289,7 +171,7 @@ function OfflinePage() {
         </div>
     );
 }
-const checkDeviceBlocked = async (userId: string, userAgent: string, sessionToken: string): Promise<{
+const checkDeviceBlocked = async (userId: string, userAgent: string, sessionToken?: string | null): Promise<{
     blocked: boolean;
     reason?: string;
     device_name?: string;
@@ -297,10 +179,11 @@ const checkDeviceBlocked = async (userId: string, userAgent: string, sessionToke
     try {
         const response = await fetch('/api/supplyChain/check-blocked-device', {
             method: 'GET',
+            credentials: 'include',
             headers: {
                 'user-id': userId,
                 'user-agent': userAgent,
-                'x-session-token': sessionToken,
+                ...(sessionToken ? { 'x-session-token': sessionToken } : {}),
             },
         });
         const data = await response.json();
@@ -376,51 +259,9 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     const [approvalPasswordError, setApprovalPasswordError] = useState<string | null>(null);
     const [showApprovalPassword, setShowApprovalPassword] = useState(false);
     const dismissedChallengesRef = useRef<Set<string>>(new Set());
-    // initial backup and cleanup
+    // initial cleanup of any legacy vulnerable tokens
     useEffect(() => {
         cleanupBackups();
-        backupSessionData();
-    }, []);
-    // periodic backup every 30s
-    useEffect(() => {
-        backupIntervalRef.current = setInterval(() => {
-            backupSessionData();
-        }, 30000);
-        return () => {
-            if (backupIntervalRef.current) {
-                clearInterval(backupIntervalRef.current);
-                backupIntervalRef.current = null;
-            }
-        };
-    }, []);
-    // backup on events
-    useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') {
-                backupSessionData();
-            }
-        };
-        const handleBeforeUnload = () => {
-            backupSessionData();
-        };
-        const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === 'session_token' && !e.newValue) {
-                backupSessionData();
-            }
-            if (['session_token', 'user_role', 'user_name', 'user_email', 'user_agent', 'user_ip'].includes(e.key || '')) {
-                if (e.newValue) {
-                    backupSessionData();
-                }
-            }
-        };
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('beforeunload', handleBeforeUnload);
-        window.addEventListener('storage', handleStorageChange);
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('beforeunload', handleBeforeUnload);
-            window.removeEventListener('storage', handleStorageChange);
-        };
     }, []);
     // restore from backup or cookie on mount if needed
     useEffect(() => {
@@ -554,30 +395,12 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
         return !!(sessionToken && sessionToken !== 'null' && sessionToken !== 'undefined' && sessionToken !== '');
     }, []);
     const clearSessionData = useCallback(() => {
-        backupSessionData();
         user.clearUser();
         localStorage.removeItem(INACTIVITY_STORAGE_KEY);
-        Object.values(BACKUP_KEYS).forEach(key => {
-            localStorage.removeItem(key);
-        });
-        sessionStorage.removeItem('session_backup');
-        document.cookie = 'session_backup=; path=/; max-age=0';
+        cleanupBackups();
     }, []);
     const getSessionToken = useCallback(() => {
-        let token = user.getSessionToken();
-        if (token && token !== 'null' && token !== 'undefined' && token !== '') {
-            return token;
-        }
-        const restored = restoreSessionFromBackup();
-        if (restored) {
-            return user.getSessionToken();
-        }
-        const cookieMatch = document.cookie.match(/(?:session_token|sc_session_token)=([^;]+)/);
-        const cookieToken = cookieMatch && cookieMatch[1] ? decodeURIComponent(cookieMatch[1].trim()) : null;
-        if (cookieToken && cookieToken !== 'null' && cookieToken !== 'undefined' && cookieToken !== '') {
-            return cookieToken;
-        }
-        return null;
+        return user.getSessionToken();
     }, []);
     const handleInvalidSession = useCallback(async (message: string, redirectToAuth: boolean = true, reason?: string, action?: string) => {
         if (hasShownInvalidToastRef.current || isLoggingOutRef.current) {
@@ -932,10 +755,6 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 return;
 
             const sessionToken = getSessionToken();
-            if (!sessionToken) {
-                await handleInvalidSession('No session found. Please login again.', true);
-                return;
-            }
             if (shouldSkipCheck()) {
                 const currentRole = user.getRole();
                 if (currentRole && VALID_ROLES.includes(currentRole)) {
@@ -950,13 +769,16 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             isCheckingRef.current = true;
             prevPathRef.current = pathname;
             try {
+                const headers: Record<string, string> = {
+                    'User-Agent': navigator.userAgent,
+                    'X-Current-Path': pathname || '/',
+                };
+                if (sessionToken) {
+                    headers['x-session-token'] = sessionToken;
+                }
                 const res = await fetch('/api/supplyChain/validate-session', {
                     credentials: 'include',
-                    headers: {
-                        'x-session-token': sessionToken,
-                        'User-Agent': navigator.userAgent,
-                        'X-Current-Path': pathname || '/',
-                    }
+                    headers,
                 });
                 lastCheckRef.current = Date.now();
                 if (!res.ok) {
@@ -1161,15 +983,19 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
     }, [guardState, getSessionToken, handleDeviceBlocked, handleInvalidSession]);
     // tamper polling
     useEffect(() => {
-        const revalidate = () => {
+        const revalidate = async () => {
             if (isBlockedRef.current || isLoggingOutRef.current || guardState !== 'authorized')
                 return;
-            const sessionToken = getSessionToken();
-            if (!sessionToken) {
-                if (pathname !== '/scAuth') {
-                    handleInvalidSession('Session expired. Please login again.', true);
+            try {
+                const res = await fetch('/api/supplyChain/validate-session', {
+                    credentials: 'include',
+                });
+                if (!res.ok) {
+                    if (pathname !== '/scAuth') {
+                        handleInvalidSession('Session expired. Please login again.', true);
+                    }
                 }
-            }
+            } catch {}
         };
         const interval = setInterval(revalidate, TAMPER_POLL_INTERVAL);
         const onVisibility = () => {
@@ -1245,7 +1071,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             document.addEventListener('visibilitychange', onVisibilityChange);
         }
 
-        const pollTimer = setInterval(checkIncomingLoginChallenges, 30000);
+        const pollTimer = setInterval(checkIncomingLoginChallenges, 60000);
         return () => {
             clearInterval(pollTimer);
             if (typeof document !== 'undefined') {

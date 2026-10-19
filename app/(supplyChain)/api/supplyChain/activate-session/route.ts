@@ -230,16 +230,35 @@ export async function POST(request: Request) {
                 user_agent: user_agent || session.user_agent,
             });
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             success: true,
             message: 'Session activated successfully',
             session: {
                 id: updated.id,
                 email: updated.email,
                 is_active: updated.is_active,
-                expires_at: updated.expires_at
+                expires_at: updated.expires_at,
+                session_token: session.session_token
             }
         });
+
+        const cookieMaxAge = 15 * 24 * 60 * 60; // 15 days for remembered session
+        response.cookies.set('sc_session_token', session.session_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+        response.cookies.set('session_token', session.session_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+
+        return response;
     } catch (error) {
         console.error('Error activating session:', error);
         return NextResponse.json(

@@ -36,7 +36,10 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         const { currentPassword, newPassword, email: providedEmail, logoutAfterSave } = body;
-        const sessionToken = request.headers.get('x-session-token') || body.session_token;
+        const cookieHeader = request.headers.get('cookie') || '';
+        const cookieMatch = cookieHeader.match(/(?:session_token|sc_session_token)=([^;]+)/);
+        const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1].trim()) : '';
+        const sessionToken = request.headers.get('x-session-token') || body.session_token || cookieToken;
         const userAgent = request.headers.get('user-agent') || 'Unknown';
         const ipAddress = request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'Unknown';
 

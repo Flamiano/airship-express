@@ -46,17 +46,23 @@ export async function GET(request: Request) {
             .maybeSingle();
 
         if (error || !session) {
-            return NextResponse.json(
+            const res = NextResponse.json(
                 { valid: false, message: 'Invalid or non-existent session' },
                 { status: 401 }
             );
+            res.cookies.set('sc_session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+            res.cookies.set('session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+            return res;
         }
 
         if (!session.is_active) {
-            return NextResponse.json(
+            const res = NextResponse.json(
                 { valid: false, message: 'Session is inactive or terminated', session_cleared: true },
                 { status: 401 }
             );
+            res.cookies.set('sc_session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+            res.cookies.set('session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+            return res;
         }
 
         // check expiration for timed sessions
@@ -108,7 +114,7 @@ export async function GET(request: Request) {
             remainingMinutes = Math.floor((remainingMs % 3600000) / 60000);
         }
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             valid: true,
             remember_me: session.remember_me || false,
             expires_at: session.expires_at,
@@ -137,6 +143,24 @@ export async function GET(request: Request) {
                 is_allow: session.is_allow !== null && session.is_allow !== undefined ? Boolean(session.is_allow) : true,
             }
         });
+
+        const cookieMaxAge = session.remember_me ? 15 * 24 * 60 * 60 : 24 * 60 * 60;
+        response.cookies.set('sc_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+        response.cookies.set('session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+
+        return response;
     } catch (error) {
         console.error('Session validation error:', error);
         return NextResponse.json(

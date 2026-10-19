@@ -22,8 +22,10 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const role = searchParams.get('role');
-        const loggedInEmail = searchParams.get('email');
-        const clientSessionToken = (request.headers.get('x-session-token') || searchParams.get('sessionToken') || searchParams.get('session_token') || '').trim();
+        const cookieHeader = request.headers.get('cookie') || '';
+        const cookieMatch = cookieHeader.match(/(?:session_token|sc_session_token)=([^;]+)/);
+        const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1].trim()) : '';
+        const clientSessionToken = (request.headers.get('x-session-token') || searchParams.get('sessionToken') || searchParams.get('session_token') || cookieToken).trim();
         let clientTokensMap: Record<string, string> = {};
         try {
             const headerTokens = request.headers.get('x-remember-tokens');

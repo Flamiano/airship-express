@@ -5,7 +5,10 @@ export async function GET(request: NextRequest) {
     try {
         const userId = request.headers.get('user-id');
         const userAgent = request.headers.get('user-agent');
-        const sessionToken = request.headers.get('x-session-token');
+        let sessionToken = request.headers.get('x-session-token');
+        if (!sessionToken) {
+            sessionToken = request.cookies.get('sc_session_token')?.value || request.cookies.get('session_token')?.value || null;
+        }
 
         // validate required headers
         if (!userId) {

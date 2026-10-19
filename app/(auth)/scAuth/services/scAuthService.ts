@@ -92,10 +92,11 @@ export async function clearUserSession(): Promise<void> {
 }
 
 // validate currently active session
-export async function validateSessionApi(sessionToken: string): Promise<any> {
+export async function validateSessionApi(sessionToken?: string): Promise<any> {
     try {
         const res = await fetch('/api/supplyChain/validate-session', {
-            headers: { 'x-session-token': sessionToken },
+            credentials: 'include',
+            headers: sessionToken ? { 'x-session-token': sessionToken } : {},
         });
         const data = await res.json().catch(() => ({}));
         return { ok: res.ok, status: res.status, data };
@@ -105,9 +106,10 @@ export async function validateSessionApi(sessionToken: string): Promise<any> {
 }
 
 // check if there is an active remembered session
-export async function checkRememberedSessionApi(sessionToken: string): Promise<any> {
+export async function checkRememberedSessionApi(sessionToken?: string): Promise<any> {
     const res = await fetch('/api/supplyChain/check-remembered-session', {
-        headers: { 'x-session-token': sessionToken },
+        credentials: 'include',
+        headers: sessionToken ? { 'x-session-token': sessionToken } : {},
     });
     const data = await res.json();
     return { ok: res.ok, status: res.status, data };
@@ -116,23 +118,12 @@ export async function checkRememberedSessionApi(sessionToken: string): Promise<a
 // restore supabase session from stored refresh token
 export async function restoreSupabaseSession(): Promise<void> {
     try {
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (!session) {
-            const storedRefreshToken = localStorage.getItem('supabase_refresh_token');
-
-            if (storedRefreshToken) {
-                const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
-                    refresh_token: storedRefreshToken,
-                });
-
-                if (refreshError) {
-                    console.error('Refresh token failed:', refreshError.message);
-                    localStorage.removeItem('supabase_refresh_token');
-                } else if (refreshData.session) {
-                    localStorage.setItem('supabase_refresh_token', refreshData.session.refresh_token);
-                }
-            }
+        await supabase.auth.getSession();
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.removeItem('supabase_refresh_token');
+                localStorage.removeItem('supabase_user_email');
+            } catch {}
         }
     } catch (error) {
         console.error('Error restoring Supabase session:', error);
@@ -207,6 +198,7 @@ export async function requestOtpApi(params: RequestOtpParams): Promise<any> {
 export async function verifyOtpApi(params: VerifyOtpParams): Promise<any> {
     const res = await fetch('/api/supplyChain/verify-otp', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
     });
@@ -218,6 +210,7 @@ export async function verifyOtpApi(params: VerifyOtpParams): Promise<any> {
 export async function createAuthUserApi(params: CreateAuthUserParams): Promise<any> {
     const res = await fetch('/api/supplyChain/create-auth-user', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
     });
@@ -232,13 +225,11 @@ export async function signInWithSupabasePassword(email: string, password: string
         password,
     });
 
-    if (!error && data?.session) {
-        localStorage.setItem('supabase_refresh_token', data.session.refresh_token);
-        localStorage.setItem('supabase_user_email', email);
-        await supabase.auth.setSession({
-            access_token: data.session.access_token,
-            refresh_token: data.session.refresh_token,
-        });
+    if (typeof window !== 'undefined') {
+        try {
+            localStorage.removeItem('supabase_refresh_token');
+            localStorage.removeItem('supabase_user_email');
+        } catch {}
     }
 
     return { data, error };
@@ -257,6 +248,7 @@ export async function setSupabaseSession(accessToken: string, refreshToken: stri
 export async function activateSessionApi(sessionToken: string, userAgent: string): Promise<any> {
     const res = await fetch('/api/supplyChain/activate-session', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             session_token: sessionToken,

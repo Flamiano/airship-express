@@ -480,9 +480,9 @@ export function PurchaseOrderModal({
             setSupplierEmail('');
             setPoCreated(false);
 
-            // Check localStorage for previously composed AI content
+            // Check sessionStorage for previously composed AI content
             const cacheKey = getAiCacheKey(request.id, poNumber);
-            const cachedAi = typeof window !== 'undefined' ? localStorage.getItem(cacheKey) : null;
+            const cachedAi = typeof window !== 'undefined' ? (sessionStorage.getItem(cacheKey) || localStorage.getItem(cacheKey)) : null;
             if (cachedAi) {
                 setAiMessage(cachedAi);
                 setEmailMode('ai');
@@ -710,7 +710,8 @@ export function PurchaseOrderModal({
         const reqKey = request ? request.id : undefined;
         const cacheKey = getAiCacheKey(reqKey, poNumber);
         if (typeof window !== 'undefined') {
-            localStorage.setItem(cacheKey, text);
+            sessionStorage.setItem(cacheKey, text);
+            try { localStorage.removeItem(cacheKey); } catch {}
         }
     };
 
@@ -718,7 +719,8 @@ export function PurchaseOrderModal({
         const reqKey = request ? request.id : undefined;
         const cacheKey = getAiCacheKey(reqKey, poNumber);
         if (typeof window !== 'undefined') {
-            localStorage.removeItem(cacheKey);
+            sessionStorage.removeItem(cacheKey);
+            try { localStorage.removeItem(cacheKey); } catch {}
         }
         setAiMessage('');
         setEmailMode('standard');
@@ -792,9 +794,10 @@ export function PurchaseOrderModal({
                 const reqKey = request ? request.id : undefined;
                 const cacheKey = getAiCacheKey(reqKey, poNumber);
                 if (typeof window !== 'undefined') {
-                    localStorage.setItem(cacheKey, data.message);
+                    sessionStorage.setItem(cacheKey, data.message);
+                    try { localStorage.removeItem(cacheKey); } catch {}
                 }
-                toast.success('AI message generated & saved locally!');
+                toast.success('AI message generated & saved!');
             } else {
                 toast.error('Failed to generate AI message');
             }

@@ -353,7 +353,7 @@ export async function POST(request: Request) {
 
         const redirectUrl = roleRedirects[role] || '/inventory';
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             success: true,
             session_token: sessionToken,
             user_id: userId,
@@ -365,6 +365,24 @@ export async function POST(request: Request) {
             refresh_token: authData?.session?.refresh_token || null,
             message: 'Account created successfully!'
         });
+
+        const cookieMaxAge = rememberMe ? 15 * 24 * 60 * 60 : 24 * 60 * 60;
+        response.cookies.set('sc_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+        response.cookies.set('session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+
+        return response;
 
     } catch (error) {
         console.error('create auth user error:', error);

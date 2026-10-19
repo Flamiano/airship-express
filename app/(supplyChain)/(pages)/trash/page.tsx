@@ -81,6 +81,13 @@ function ArchiveContent() {
         }
     }, [searchParams, router, isLoaded, userRole, getDefaultTabForRole]);
 
+    // Silent 24-hour background auto-purge check (non-blocking)
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            fetch('/api/supplyChain/trash/auto-purge', { method: 'POST' }).catch(() => {});
+        }
+    }, []);
+
     const handleRefresh = useCallback(() => {
         setIsRefreshing(true);
         trashCache.forceRefresh(activeTab);

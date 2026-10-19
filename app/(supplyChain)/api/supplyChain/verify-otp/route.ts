@@ -256,7 +256,7 @@ export async function POST(request: Request) {
                 user_agent: userAgent,
             });
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             verified: true,
             userExists: true,
             userId: existingUser.id,
@@ -278,6 +278,24 @@ export async function POST(request: Request) {
                 role: effectiveRole,
             }
         });
+
+        const cookieMaxAge = isRememberAllowed ? 15 * 24 * 60 * 60 : 24 * 60 * 60;
+        response.cookies.set('sc_session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+        response.cookies.set('session_token', sessionToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'lax',
+            path: '/',
+            maxAge: cookieMaxAge,
+        });
+
+        return response;
 
     } catch (error) {
         console.error('Verify OTP error:', error);

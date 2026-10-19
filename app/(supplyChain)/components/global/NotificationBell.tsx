@@ -38,7 +38,7 @@ interface Notification {
 }
 
 function isNotificationReadByUser(notif: Notification, currentUserId: string | null): boolean {
-    const uidClean = (currentUserId || (typeof window !== 'undefined' ? (user.getUserId() || localStorage.getItem('user_id')) : null) || '').toLowerCase().trim();
+    const uidClean = (currentUserId || (typeof window !== 'undefined' ? (user.getUserId() || sessionStorage.getItem('user_id')) : null) || '').toLowerCase().trim();
     
     if (notif.user_id && uidClean && notif.user_id.toLowerCase() === uidClean) {
         return Boolean(notif.is_read);
@@ -90,7 +90,7 @@ function getDismissedSet(userIdentifier: string): Set<string> {
     if (typeof window === 'undefined') return new Set();
     try {
         const key = `${DISMISSED_KEY_BASE}_${(userIdentifier || 'anonymous').toLowerCase().trim()}`;
-        const raw = localStorage.getItem(key);
+        const raw = sessionStorage.getItem(key);
         if (raw) {
             const arr = JSON.parse(raw);
             if (Array.isArray(arr)) return new Set(arr);
@@ -105,7 +105,7 @@ function addDismissedKeys(userIdentifier: string, keys: string[]) {
         const set = getDismissedSet(userIdentifier);
         keys.forEach(k => { if (k) set.add(k); });
         const key = `${DISMISSED_KEY_BASE}_${(userIdentifier || 'anonymous').toLowerCase().trim()}`;
-        localStorage.setItem(key, JSON.stringify(Array.from(set)));
+        sessionStorage.setItem(key, JSON.stringify(Array.from(set)));
     } catch {}
 }
 
@@ -239,8 +239,8 @@ export function NotificationBell() {
 
         const targetRoles = normalizeRoles(typeof notif === 'string' ? notif : notif.role);
         const uRole = (userRole || (typeof window !== 'undefined' ? user.getRole() : '') || '').toLowerCase().trim();
-        const currentUserId = (userId || (typeof window !== 'undefined' ? (user.getUserId() || localStorage.getItem('user_id')) : null) || '').toLowerCase().trim();
-        const currentEmail = (userEmail || (typeof window !== 'undefined' ? (user.getEmail() || localStorage.getItem('user_email')) : '') || '').toLowerCase().trim();
+        const currentUserId = (userId || (typeof window !== 'undefined' ? (user.getUserId() || sessionStorage.getItem('user_id')) : null) || '').toLowerCase().trim();
+        const currentEmail = (userEmail || (typeof window !== 'undefined' ? (user.getEmail() || sessionStorage.getItem('user_email')) : '') || '').toLowerCase().trim();
 
         if (typeof notif === 'string') {
             return targetRoles.some(nR => nR === 'all' || nR === uRole);
@@ -312,9 +312,14 @@ export function NotificationBell() {
         let isMounted = true;
         const syncUserData = async () => {
             if (typeof window !== 'undefined') {
-                if (localStorage.getItem(LEGACY_CACHE_KEY)) {
-                    localStorage.removeItem(LEGACY_CACHE_KEY);
-                }
+                try {
+                    for (let i = localStorage.length - 1; i >= 0; i--) {
+                        const k = localStorage.key(i);
+                        if (k && (k.startsWith('notifications_cache') || k.startsWith('dismissed_notifications') || k === 'user_id' || k === 'sc_remember_tokens' || k.startsWith('sc_remember_token_'))) {
+                            localStorage.removeItem(k);
+                        }
+                    }
+                } catch (e) {}
 
                 let role = user.getRole() || 'User';
                 let email = user.getEmail() || '';
@@ -330,7 +335,7 @@ export function NotificationBell() {
                             .maybeSingle();
                         if (dbUser?.id && isMounted) {
                             uid = dbUser.id;
-                            localStorage.setItem('user_id', dbUser.id);
+                            sessionStorage.setItem('user_id', dbUser.id);
                         }
                     } catch (e) {
                         // ignore lookup error
@@ -449,7 +454,7 @@ export function NotificationBell() {
     // load cached notifications
     const loadCachedNotifications = useCallback(() => {
         try {
-            const cached = localStorage.getItem(getCacheKey());
+            const cached = sessionStorage.getItem(getCacheKey());
             const currentUserId = userId || (typeof window !== 'undefined' ? user.getUserId() : null) || '';
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
@@ -473,7 +478,7 @@ export function NotificationBell() {
     // save notifications to cache
     const saveToCache = useCallback((data: Notification[]) => {
         try {
-            localStorage.setItem(getCacheKey(), JSON.stringify({
+            sessionStorage.setItem(getCacheKey(), JSON.stringify({
                 data,
                 timestamp: Date.now()
             }));
@@ -485,7 +490,7 @@ export function NotificationBell() {
     // count unread notifications
     const fetchUnreadCount = useCallback(async () => {
         try {
-            const currentUserId = userId || (typeof window !== 'undefined' ? (user.getUserId() || localStorage.getItem('user_id')) : null) || '';
+            const currentUserId = userId || (typeof window !== 'undefined' ? (user.getUserId() || sessionStorage.getItem('user_id')) : null) || '';
             const res = await supabase
                 .from('notifications')
                 .select('id, role, user_id, creator_email, reference_type, po_request_id, is_read, recipient_user_ids, title, link')
@@ -531,7 +536,7 @@ export function NotificationBell() {
 
             const rawData = res.data || [];
             const notificationsData = rawData.filter((n: any) => isNotificationForUser(n));
-            const currentUserId = userId || (typeof window !== 'undefined' ? (user.getUserId() || localStorage.getItem('user_id')) : null) || '';
+            const currentUserId = userId || (typeof window !== 'undefined' ? (user.getUserId() || sessionStorage.getItem('user_id')) : null) || '';
             const uniqueData = deduplicateNotifications(notificationsData);
 
             setNotifications(uniqueData);
@@ -710,7 +715,7 @@ export function NotificationBell() {
 
             // save updated state to cache
             const cacheKey = getCacheKey();
-            const cached = localStorage.getItem(cacheKey);
+            const cached = sessionStorage.getItem(cacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
                 const updated = data.map((n: Notification) => {
@@ -727,7 +732,7 @@ export function NotificationBell() {
                     }
                     return { ...n, is_read: true, recipient_user_ids: updatedRecipients };
                 });
-                localStorage.setItem(cacheKey, JSON.stringify({ data: updated, timestamp }));
+                sessionStorage.setItem(cacheKey, JSON.stringify({ data: updated, timestamp }));
             }
 
             // update database for this user
@@ -774,11 +779,11 @@ export function NotificationBell() {
 
             // save updated state to cache
             const cacheKey = getCacheKey();
-            const cached = localStorage.getItem(cacheKey);
+            const cached = sessionStorage.getItem(cacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
                 const updated = data.map((n: Notification) => ({ ...n, is_read: true }));
-                localStorage.setItem(cacheKey, JSON.stringify({ data: updated, timestamp }));
+                sessionStorage.setItem(cacheKey, JSON.stringify({ data: updated, timestamp }));
             }
 
             // update in database
@@ -816,7 +821,7 @@ export function NotificationBell() {
                 if (dbUser?.id) {
                     currentUserId = dbUser.id;
                     setUserId(dbUser.id);
-                    localStorage.setItem('user_id', dbUser.id);
+                    sessionStorage.setItem('user_id', dbUser.id);
                 }
             }
 
@@ -830,11 +835,11 @@ export function NotificationBell() {
 
             // update cache
             const cacheKey = getCacheKey();
-            const cached = localStorage.getItem(cacheKey);
+            const cached = sessionStorage.getItem(cacheKey);
             if (cached) {
                 const { data, timestamp } = JSON.parse(cached);
                 const updated = data.filter((n: Notification) => n.id !== id);
-                localStorage.setItem(cacheKey, JSON.stringify({
+                sessionStorage.setItem(cacheKey, JSON.stringify({
                     data: updated,
                     timestamp
                 }));
@@ -889,7 +894,7 @@ export function NotificationBell() {
                 if (dbUser?.id) {
                     currentUserId = dbUser.id;
                     setUserId(dbUser.id);
-                    localStorage.setItem('user_id', dbUser.id);
+                    sessionStorage.setItem('user_id', dbUser.id);
                 }
             }
 
@@ -911,7 +916,7 @@ export function NotificationBell() {
 
             // clear cache
             const cacheKey = getCacheKey();
-            localStorage.removeItem(cacheKey);
+            sessionStorage.removeItem(cacheKey);
 
             // delete notifications from database
             await deleteAllNotificationsForUser(

@@ -17,7 +17,10 @@ export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const email = searchParams.get('email');
-        const clientToken = request.headers.get('x-session-token') || searchParams.get('session_token') || '';
+        const cookieHeader = request.headers.get('cookie') || '';
+        const cookieMatch = cookieHeader.match(/(?:session_token|sc_session_token)=([^;]+)/);
+        const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1].trim()) : '';
+        const clientToken = request.headers.get('x-session-token') || searchParams.get('session_token') || cookieToken;
 
         if (!email) {
             return NextResponse.json(

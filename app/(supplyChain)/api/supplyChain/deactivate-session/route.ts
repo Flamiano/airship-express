@@ -74,7 +74,12 @@ export async function POST(request: Request) {
                 .eq('is_active', true);
         }
 
-        return NextResponse.json({ ok: true, message: 'Session deactivated' });
+        const response = NextResponse.json({ ok: true, message: 'Session deactivated' });
+        response.cookies.set('sc_session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+        response.cookies.set('session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+        response.cookies.set('session_backup', '', { path: '/', maxAge: 0 });
+        response.cookies.set('user_role', '', { path: '/', maxAge: 0 });
+        return response;
     } catch (error: any) {
         return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }

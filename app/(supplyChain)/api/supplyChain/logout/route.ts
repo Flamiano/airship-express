@@ -166,11 +166,18 @@ export async function POST(request: Request) {
             }
         }
 
-        return NextResponse.json({
+        const response = NextResponse.json({
             message: 'Logged out successfully',
             session_id: session?.id || null,
             deactivated: true,
         });
+
+        response.cookies.set('sc_session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+        response.cookies.set('session_token', '', { httpOnly: true, path: '/', maxAge: 0 });
+        response.cookies.set('session_backup', '', { path: '/', maxAge: 0 });
+        response.cookies.set('user_role', '', { path: '/', maxAge: 0 });
+
+        return response;
     } catch (error) {
         console.error('Logout error:', error);
         return NextResponse.json(

@@ -15,7 +15,12 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
 
 export async function GET(request: Request) {
     try {
-        const sessionToken = request.headers.get('x-session-token');
+        let sessionToken = request.headers.get('x-session-token');
+        if (!sessionToken) {
+            const cookieHeader = request.headers.get('cookie') || '';
+            const match = cookieHeader.match(/(?:session_token|sc_session_token)=([^;]+)/);
+            if (match) sessionToken = decodeURIComponent(match[1].trim());
+        }
         const currentUserAgent = request.headers.get('user-agent') || '';
 
         if (!sessionToken) {

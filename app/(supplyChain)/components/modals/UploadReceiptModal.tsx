@@ -57,7 +57,7 @@ export interface RateLimitInfo {
 export function getPoRateLimit(poId: string): RateLimitInfo {
     if (typeof window === 'undefined') return { count: 0, lockedUntil: null };
     try {
-        const stored = localStorage.getItem(`${RATE_LIMIT_PREFIX}${poId}`);
+        const stored = sessionStorage.getItem(`${RATE_LIMIT_PREFIX}${poId}`) || localStorage.getItem(`${RATE_LIMIT_PREFIX}${poId}`);
         if (stored) {
             return JSON.parse(stored);
         }
@@ -70,7 +70,8 @@ export function getPoRateLimit(poId: string): RateLimitInfo {
 export function setPoRateLimit(poId: string, info: RateLimitInfo) {
     if (typeof window === 'undefined') return;
     try {
-        localStorage.setItem(`${RATE_LIMIT_PREFIX}${poId}`, JSON.stringify(info));
+        sessionStorage.setItem(`${RATE_LIMIT_PREFIX}${poId}`, JSON.stringify(info));
+        try { localStorage.removeItem(`${RATE_LIMIT_PREFIX}${poId}`); } catch {}
     } catch (e) {
         console.error('Failed to set rate limit:', e);
     }
@@ -79,7 +80,8 @@ export function setPoRateLimit(poId: string, info: RateLimitInfo) {
 export function clearPoRateLimit(poId: string) {
     if (typeof window === 'undefined') return;
     try {
-        localStorage.removeItem(`${RATE_LIMIT_PREFIX}${poId}`);
+        sessionStorage.removeItem(`${RATE_LIMIT_PREFIX}${poId}`);
+        try { localStorage.removeItem(`${RATE_LIMIT_PREFIX}${poId}`); } catch {}
     } catch (e) {
         console.error('Failed to clear rate limit:', e);
     }
