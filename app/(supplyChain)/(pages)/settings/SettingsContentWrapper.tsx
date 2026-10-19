@@ -316,7 +316,22 @@ export default function SettingsContentWrapper() {
 
     useEffect(() => {
         fetchLiveSlotUsage();
-        const interval = setInterval(fetchLiveSlotUsage, 4000);
+
+        // Fallback polling every 45s (only if tab is active) to complement realtime changes
+        const interval = setInterval(() => {
+            if (typeof document !== 'undefined' && !document.hidden) {
+                fetchLiveSlotUsage();
+            }
+        }, 45000);
+
+        const handleVisibilityChange = () => {
+            if (typeof document !== 'undefined' && !document.hidden) {
+                fetchLiveSlotUsage();
+            }
+        };
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
 
         const channel = supabase
             .channel(`settings_slot_realtime_${Date.now()}`)
@@ -327,6 +342,9 @@ export default function SettingsContentWrapper() {
 
         return () => {
             clearInterval(interval);
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
             supabase.removeChannel(channel);
         };
     }, [fetchLiveSlotUsage]);

@@ -526,20 +526,34 @@ export function useUserActivity() {
                 }
             });
 
-        // live background polling interval: keeps active sessions, access control permissions, blocked devices, appeals, activities, slots, and queued users updated in realtime
+        // Background fallback sync interval: runs gently every 45s (only if tab is active) to complement realtime WebSockets
         const liveQueueInterval = setInterval(() => {
-            if (isMounted.current) {
+            if (isMounted.current && typeof document !== 'undefined' && !document.hidden) {
                 fetchActiveUsers(true);
                 fetchSessions(true);
                 fetchBlockedDevices(true);
                 fetchAppeals(true);
                 fetchActivities(true);
             }
-        }, 5000);
+        }, 45000);
 
-        // interval: updates active countdowns dynamically when any strike exists
+        // Visibility listener: refetch immediately when user returns to this tab
+        const handleVisibilityChange = () => {
+            if (typeof document !== 'undefined' && !document.hidden && isMounted.current) {
+                fetchActiveUsers(true);
+                fetchSessions(true);
+                fetchBlockedDevices(true);
+                fetchAppeals(true);
+                fetchActivities(true);
+            }
+        };
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', handleVisibilityChange);
+        }
+
+        // interval: updates active countdowns dynamically when any strike exists (paused if tab is hidden)
         const pollInterval = setInterval(() => {
-            if (isMounted.current) {
+            if (isMounted.current && typeof document !== 'undefined' && !document.hidden) {
                 setSessions(prev => {
                     const hasStrikes = prev.some(s => (s.strikes || 0) > 0 || s.is_locked_out);
                     if (hasStrikes) {
@@ -548,13 +562,16 @@ export function useUserActivity() {
                     return prev;
                 });
             }
-        }, 10000);
+        }, 20000);
 
         return () => {
             isMounted.current = false;
             Object.values(debounceTimers.current).forEach(t => clearTimeout(t));
             clearInterval(liveQueueInterval);
             clearInterval(pollInterval);
+            if (typeof document !== 'undefined') {
+                document.removeEventListener('visibilitychange', handleVisibilityChange);
+            }
             supabase.removeChannel(channel);
         };
     }, [fetchAllData, debouncedFetch, fetchActivities, fetchSessions, fetchActiveUsers, fetchBlockedDevices, fetchAppeals]);

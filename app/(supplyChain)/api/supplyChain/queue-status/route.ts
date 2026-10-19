@@ -13,12 +13,21 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     },
 });
 
+const queueStatusCache = new Map<string, { data: any; timestamp: number }>();
+const QUEUE_CACHE_TTL_MS = 5000;
+
 // GET /api/supplyChain/queue-status
 // Returns live concurrency count, tiered slot allocation, and queue stats
 export async function GET(request: Request) {
     try {
         const url = new URL(request.url);
         const targetRole = url.searchParams.get('role') || '';
+        const normRole = targetRole.toLowerCase();
+
+        const cached = queueStatusCache.get(normRole);
+        if (cached && (Date.now() - cached.timestamp < QUEUE_CACHE_TTL_MS)) {
+            return NextResponse.json(cached.data);
+        }
 
         // 1. Fetch system concurrency slot configuration
         const { data: settingsRow } = await supabaseAdmin
@@ -135,7 +144,6 @@ export async function GET(request: Request) {
         const supplierAvailable = activeSupplier < supplierSlots;
 
         let roleSpecificAvailable = false;
-        const normRole = targetRole.toLowerCase();
         if (normRole === 'executive' || normRole === 'admin') {
             roleSpecificAvailable = executiveAvailable;
         } else if (normRole === 'manager') {
@@ -164,7 +172,7 @@ export async function GET(request: Request) {
             roleSlots = employeeSlots;
         }
 
-        return NextResponse.json({
+        const payload = {
             totalActive,
             maxCapacity: totalCapacity,
             roleActive,
@@ -201,7 +209,11 @@ export async function GET(request: Request) {
                 employee: employeeAvailable,
                 supplier: supplierAvailable,
             },
-        });
+        };
+
+        queueStatusCache.set(normRole, { data: payload, timestamp: Date.now() });
+
+        return NextResponse.json(payload);
     } catch (err: any) {
         console.error('Error fetching queue status:', err);
         return NextResponse.json(

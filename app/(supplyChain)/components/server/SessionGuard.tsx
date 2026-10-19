@@ -1245,7 +1245,7 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
             document.addEventListener('visibilitychange', onVisibilityChange);
         }
 
-        const pollTimer = setInterval(checkIncomingLoginChallenges, 10000);
+        const pollTimer = setInterval(checkIncomingLoginChallenges, 30000);
         return () => {
             clearInterval(pollTimer);
             if (typeof document !== 'undefined') {
