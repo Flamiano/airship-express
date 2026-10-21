@@ -2,12 +2,13 @@
 
 // Step 2 of 2 of the SPNC login: "We just sent an email" with one box per digit.
 // Used by ./page.tsx. Talks to:
-//   POST {BASE}/api/login/otp/verify   body: { code }
+//   POST {BASE}/api/login/otp/verify   body: { code, deviceModel }
 //   POST {BASE}/api/login/otp/send     ("Resend")
 // Both routes read the "password step passed" cookie, so fetch stays same-origin.
 
 import { useEffect, useRef, useState, type ClipboardEvent, type CSSProperties, type FormEvent, type KeyboardEvent } from "react";
 import { Loader2, Pencil } from "lucide-react";
+import { getDeviceHint } from "./deviceHint";
 
 // Full URL prefix of the app. Set NEXT_PUBLIC_BASE_PATH in .env.local if it differs.
 const BASE = process.env.NEXT_PUBLIC_BASE_PATH ?? "/spnc/app";
@@ -163,10 +164,13 @@ export default function OtpForm({
     let redirecting = false;
 
     try {
+      // deviceModel = real phone model / OS name from the browser. The verify route passes it to the
+      // audit log so the login entry shows which device was used.
+      const deviceModel = await getDeviceHint();
       const response = await fetch(`${BASE}/api/login/otp/verify`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, deviceModel }),
       });
       const result = await response.json().catch(() => ({}));
 
@@ -203,7 +207,13 @@ export default function OtpForm({
     setResending(true);
 
     try {
-      const response = await fetch(`${BASE}/api/login/otp/send`, { method: "POST" });
+      // deviceModel = real phone model / OS version from the browser (shown in the OTP email).
+      const deviceModel = await getDeviceHint();
+      const response = await fetch(`${BASE}/api/login/otp/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deviceModel }),
+      });
       const result = await response.json().catch(() => ({}));
 
       if (response.status === 410) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "../../../lib/supabase";
 import { normalizeSessionRole, SESSION_COOKIE_NAME, verifySessionToken } from "../../../lib/session";
 import { can } from "../../../lib/rbac";
+import { describeDevice, type DeviceInfo } from "../../../lib/device";
 
 const EVENT_TYPES = ["login", "logout", "session_timeout", "user_activity", "archive"] as const;
 
@@ -27,6 +28,14 @@ async function getCurrentUser(request: NextRequest) {
     name: session.full_name,
     role: normalizeSessionRole(role),
   };
+}
+
+// Device shown on each row: the one saved at login (metadata.device, with the real phone model),
+// otherwise worked out from the stored user_agent (older rows and non-login events).
+function deviceFor(row: { metadata?: unknown; user_agent?: string | null }): DeviceInfo | null {
+  const saved = (row.metadata as { device?: DeviceInfo } | null)?.device;
+  if (saved?.label) return saved;
+  return row.user_agent ? describeDevice(row.user_agent) : null;
 }
 
 export async function GET(request: NextRequest) {
@@ -70,5 +79,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: "Failed to fetch audit logs." }, { status: 500 });
   }
 
-  return NextResponse.json({ logs: data || [], total: count || 0, page, pageSize });
+  const logs = (data || []).map((row) => ({ ...row, device: deviceFor(row) }));
+
+  return NextResponse.json({ logs, total: count || 0, page, pageSize });
 }

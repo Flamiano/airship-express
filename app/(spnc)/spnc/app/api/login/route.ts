@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getSupabaseClient } from "../../../lib/supabase";
-import { createPendingToken, pendingCookie, sendEmailOtp, maskEmail } from "../../../lib/otp";
+import {
+  createPendingToken,
+  pendingCookie,
+  sendEmailOtp,
+  maskEmail,
+  getRequestInfo,
+} from "../../../lib/otp";
 import {
   clearFailures,
   getLockRemaining,
@@ -30,6 +36,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const idNumber = body?.idNumber;
     const password = body?.password;
+    const deviceModel = body?.deviceModel; // real phone model from the browser (shown in the OTP email)
 
     const trimmedId = typeof idNumber === "string" ? idNumber.trim() : "";
 
@@ -111,7 +118,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sent = await sendEmailOtp(user.email);
+    const sent = await sendEmailOtp(user.email, await getRequestInfo(req, deviceModel));
     // 429 = Supabase's per-address cooldown: a code was sent in the last minute and is still
     // valid, so carry on to the code screen instead of failing.
     if (sent.error && sent.status !== 429) {

@@ -38,6 +38,8 @@ type AuditLog = {
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
+  // Added by the audit-logs API route (lib/device.ts runs on the server only)
+  device?: { label: string } | null;
 };
 
 type AuditStats = {
@@ -108,6 +110,11 @@ function isRestored(log: AuditLog) {
 // Old entries whose provider row was hard-deleted before soft-archive existed.
 function isUnrecoverable(log: AuditLog) {
   return Boolean(log.metadata && (log.metadata as Record<string, unknown>).unrecoverable);
+}
+
+// Device used for an entry, worked out by the API route (saved device on login rows, user_agent otherwise).
+function deviceOf(log: AuditLog): { label: string } | null {
+  return log.device ?? null;
 }
 
 function Sparkline({ data, gradientId, isDark }: { data: number[]; gradientId: string; isDark: boolean }) {
@@ -336,7 +343,7 @@ function RetrieveDialog({
 }
 
 function exportCsv(logs: AuditLog[]) {
-  const headers = ["Date", "Event", "Actor", "Role", "Action", "Entity Type", "Entity ID", "IP Address"];
+  const headers = ["Date", "Event", "Actor", "Role", "Action", "Entity Type", "Entity ID", "Device", "IP Address"];
   const rows = logs.map((l) => [
     new Date(l.created_at).toLocaleString(),
     l.event_type,
@@ -345,6 +352,7 @@ function exportCsv(logs: AuditLog[]) {
     l.action,
     l.entity_type || "",
     l.entity_id || "",
+    deviceOf(l)?.label || "",
     l.ip_address || "",
   ]);
   const csv = [headers, ...rows]
@@ -686,7 +694,7 @@ export default function AuditLogsPage() {
                 <table className="min-w-full divide-y divide-[#23303D] text-left">
                   <thead className={isDark ? "bg-[#0B1220] text-[#8FA0AF]" : "bg-gray-50 text-gray-500"}>
                     <tr>
-                      {["Status", "Event", "Actor", "Action", "Time", "Retrieve", "IP Address"].map((h) => (
+                      {["Status", "Event", "Actor", "Action", "Time", "Retrieve", "Device", "IP Address"].map((h) => (
                         <th
                           key={h}
                           className={`px-4 py-3 text-xs font-semibold uppercase tracking-wide ${h === "Retrieve" ? "text-center" : ""}`}
@@ -703,6 +711,7 @@ export default function AuditLogsPage() {
                         log.event_type === "archive" && !!log.entity_type && !!log.entity_id && !unrecoverable;
                       const restored = isRestored(log);
                       const busy = restoringId === log.id;
+                      const device = deviceOf(log);
 
                       return (
                         <tr key={log.id} className={isDark ? "bg-[#121B26] hover:bg-[#182230]" : "bg-white hover:bg-gray-50"}>
@@ -757,6 +766,9 @@ export default function AuditLogsPage() {
                                 {busy ? <Loader2 size={14} className="animate-spin" /> : <ArchiveRestore size={14} />}
                               </button>
                             )}
+                          </td>
+                          <td className={`px-4 py-3 align-top text-xs ${isDark ? "text-[#C7D1DA]" : "text-gray-600"}`}>
+                            <span title={log.user_agent ?? ""}>{device?.label ?? "—"}</span>
                           </td>
                           <td className={`px-4 py-3 align-top text-xs ${isDark ? "text-[#8FA0AF]" : "text-gray-500"}`}>
                             {log.ip_address || "—"}

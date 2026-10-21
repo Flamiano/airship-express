@@ -1,4 +1,4 @@
-// POST /spnc/app/api/login/otp/verify   body: { code: "123456" }
+// POST /spnc/app/api/login/otp/verify   body: { code: "123456", deviceModel?: "itel C671L" }
 // Step 2 of 2: check the emailed code, then create the session (same as the old /api/login did).
 
 import { NextRequest, NextResponse } from "next/server";
@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
     if (locked > 0) return lockedResponse(locked);
 
     step = "read request body";
-    const { code } = await req.json().catch(() => ({ code: "" }));
+    // deviceModel = real phone model / OS name from the browser (getDeviceHint). It is only saved in the
+    // login audit entry, and lib/audit cleans it before storing it.
+    const { code, deviceModel } = await req.json().catch(() => ({ code: "", deviceModel: "" }));
     if (!new RegExp(`^\\d{${OTP_LENGTH}}$`).test(String(code ?? ""))) {
       return NextResponse.json(
         { message: `Enter the ${OTP_LENGTH}-digit code.` },
@@ -102,6 +104,7 @@ export async function POST(req: NextRequest) {
         actorRole: user.role,
         action: `${user.full_name} (${user.id_number}) logged in`,
         request: req,
+        deviceModel: typeof deviceModel === "string" ? deviceModel : null,
       });
     } catch (auditErr) {
       console.error("OTP verify: audit log failed (login continues):", auditErr);

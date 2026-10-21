@@ -4,7 +4,15 @@
 // admin: 5 minutes), the same as too many wrong passwords.
 
 import { NextRequest, NextResponse } from "next/server";
-import { OTP_COOKIE, pendingCookie, readPendingToken, lookupEmail, sendEmailOtp, maskEmail } from "../../../../../lib/otp";
+import {
+  OTP_COOKIE,
+  pendingCookie,
+  readPendingToken,
+  lookupEmail,
+  sendEmailOtp,
+  maskEmail,
+  getRequestInfo,
+} from "../../../../../lib/otp";
 import {
   getLockRemaining,
   getPasswordLockRemaining,
@@ -25,6 +33,9 @@ export async function POST(req: NextRequest) {
   if (!idNumber) {
     return NextResponse.json({ message: "Your sign-in session expired. Please start again." }, { status: 410 });
   }
+
+  // Real phone model from the browser (shown in the OTP email). Optional.
+  const body = await req.json().catch(() => ({}));
 
   // Already locked (too many resends, wrong passwords or wrong codes): don't send another code.
   const accountLocked = await getPasswordLockRemaining(idNumber);
@@ -54,7 +65,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: "No email on file for this account. Contact HR." }, { status: 404 });
   }
 
-  const { error, status } = await sendEmailOtp(email);
+  const { error, status } = await sendEmailOtp(email, await getRequestInfo(req, body?.deviceModel));
   if (error) {
     // 429 = Supabase's resend cooldown / rate limit
     const code = status === 429 ? 429 : 502;

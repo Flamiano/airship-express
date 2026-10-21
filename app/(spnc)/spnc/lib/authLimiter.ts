@@ -149,14 +149,18 @@ export async function unlockAccount(idNumber: string): Promise<void> {
 
 /**
  * Standard 429 response for a locked account.
- * `hideTime: true` (used for the password step) never mentions minutes: the login page just shows
- * the "account locked" state. The email-code step keeps the "try again in X minutes" message.
+ * `hideTime: true` (used for the password step) keeps the "account locked" message without
+ * minutes, but now also sends `retryAfterSeconds` so the login page can show a countdown.
+ * retryAfterSeconds is null when an admin has to unlock the account (no timer).
+ * The email-code step keeps the "try again in X minutes" message.
  */
 export function lockedResponse(seconds: number, hideTime = false): NextResponse {
   if (hideTime || seconds > ADMIN_LOCK_THRESHOLD_SECONDS) {
+    const needsAdmin = seconds > ADMIN_LOCK_THRESHOLD_SECONDS;
     return NextResponse.json(
       {
         locked: true,
+        retryAfterSeconds: needsAdmin ? null : seconds,
         message: "Your account is locked after too many failed attempts. Please contact SPNC Admin to unlock it.",
       },
       { status: 429 }

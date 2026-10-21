@@ -1,6 +1,7 @@
 import { SESSION_COOKIE_NAME, verifySessionToken } from "./session";
 import { getSupabaseClient } from "./supabase";
 import { resolveClientIp } from "./get-client-ip";
+import { describeDevice } from "./device";
 
 export type AuditEventType = "login" | "logout" | "session_timeout" | "user_activity" | "archive";
 
@@ -14,6 +15,8 @@ export type LogAuditEventInput = {
   entityId?: string | null;
   metadata?: Record<string, unknown> | null;
   request?: Request;
+  /** Real phone model / OS name from the browser (getDeviceHint). Only used for login events. */
+  deviceModel?: string | null;
 };
 
 export async function getAuditActor(request: Request) {
@@ -38,6 +41,17 @@ export async function getAuditActor(request: Request) {
 export async function logAuditEvent(input: LogAuditEventInput) {
   try {
     const ipAddress = await resolveClientIp(input.request);
+    const userAgent = input.request?.headers.get("user-agent") || null;
+
+    // Login events also store which device was used (model / OS / browser) in metadata.device.
+    // The model code the browser gives (e.g. "RMX2001") is translated to its marketing name ("Realme 6").
+    let metadata: Record<string, unknown> | null = input.metadata ?? null;
+    if (input.eventType === "login") {
+      metadata = {
+        ...(input.metadata ?? {}),
+        device: describeDevice(userAgent, input.deviceModel),
+      };
+    }
 
     const { error } = await getSupabaseClient().from("audit_logs").insert({
       event_type: input.eventType,
@@ -47,9 +61,9 @@ export async function logAuditEvent(input: LogAuditEventInput) {
       action: input.action,
       entity_type: input.entityType ?? null,
       entity_id: input.entityId ?? null,
-      metadata: input.metadata ?? null,
+      metadata,
       ip_address: ipAddress,
-      user_agent: input.request?.headers.get("user-agent") || null,
+      user_agent: userAgent,
     });
 
     if (error) console.error("Failed to write audit log:", error);

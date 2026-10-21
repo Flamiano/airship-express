@@ -6,6 +6,7 @@ import { Oswald, IBM_Plex_Mono, Inter } from "next/font/google";
 import { Eye, EyeOff, Loader2, Sun, Moon } from "lucide-react";
 import airshiplogo from "../../../../public/images/logo-remove-bg.png";
 import OtpForm from "./OtpForm";
+import { getDeviceHint } from "./deviceHint";
 
 const display = Oswald({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-display" });
 const monoLabel = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-mono-label" });
@@ -24,6 +25,41 @@ const MASK_STYLE = { WebkitTextSecurity: "disc" } as React.CSSProperties;
 // again, because browser-side limits can be bypassed.
 const ID_MAX_LENGTH = 64;
 const cleanId = (value: string) => value.replace(/[^A-Za-z0-9._-]/g, "").slice(0, ID_MAX_LENGTH);
+
+// ---- Page lock (display only; the server still enforces its own locks) -----------------------
+// The whole login page (User ID, password, button) is locked until the countdown ends, and the
+// lock survives a refresh because the unlock time is saved in the browser.
+const LOCK_STORAGE_KEY = "spnc-page-lock-until";
+// The User ID the server locked (only set for server locks). While the page is locked, the page
+// asks the server every few seconds whether that account is still locked, so an admin unlock
+// opens the page straight away instead of waiting out the 5 minutes.
+const LOCK_ID_KEY = "spnc-page-lock-id";
+const LOCK_CHECK_INTERVAL_MS = 3000;
+const ATTEMPTS_STORAGE_KEY = "spnc-page-attempts";
+// After this many wrong User ID / password tries (any IDs), the page locks.
+const MAX_PAGE_ATTEMPTS = 5;
+// Used when the server gives no timer (employee accounts stay locked until an admin unlocks
+// them) and for the browser-side attempt counter.
+const PAGE_LOCK_COOLDOWN_SEC = 5 * 60;
+
+const formatCountdown = (total: number) =>
+  `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+
+function readAttempts(): number {
+  try {
+    const n = Number(window.localStorage.getItem(ATTEMPTS_STORAGE_KEY));
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeAttempts(n: number) {
+  try {
+    if (n <= 0) window.localStorage.removeItem(ATTEMPTS_STORAGE_KEY);
+    else window.localStorage.setItem(ATTEMPTS_STORAGE_KEY, String(n));
+  } catch {}
+}
 
 export default function LoginPage() {
   // Start with "light" so server HTML and first client render match (fixes hydration warning).
@@ -51,9 +87,47 @@ export default function LoginPage() {
   // password input so the password is never shown in plain text.
   const [maskSupported, setMaskSupported] = useState(true);
 
-  // Account lock. The server decides when an account is locked (after too many failed logins)
-  // and only an admin can unlock it, so there is no timer and nothing is stored in the browser.
+  // Page lock: true while the login page is locked (countdown running).
   const [isLocked, setIsLocked] = useState(false);
+  const [lockedUntil, setLockedUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const [lockedId, setLockedId] = useState<string | null>(null);
+  const secondsLeft = lockedUntil ? Math.max(0, Math.ceil((lockedUntil - now) / 1000)) : 0;
+
+  // Locks the whole page. `retryAfterSeconds` comes from the server when it has a timer;
+  // otherwise the default cooldown is used.
+  function startPageLock(retryAfterSeconds?: unknown, serverLockedId?: string) {
+    const sec =
+      typeof retryAfterSeconds === "number" && retryAfterSeconds > 0 ? retryAfterSeconds : PAGE_LOCK_COOLDOWN_SEC;
+    const until = Date.now() + sec * 1000;
+
+    setLockedUntil(until);
+    setNow(Date.now());
+    setIsLocked(true);
+    setPassword("");
+    setIdNumber("");
+    setError(null);
+    writeAttempts(0);
+
+    setLockedId(serverLockedId ?? null);
+
+    try {
+      window.localStorage.setItem(LOCK_STORAGE_KEY, String(until));
+      if (serverLockedId) window.localStorage.setItem(LOCK_ID_KEY, serverLockedId);
+      else window.localStorage.removeItem(LOCK_ID_KEY);
+    } catch {}
+  }
+
+  function clearPageLock() {
+    setLockedUntil(null);
+    setLockedId(null);
+    setIsLocked(false);
+    writeAttempts(0);
+    try {
+      window.localStorage.removeItem(LOCK_STORAGE_KEY);
+      window.localStorage.removeItem(LOCK_ID_KEY);
+    } catch {}
+  }
 
   useEffect(() => {
     try {
@@ -66,6 +140,18 @@ export default function LoginPage() {
       // Remove the old browser-side lock/attempt values from the previous version of this page.
       window.localStorage.removeItem("spnc-login-attempts");
       window.localStorage.removeItem("spnc-login-locked-until");
+
+      // Restore the page lock after a refresh.
+      const savedLock = Number(window.localStorage.getItem(LOCK_STORAGE_KEY));
+      if (savedLock > Date.now()) {
+        setLockedUntil(savedLock);
+        setLockedId(window.localStorage.getItem(LOCK_ID_KEY));
+        setNow(Date.now());
+        setIsLocked(true);
+      } else {
+        window.localStorage.removeItem(LOCK_STORAGE_KEY);
+        window.localStorage.removeItem(LOCK_ID_KEY);
+      }
     } catch {
       // localStorage unavailable (private mode, etc.) - keep defaults
     }
@@ -78,6 +164,47 @@ export default function LoginPage() {
       setMaskSupported(false);
     }
   }, []);
+
+  // Countdown ticker: unlocks the page when the time is up.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const timer = setInterval(() => {
+      const current = Date.now();
+      setNow(current);
+      if (current >= lockedUntil) clearPageLock();
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [lockedUntil]);
+
+  // While the page is locked because of a server lock, ask the server every few seconds whether
+  // that account is still locked. If an admin unlocked it, the page opens straight away.
+  useEffect(() => {
+    if (!lockedUntil || !lockedId) return;
+    let cancelled = false;
+
+    const check = async () => {
+      try {
+        const res = await fetch(`${BASE}/api/login/lock-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idNumber: lockedId }),
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled && data.locked === false) clearPageLock();
+      } catch {
+        // Network problem: keep the lock and try again on the next tick.
+      }
+    };
+
+    check();
+    const timer = setInterval(check, LOCK_CHECK_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [lockedUntil, lockedId]);
 
   function toggleTheme() {
     const next = isDark ? "light" : "dark";
@@ -104,18 +231,28 @@ export default function LoginPage() {
       const response = await fetch(`${BASE}/api/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idNumber: trimmedId, password }),
+        // deviceModel = real phone model / OS version from the browser (shown in the OTP email).
+        body: JSON.stringify({ idNumber: trimmedId, password, deviceModel: await getDeviceHint() }),
       });
 
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        // locked: true = the server locked this account after too many failed logins.
-        // Only an admin can unlock it (Employee Activity page).
         if (result.locked === true) {
-          setIsLocked(true);
-          setPassword("");
-        } else if (response.status === 400 || response.status === 401) {
+          // The server locked this account after too many failed logins: lock the whole page.
+          startPageLock(result.retryAfterSeconds, trimmedId);
+        } else if (response.status === 401) {
+          // Wrong User ID or password. Count it in the browser too, so five wrong tries with
+          // ANY IDs lock the page (the server only counts failures per ID).
+          const attempts = readAttempts() + 1;
+          if (attempts >= MAX_PAGE_ATTEMPTS) {
+            startPageLock();
+          } else {
+            writeAttempts(attempts);
+            setPassword("");
+            setError(result.message || "Incorrect User ID or password.");
+          }
+        } else if (response.status === 400) {
           setPassword("");
           setError(result.message || "Incorrect User ID or password.");
         } else {
@@ -124,6 +261,9 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
+
+      // Password accepted: reset the browser-side attempt counter.
+      writeAttempts(0);
 
       // Password accepted and the server emailed a code -> switch to the OTP step.
       if (result.otpRequired) {
@@ -157,6 +297,7 @@ export default function LoginPage() {
 
   // Called by OtpForm once the emailed code is accepted.
   function handleOtpSuccess() {
+    writeAttempts(0);
     try {
       sessionStorage.setItem("spnc-last-activity", String(Date.now()));
     } catch {}
@@ -201,7 +342,7 @@ export default function LoginPage() {
 
       {/* Left panel — brand / marketing side */}
       <div
-        className={`relative flex flex-col justify-between overflow-hidden px-10 py-10 sm:px-16 sm:py-16 ${
+        className={`relative hidden flex-col justify-between overflow-hidden px-10 py-10 sm:px-16 sm:py-16 lg:flex ${
           isDark ? "bg-[#0B1220]" : "bg-[#FAFAF9]"
         }`}
       >
@@ -280,10 +421,10 @@ export default function LoginPage() {
             </>
           )}
 
-          {/* Lockout banner */}
+          {/* Lockout banner with countdown */}
           {isLocked && (
             <div role="alert" className="mb-5 border border-[#E2685A]/40 bg-[#E2685A]/10 px-3 py-2 text-sm text-[#E2685A]">
-              Your account is locked after too many failed attempts. Please contact SPNC Admin to unlock it.
+              Too many failed attempts. Sign-in is locked. Contact SPNC Admin if your account stays locked.
             </div>
           )}
 
@@ -325,6 +466,7 @@ export default function LoginPage() {
                   autoCapitalize="characters"
                   spellCheck={false}
                   readOnly={idLocked}
+                  disabled={isLocked}
                   onFocus={() => setIdLocked(false)}
                   data-lpignore="true"
                   data-1p-ignore="true"
@@ -340,10 +482,7 @@ export default function LoginPage() {
                   style={{ fontFamily: "var(--font-mono-label)" }}
                   maxLength={ID_MAX_LENGTH}
                   value={idNumber}
-                  onChange={(e) => {
-                    setIdNumber(cleanId(e.target.value));
-                    if (isLocked) setIsLocked(false);
-                  }}
+                  onChange={(e) => setIdNumber(cleanId(e.target.value))}
                   required
                 />
               </div>
@@ -393,8 +532,9 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
+                    disabled={isLocked}
                     aria-label={showPassword ? "Hide password" : "Show password"}
-                    className={`pb-2 transition ${
+                    className={`pb-2 transition disabled:cursor-not-allowed disabled:opacity-60 ${
                       isDark ? "text-[#4B5A68] hover:text-[#8FA0AF]" : "text-[#B8B8B5] hover:text-[#6B6B6B]"
                     }`}
                   >
@@ -411,7 +551,7 @@ export default function LoginPage() {
                 }`}
               >
                 {loading && <Loader2 size={16} className="animate-spin" />}
-                {loading ? "Signing in…" : isLocked ? "Account locked" : "Sign in"}
+                {loading ? "Signing in…" : isLocked ? "Locked" : "Sign in"}
               </button>
             </form>
           ) : (
