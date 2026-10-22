@@ -68,6 +68,55 @@ const STANDARD_CATEGORIES = [
     'General Commercial Supplies',
 ];
 
+export const STANDARD_UNITS = [
+    'pcs',
+    'reams',
+    'boxes',
+    'rolls',
+    'packs',
+    'sets',
+    'units',
+    'kg',
+    'meters',
+    'liters',
+    'bottles',
+    'cans',
+    'pairs',
+    'bundles',
+    'tubes',
+    'gallons',
+    'cartons',
+];
+
+export const normalizeUnit = (u?: string): string => {
+    if (!u) return 'pcs';
+    const trimmed = u.trim();
+    const lower = trimmed.toLowerCase();
+
+    if (lower === 'pc' || lower === 'piece' || lower === 'pieces' || lower === 'pcs') return 'pcs';
+    if (lower === 'box' || lower === 'boxes' || lower === 'bx') return 'boxes';
+    if (lower === 'ream' || lower === 'reams' || lower === 'rm') return 'reams';
+    if (lower === 'roll' || lower === 'rolls' || lower === 'rl') return 'rolls';
+    if (lower === 'pack' || lower === 'packs' || lower === 'pk') return 'packs';
+    if (lower === 'set' || lower === 'sets') return 'sets';
+    if (lower === 'unit' || lower === 'units') return 'units';
+    if (lower === 'kg' || lower === 'kilogram' || lower === 'kilograms' || lower === 'kgs') return 'kg';
+    if (lower === 'meter' || lower === 'meters' || lower === 'm') return 'meters';
+    if (lower === 'liter' || lower === 'liters' || lower === 'l') return 'liters';
+    if (lower === 'bottle' || lower === 'bottles' || lower === 'btl') return 'bottles';
+    if (lower === 'pair' || lower === 'pairs' || lower === 'pr') return 'pairs';
+    if (lower === 'bundle' || lower === 'bundles' || lower === 'bdl') return 'bundles';
+    if (lower === 'carton' || lower === 'cartons' || lower === 'ctn') return 'cartons';
+    if (lower === 'can' || lower === 'cans') return 'cans';
+    if (lower === 'tube' || lower === 'tubes') return 'tubes';
+    if (lower === 'gallon' || lower === 'gallons' || lower === 'gal') return 'gallons';
+
+    const match = STANDARD_UNITS.find(std => std.toLowerCase() === lower);
+    if (match) return match;
+
+    return trimmed;
+};
+
 interface RequestItemInput {
     id?: string;
     name: string;
@@ -209,7 +258,7 @@ export function InternalRequestModal({
                         name: preSelectedItem.item_name,
                         category: preSelectedItem.category || '',
                         quantity: Math.max(10, Number(preSelectedItem.minimum_stock || 10)),
-                        unit: preSelectedItem.unit || 'pcs',
+                        unit: normalizeUnit(preSelectedItem.unit),
                         specs: `Restock request for item code ${preSelectedItem.item_code}`
                     }
                 ]);
@@ -250,17 +299,39 @@ export function InternalRequestModal({
             const next = [...prev];
             next[index] = { ...next[index], [field]: value };
 
-            // Match ID and only set default unit/category if current is empty
+            // When item name is typed or selected from datalist suggestions, auto-populate unit and category from inventory
             if (field === 'name') {
-                const matched = inventoryItems.find(i => i.item_name.toLowerCase().trim() === String(value).toLowerCase().trim());
+                const strVal = String(value || '').trim().toLowerCase();
+                if (!strVal) {
+                    next[index].id = undefined;
+                    return next;
+                }
+
+                // Match against inventory items by name, item_code, or combined "code - name"
+                const matched = inventoryItems.find(i => {
+                    const nameMatch = i.item_name?.toLowerCase().trim() === strVal;
+                    const codeMatch = i.item_code?.toLowerCase().trim() === strVal;
+                    const combinedMatch = `${i.item_code} - ${i.item_name}`.toLowerCase().trim() === strVal;
+                    return nameMatch || codeMatch || combinedMatch;
+                });
+
                 if (matched) {
                     next[index].id = matched.id;
-                    if (!next[index].unit) {
-                        next[index].unit = matched.unit || 'pcs';
+                    if (next[index].name !== matched.item_name) {
+                        next[index].name = matched.item_name;
                     }
-                    if (!next[index].category && matched.category) {
+                    // Auto-change unit from chosen inventory item
+                    if (matched.unit) {
+                        next[index].unit = normalizeUnit(matched.unit);
+                    }
+                    // Auto-populate category if present in inventory
+                    if (matched.category) {
                         next[index].category = matched.category;
+                        next[index].isCustomCategory = false;
+                        next[index].customCategoryText = '';
                     }
+                } else {
+                    next[index].id = undefined;
                 }
             }
             return next;
@@ -567,7 +638,9 @@ export function InternalRequestModal({
                                 {items.map((item, idx) => {
                                     // Check live match from catalog
                                     const matched = inventoryItems.find(
-                                        inv => inv.item_name.toLowerCase().trim() === item.name.toLowerCase().trim()
+                                        inv => inv.item_name.toLowerCase().trim() === item.name.toLowerCase().trim() ||
+                                               inv.item_code?.toLowerCase().trim() === item.name.toLowerCase().trim() ||
+                                               (item.id && inv.id === item.id)
                                     );
 
                                     return (
@@ -594,11 +667,17 @@ export function InternalRequestModal({
                                                         <datalist id={`inv-suggestions-${idx}`}>
                                                             {inventoryItems.map(inv => (
                                                                 <option key={inv.id} value={inv.item_name}>
-                                                                    {inv.item_code} - {inv.item_name} ({inv.current_stock} on hand)
+                                                                    {inv.item_code} - {inv.item_name} ({inv.current_stock} {inv.unit || 'pcs'} on hand)
                                                                 </option>
                                                             ))}
                                                         </datalist>
                                                     </div>
+                                                    {matched && (
+                                                        <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                                            <CheckCircle2 className="w-3 h-3 shrink-0" />
+                                                            <span>In inventory: <strong>{matched.current_stock} {matched.unit || 'pcs'}</strong> on hand</span>
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Category - Dynamic from Suppliers table with SearchableDropdown */}
@@ -673,14 +752,12 @@ export function InternalRequestModal({
                                                         value={item.unit}
                                                         onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
                                                     >
-                                                        <option value="pcs">pcs</option>
-                                                        <option value="reams">reams</option>
-                                                        <option value="boxes">boxes</option>
-                                                        <option value="rolls">rolls</option>
-                                                        <option value="packs">packs</option>
-                                                        <option value="sets">sets</option>
-                                                        <option value="units">units</option>
-                                                        <option value="kg">kg</option>
+                                                        {item.unit && !STANDARD_UNITS.includes(item.unit) && (
+                                                            <option key={item.unit} value={item.unit}>{item.unit}</option>
+                                                        )}
+                                                        {STANDARD_UNITS.map(u => (
+                                                            <option key={u} value={u}>{u}</option>
+                                                        ))}
                                                     </select>
                                                 </div>
 

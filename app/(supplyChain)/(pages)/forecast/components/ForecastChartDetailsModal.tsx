@@ -665,7 +665,7 @@ export default function ForecastChartDetailsModal({
 
                             {/* Data Points Table */}
                             <div className="rounded-2xl border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)] bg-[#ebf0f7]/70 dark:bg-[#12131b] overflow-x-auto">
-                                <table className="w-full text-left border-collapse text-xs">
+                                <table className="table-pro w-full text-left border-collapse text-xs">
                                     <thead>
                                         <tr className="border-b border-slate-200/80 dark:border-slate-800 bg-[#e4ebf5] dark:bg-[#171824] text-slate-600 dark:text-slate-300 font-bold text-[11px] uppercase tracking-wider">
                                             <th className="py-2.5 px-3.5">Node / Date</th>
@@ -679,7 +679,7 @@ export default function ForecastChartDetailsModal({
                                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800/60 font-medium">
                                         {paginatedPoints.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="py-8 text-center text-slate-400 italic">
+                                                <td colSpan={6} className="py-8 text-center text-slate-400 italic block w-full md:table-cell">
                                                     <i className="fas fa-database text-xl mb-1.5 block opacity-40" />
                                                     No matching chart data points found for this filter.
                                                 </td>
@@ -687,10 +687,10 @@ export default function ForecastChartDetailsModal({
                                         ) : (
                                             paginatedPoints.map((pt) => (
                                                 <tr key={pt.id} className="hover:bg-pink-50/40 dark:hover:bg-pink-950/20 transition-colors">
-                                                    <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                                    <td className="py-2.5 px-3.5 font-bold text-slate-900 dark:text-white whitespace-nowrap" data-label="Node / Date">
                                                         {pt.dateOrLabel}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5">
+                                                    <td className="py-2.5 px-3.5" data-label="Data Type">
                                                         <span
                                                             className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                                                 pt.type === "Forecast"
@@ -703,10 +703,10 @@ export default function ForecastChartDetailsModal({
                                                             {pt.type}
                                                         </span>
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 text-right font-black font-mono text-slate-900 dark:text-white">
+                                                    <td className="py-2.5 px-3.5 text-right font-black font-mono text-slate-900 dark:text-white" data-label="Primary Demand">
                                                         {pt.primaryValue.toLocaleString()} <span className="text-[10px] text-slate-400 font-normal">{pt.unit}</span>
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 text-center font-mono text-[11px]">
+                                                    <td className="py-2.5 px-3.5 text-center font-mono text-[11px]" data-label="Confidence Bounds">
                                                         {pt.lowerBound !== undefined && pt.upperBound !== undefined ? (
                                                             <span className="text-slate-600 dark:text-slate-300">
                                                                 [{pt.lowerBound ?? 0} – {pt.upperBound ?? 0}]
@@ -715,12 +715,12 @@ export default function ForecastChartDetailsModal({
                                                             <span className="text-slate-400">—</span>
                                                         )}
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 text-center">
+                                                    <td className="py-2.5 px-3.5 text-center" data-label="Status">
                                                         <StatusBadge tone={pt.tone} dot>
                                                             {pt.status}
                                                         </StatusBadge>
                                                     </td>
-                                                    <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300 text-[11px]">
+                                                    <td className="py-2.5 px-3.5 text-slate-700 dark:text-slate-300 text-[11px]" data-label="Intervention Recommendation">
                                                         {pt.recommendedAction || "None"}
                                                     </td>
                                                 </tr>

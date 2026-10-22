@@ -8,6 +8,7 @@ import {
     Building2, 
     User, 
     X, 
+    ArrowLeft,
     FileText, 
     Clock, 
     Loader2, 
@@ -46,6 +47,7 @@ export function SupplierMessengerDrawer({
     const [searchQuery, setSearchQuery] = useState("");
     const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
     const [selectedPo, setSelectedPo] = useState<string>("");
+    const [activeMobileView, setActiveMobileView] = useState<"list" | "chat">("list");
 
     const { confirm } = useConfirm();
     const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
@@ -76,8 +78,12 @@ export function SupplierMessengerDrawer({
                     setSuppliers(data);
                     if (initialSupplierId) {
                         const match = data.find((s) => s.id === initialSupplierId);
-                        if (match) setSelectedSupplier(match);
-                        else if (data.length > 0) setSelectedSupplier(data[0]);
+                        if (match) {
+                            setSelectedSupplier(match);
+                            setActiveMobileView("chat");
+                        } else if (data.length > 0) {
+                            setSelectedSupplier(data[0]);
+                        }
                     } else if (data.length > 0 && !selectedSupplier) {
                         setSelectedSupplier(data[0]);
                     }
@@ -378,23 +384,33 @@ export function SupplierMessengerDrawer({
                     onClick={onClose}
                 />
 
-                <div className="relative bg-[#ebf0f7] dark:bg-[#161a23] rounded-t-3xl sm:rounded-3xl max-w-4xl w-full h-[88vh] sm:h-[680px] max-h-[96vh] flex border border-white/80 dark:border-white/[0.08] shadow-[12px_12px_36px_rgba(166,175,195,0.55),-12px_-12px_36px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85),-4px_-4px_20px_rgba(255,255,255,0.02)] animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 z-10 overflow-hidden">
+                <div className="relative bg-[#ebf0f7] dark:bg-[#161a23] rounded-t-3xl sm:rounded-3xl max-w-4xl w-full h-[92vh] sm:h-[680px] max-h-[96vh] flex border border-slate-200/80 dark:border-white/[0.08] shadow-none animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 z-10 overflow-hidden">
                     
                     {/* Left Panel: Supplier Conversation List */}
-                    <div className="w-72 sm:w-80 border-r border-slate-200/80 dark:border-slate-800/80 flex flex-col bg-[#eef3f9]/80 dark:bg-[#14161f]">
+                    <div className={`w-full md:w-80 border-r border-slate-200/80 dark:border-slate-800/80 flex flex-col bg-[#eef3f9]/80 dark:bg-[#14161f] shrink-0 ${
+                        activeMobileView === "chat" && selectedSupplier ? "hidden md:flex" : "flex"
+                    }`}>
                         {/* Header */}
-                        <div className="p-4 border-b border-slate-200/60 dark:border-slate-800/70 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#ffe6f0] to-[#ffd1e3] dark:from-[#341427] dark:to-[#4a1c38] border border-pink-300/80 dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_7px_rgba(0,0,0,0.6),-1px_-1px_4px_rgba(255,255,255,0.03)] shrink-0">
+                        <div className="p-3.5 sm:p-4 border-b border-slate-200/60 dark:border-slate-800/70 flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-[#ffe6f0] to-[#ffd1e3] dark:from-[#341427] dark:to-[#4a1c38] border border-pink-300/80 dark:border-[#67224c] flex items-center justify-center text-pink-600 dark:text-pink-300 shadow-none shrink-0">
                                     <MessageSquare className="w-4 h-4" />
                                 </div>
-                                <div>
-                                    <h3 className="font-bold text-slate-900 dark:text-white text-sm tracking-tight">
+                                <div className="min-w-0">
+                                    <h3 className="font-bold text-slate-900 dark:text-white text-sm tracking-tight truncate">
                                         Supplier Messages
                                     </h3>
-                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Internal Channel</p>
+                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">Internal Channel</p>
                                 </div>
                             </div>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="md:hidden w-8 h-8 rounded-xl bg-[#f0f3f8] dark:bg-[#1a1b26] text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 flex items-center justify-center border border-white/80 dark:border-white/[0.06] transition-all cursor-pointer shrink-0 ml-2"
+                                title="Close Messenger"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
                         </div>
 
                         {/* Neumorphic Inset Search */}
@@ -429,7 +445,10 @@ export function SupplierMessengerDrawer({
                                         <button
                                             key={sup.id}
                                             type="button"
-                                            onClick={() => setSelectedSupplier(sup)}
+                                            onClick={() => {
+                                                setSelectedSupplier(sup);
+                                                setActiveMobileView("chat");
+                                            }}
                                             className={`w-full p-2.5 rounded-2xl text-left transition-all flex items-center gap-3 cursor-pointer ${
                                                 isSelected
                                                     ? "bg-[#ffe6f0]/90 dark:bg-[#341427]/90 border border-pink-300/80 dark:border-[#67224c] shadow-[inset_2px_2px_5px_rgba(244,63,94,0.15),0_2px_6px_rgba(244,63,94,0.12)] text-pink-700 dark:text-pink-300"
@@ -461,20 +480,30 @@ export function SupplierMessengerDrawer({
                     </div>
 
                     {/* Right Panel: Conversation View */}
-                    <div className="flex-1 flex flex-col bg-[#ebf0f7]/70 dark:bg-[#161a23]">
+                    <div className={`flex-1 flex flex-col bg-[#ebf0f7]/70 dark:bg-[#161a23] min-w-0 ${
+                        activeMobileView === "list" ? "hidden md:flex" : "flex"
+                    }`}>
                         {selectedSupplier ? (
                             <>
                                 {/* Conversation Header */}
-                                <div className="p-3.5 sm:p-4 bg-[#f0f3f8]/90 dark:bg-[#181924]/90 border-b border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between shadow-[0_2px_6px_rgba(0,0,0,0.02)]">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-[#ffe6f0] to-[#ffd1e3] dark:from-[#341427] dark:to-[#4a1c38] border border-pink-300/80 dark:border-[#67224c] text-pink-600 dark:text-pink-300 flex items-center justify-center shadow-[3px_3px_6px_rgba(166,175,195,0.4),-3px_-3px_6px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_7px_rgba(0,0,0,0.6),-1px_-1px_4px_rgba(255,255,255,0.03)] shrink-0">
-                                            <Building2 className="w-5 h-5" />
+                                <div className="p-3 sm:p-4 bg-[#f0f3f8]/90 dark:bg-[#181924]/90 border-b border-slate-200/70 dark:border-slate-800/80 flex items-center justify-between shadow-none">
+                                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveMobileView("list")}
+                                            className="md:hidden w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#14151e] text-slate-600 dark:text-slate-300 hover:text-pink-600 flex items-center justify-center border border-slate-200/70 dark:border-slate-700 shrink-0 cursor-pointer"
+                                            title="Back to partner list"
+                                        >
+                                            <ArrowLeft className="w-4 h-4" />
+                                        </button>
+                                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-[#ffe6f0] to-[#ffd1e3] dark:from-[#341427] dark:to-[#4a1c38] border border-pink-300/80 dark:border-[#67224c] text-pink-600 dark:text-pink-300 flex items-center justify-center shrink-0">
+                                            <Building2 className="w-4 h-4 sm:w-5 sm:h-5" />
                                         </div>
-                                        <div>
-                                            <h3 className="font-bold text-slate-900 dark:text-white text-sm tracking-tight flex items-center gap-2">
+                                        <div className="min-w-0">
+                                            <h3 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm tracking-tight truncate">
                                                 {selectedSupplier.name}
                                             </h3>
-                                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                            <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 truncate">
                                                 {selectedSupplier.contact_person ? `${selectedSupplier.contact_person} • ` : ''}{selectedSupplier.email}
                                             </p>
                                         </div>
@@ -483,7 +512,7 @@ export function SupplierMessengerDrawer({
                                     <button
                                         type="button"
                                         onClick={onClose}
-                                        className="w-8 h-8 rounded-xl bg-[#f0f3f8] dark:bg-[#1a1b26] text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 flex items-center justify-center border border-white/80 dark:border-white/[0.06] shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.2)] transition-all cursor-pointer"
+                                        className="w-8 h-8 rounded-xl bg-[#f0f3f8] dark:bg-[#1a1b26] text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 flex items-center justify-center border border-white/80 dark:border-white/[0.06] transition-all cursor-pointer shrink-0 ml-2"
                                         title="Close Messenger"
                                     >
                                         <X className="w-4 h-4" />
@@ -492,12 +521,12 @@ export function SupplierMessengerDrawer({
 
                                 {/* PO Tag selector */}
                                 {purchaseOrders.length > 0 && (
-                                    <div className="px-4 py-2 bg-[#eaf0f7]/90 dark:bg-[#13141d] border-b border-slate-200/60 dark:border-slate-800/80 flex items-center gap-2 text-xs shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] relative z-30">
-                                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1">
+                                    <div className="px-3 sm:px-4 py-2 bg-[#eaf0f7]/90 dark:bg-[#13141d] border-b border-slate-200/60 dark:border-slate-800/80 flex flex-wrap sm:flex-nowrap items-center gap-1.5 sm:gap-2 text-xs relative z-30">
+                                        <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 dark:text-slate-400 shrink-0 flex items-center gap-1">
                                             <FileText className="w-3.5 h-3.5 text-pink-500" />
                                             Reference PO:
                                         </span>
-                                        <div className="w-56 sm:w-64">
+                                        <div className="flex-1 sm:w-64 min-w-[160px]">
                                             <SearchableDropdown
                                                 value={selectedPo}
                                                 onChange={(val) => setSelectedPo(val || '')}
@@ -570,7 +599,7 @@ export function SupplierMessengerDrawer({
                                                         </span>
                                                     </div>
 
-                                                    <div className={`flex items-center gap-1.5 max-w-[86%] ${isMyMessage ? "flex-row" : "flex-row-reverse"}`}>
+                                                    <div className={`flex items-center gap-1.5 max-w-[92%] sm:max-w-[86%] ${isMyMessage ? "flex-row" : "flex-row-reverse"}`}>
                                                         {/* Delete Action on hover - ONLY for sender's own messages */}
                                                         {isMyMessage && (
                                                             <button
@@ -589,7 +618,7 @@ export function SupplierMessengerDrawer({
                                                         )}
 
                                                         <div
-                                                            className={`rounded-2xl p-3.5 text-xs leading-relaxed ${
+                                                            className={`rounded-2xl p-3 sm:p-3.5 text-xs leading-relaxed ${
                                                                 isMyMessage
                                                                     ? "bg-gradient-to-b from-pink-500 to-pink-600 text-white rounded-br-none border border-pink-400/80 shadow-[0_4px_14px_rgba(236,72,153,0.35),inset_0_1px_1.5px_rgba(255,255,255,0.4),inset_0_-2px_4px_rgba(0,0,0,0.2)] font-medium"
                                                                     : isInternal
@@ -620,20 +649,20 @@ export function SupplierMessengerDrawer({
                                 </div>
 
                                 {/* Send Input Form */}
-                                <form onSubmit={handleSend} className="p-3 sm:p-4 bg-[#f0f3f8]/95 dark:bg-[#171823]/95 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center gap-2.5">
-                                    <div className="relative flex-1">
+                                <form onSubmit={handleSend} className="p-2.5 sm:p-4 bg-[#f0f3f8]/95 dark:bg-[#171823]/95 border-t border-slate-200/70 dark:border-slate-800/80 flex items-center gap-2 sm:gap-2.5">
+                                    <div className="relative flex-1 min-w-0">
                                         <input
                                             type="text"
                                             value={inputText}
                                             onChange={(e) => setInputText(e.target.value)}
                                             placeholder={`Message ${selectedSupplier.name}...`}
-                                            className="w-full py-2.5 px-4 bg-[#ebf0f7] dark:bg-[#11121a] border border-slate-200/70 dark:border-slate-800 rounded-2xl text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.45),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.7),inset_-1px_-1px_4px_rgba(255,255,255,0.04)] transition-all"
+                                            className="w-full py-2 sm:py-2.5 px-3 sm:px-4 bg-[#ebf0f7] dark:bg-[#11121a] border border-slate-200/70 dark:border-slate-800 rounded-2xl text-xs text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20 focus:border-pink-500 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.45),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.7),inset_-1px_-1px_4px_rgba(255,255,255,0.04)] transition-all"
                                         />
                                     </div>
                                     <button
                                         type="submit"
                                         disabled={isSending || !inputText.trim()}
-                                        className="py-2.5 px-5 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white text-xs font-bold border border-pink-400/80 shadow-[3px_3px_8px_rgba(236,72,153,0.4),-2px_-2px_6px_rgba(255,255,255,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                        className="py-2 sm:py-2.5 px-3.5 sm:px-5 rounded-2xl bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 text-white text-xs font-bold border border-pink-400/80 shadow-[3px_3px_8px_rgba(236,72,153,0.4),-2px_-2px_6px_rgba(255,255,255,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] active:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.3)] active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                                     >
                                         {isSending ? (
                                             <Loader2 className="w-4 h-4 animate-spin" />

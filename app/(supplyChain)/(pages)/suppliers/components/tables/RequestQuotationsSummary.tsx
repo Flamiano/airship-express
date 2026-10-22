@@ -481,9 +481,9 @@ export function RequestQuotationsSummary({
                     <div>
                         <div className="flex items-center gap-2">
                             <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight">
-                                Received Quotations &amp; AI Offer Recommendation
+                                AI Offer Recommendation
                             </h4>
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/20 shadow-[-1px_-1px_3px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(219,39,119,0.15)]">
+                            <span className="px-2.5 py-0.5 rounded-full text-[9px] font-mono font-black bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/20 shadow-[-1px_-1px_3px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(219,39,119,0.15)]">
                                 {validQuotes.length} Proposal{validQuotes.length !== 1 ? "s" : ""}
                             </span>
                         </div>
@@ -772,43 +772,63 @@ export function RequestQuotationsSummary({
                         </div>
 
                         {/* Interactive Leaderboard Podium Base (Always 5 Slots) */}
-                        <div className="p-4 sm:p-6 rounded-3xl bg-gradient-to-b from-[#e8eef8]/80 to-[#ebf0f7] dark:from-[#12131f] dark:to-[#161827] border border-white/80 dark:border-white/10 shadow-[inset_2px_2px_6px_rgba(163,177,198,0.25),_inset_-2px_-2px_6px_rgba(255,255,255,0.7)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.5),_inset_-2px_-2px_6px_rgba(255,255,255,0.03)]">
-                            <div className="flex items-end justify-center gap-2 sm:gap-3 md:gap-5 pt-8 pb-3 overflow-x-auto min-w-[320px]">
+                        <div className="p-3 sm:p-5 md:p-6 rounded-3xl bg-[#ebf0f7] dark:bg-[#131522] border border-pink-200/80 dark:border-pink-950/80 shadow-[inset_1.5px_1.5px_4px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_4px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
+                            <div className="flex items-end justify-center gap-2 sm:gap-3 md:gap-5 pt-8 pb-3 overflow-x-auto no-scrollbar min-w-[320px]">
                                 {podiumSlots.map((slot) => {
                                     const rankNum = slot.targetRank;
                                     const item = slot.data;
 
-                                    // Rank-specific height & color palettes
+                                    // Solid pink podium styling (NO GRADIENTS)
                                     let pillarHeight = "h-24 sm:h-32";
-                                    let medalIcon = <Award className="w-4 h-4 text-slate-500" />;
-                                    let medalBg = "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700";
-                                    let pillarBg = "bg-gradient-to-t from-slate-300/40 via-slate-200/25 to-transparent dark:from-slate-800/40 dark:via-slate-900/20 dark:to-transparent border-slate-300/70 dark:border-white/10";
+                                    let medalIcon = <Award className="w-4 h-4 text-pink-600 dark:text-pink-400" />;
+                                    let medalBg = "bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800";
+                                    let pillarBg = "bg-pink-500 dark:bg-pink-600 border-2 border-pink-400 dark:border-pink-500 shadow-md";
+                                    let pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                    let rankNumberColor = "text-white/70 dark:text-white/70 font-black";
                                     let rankLabel = `#${rankNum}`;
+                                    let rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
 
                                     if (rankNum === 1) {
-                                        pillarHeight = "h-40 sm:h-52";
-                                        medalIcon = <Trophy className="w-5 h-5 text-amber-500" />;
-                                        medalBg = "bg-gradient-to-tr from-amber-400 to-amber-200 text-amber-950 border-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.4)]";
-                                        pillarBg = "bg-gradient-to-t from-pink-500/35 via-amber-400/25 to-pink-500/10 dark:from-pink-500/35 dark:via-amber-400/15 dark:to-transparent border-pink-400/70 dark:border-pink-500/50 shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_12px_rgba(236,72,153,0.25)]";
+                                        pillarHeight = "h-44 sm:h-56";
+                                        medalIcon = <Trophy className="w-5 h-5 text-amber-950 dark:text-amber-950" />;
+                                        medalBg = "bg-amber-400 text-amber-950 border-2 border-amber-300 dark:border-amber-400 shadow-[0_2px_8px_rgba(245,158,11,0.35)]";
+                                        pillarBg = "bg-pink-600 dark:bg-pink-600 border-2 border-pink-400 dark:border-pink-400 shadow-[0_4px_16px_rgba(236,72,153,0.35)]";
+                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                        rankNumberColor = "text-white/80 dark:text-white/80 font-black";
                                         rankLabel = "🥇 1st Place";
+                                        rankBadgeBg = "bg-pink-700 text-white font-black border border-pink-500 shadow-xs";
                                     } else if (rankNum === 2) {
-                                        pillarHeight = "h-32 sm:h-42";
-                                        medalIcon = <Award className="w-4 h-4 text-slate-700 dark:text-slate-200" />;
-                                        medalBg = "bg-gradient-to-tr from-slate-300 to-slate-100 text-slate-800 dark:from-slate-700 dark:to-slate-600 dark:text-slate-100 border-slate-300 dark:border-slate-500 shadow-[0_4px_10px_rgba(148,163,184,0.3)]";
-                                        pillarBg = "bg-gradient-to-t from-slate-300/50 via-slate-200/30 to-transparent dark:from-slate-700/50 dark:via-slate-800/30 dark:to-transparent border-slate-300/80 dark:border-slate-600/50";
+                                        pillarHeight = "h-34 sm:h-44";
+                                        medalIcon = <Award className="w-4 h-4 text-slate-800 dark:text-slate-100" />;
+                                        medalBg = "bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border-2 border-slate-400/80 dark:border-slate-500 shadow-xs";
+                                        pillarBg = "bg-pink-500 dark:bg-pink-500 border-2 border-pink-300 dark:border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.25)]";
+                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
                                         rankLabel = "🥈 2nd Place";
+                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400 shadow-xs";
                                     } else if (rankNum === 3) {
-                                        pillarHeight = "h-26 sm:h-34";
-                                        medalIcon = <Award className="w-4 h-4 text-amber-700 dark:text-amber-300" />;
-                                        medalBg = "bg-gradient-to-tr from-amber-700 to-amber-500 text-white border-amber-600 shadow-[0_4px_10px_rgba(180,83,9,0.3)]";
-                                        pillarBg = "bg-gradient-to-t from-amber-700/25 via-amber-800/15 to-transparent dark:from-amber-900/35 dark:via-amber-950/20 dark:to-transparent border-amber-600/40 dark:border-amber-700/40";
+                                        pillarHeight = "h-28 sm:h-36";
+                                        medalIcon = <Award className="w-4 h-4 text-white" />;
+                                        medalBg = "bg-amber-700 dark:bg-amber-700 text-white border-2 border-amber-600 shadow-xs";
+                                        pillarBg = "bg-pink-500 dark:bg-pink-500 border-2 border-pink-300 dark:border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.2)]";
+                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
                                         rankLabel = "🥉 3rd Place";
+                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400 shadow-xs";
                                     } else if (rankNum === 4) {
-                                        pillarHeight = "h-20 sm:h-28";
-                                        rankLabel = "4th";
+                                        pillarHeight = "h-22 sm:h-28";
+                                        pillarBg = "bg-pink-500/95 dark:bg-pink-600/95 border-2 border-pink-300 dark:border-pink-400";
+                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
+                                        rankLabel = "4th Place";
+                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
                                     } else if (rankNum === 5) {
-                                        pillarHeight = "h-16 sm:h-24";
-                                        rankLabel = "5th";
+                                        pillarHeight = "h-18 sm:h-24";
+                                        pillarBg = "bg-pink-500/95 dark:bg-pink-600/95 border-2 border-pink-300 dark:border-pink-400";
+                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
+                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
+                                        rankLabel = "5th Place";
+                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
                                     }
 
                                     // Active Vendor Slot
@@ -820,22 +840,22 @@ export function RequestQuotationsSummary({
                                             <div
                                                 key={`podium-slot-${rankNum}-${item.quote.id}`}
                                                 onClick={() => setModalQuoteItem({ supplier: item.matchedSupplier, quote: item.quote })}
-                                                className="group relative flex flex-col items-center flex-1 max-w-[155px] cursor-pointer select-none transition-all duration-200 hover:-translate-y-1.5 z-10"
+                                                className="group relative flex flex-col items-center flex-1 min-w-[110px] sm:min-w-[125px] max-w-[155px] cursor-pointer select-none transition-all duration-200 hover:-translate-y-1.5 z-10"
                                                 title={`Click to open full quotation proposal modal for ${item.quote.supplier_name}`}
                                             >
                                                 {/* Top Vendor Card Floating Above Pillar */}
                                                 <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
-                                                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${rankBadgeBg}`}>
                                                         {rankLabel}
                                                     </span>
 
                                                     {/* Medal Avatar Badge */}
-                                                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center border ${medalBg} transition-transform group-hover:scale-110 shadow-xs`}>
+                                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center ${medalBg} transition-transform group-hover:scale-110`}>
                                                         {medalIcon}
                                                     </div>
 
                                                     {/* Supplier Name */}
-                                                    <p className="font-black text-xs text-slate-800 dark:text-white truncate max-w-full" title={item.quote.supplier_name}>
+                                                    <p className="font-black text-xs sm:text-[13px] text-slate-900 dark:text-white truncate max-w-full" title={item.quote.supplier_name}>
                                                         {item.quote.supplier_name}
                                                     </p>
 
@@ -843,40 +863,42 @@ export function RequestQuotationsSummary({
                                                     <div className="flex items-center gap-1">
                                                         <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
                                                             item.rank === 1
-                                                                ? "bg-pink-500 text-white"
-                                                                : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
+                                                                ? "bg-amber-500 text-white"
+                                                                : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700"
                                                         }`}>
                                                             {item.score}/100
                                                         </span>
                                                         {isAccepted && (
-                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-600 border border-emerald-500/30">
+                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
                                                                 Won
                                                             </span>
                                                         )}
                                                     </div>
 
-                                                    <p className="font-mono text-[11px] font-black text-pink-600 dark:text-pink-400">
-                                                        ₱{totalAmt.toLocaleString()}
-                                                    </p>
-                                                    <span className="text-[9.5px] text-slate-500 dark:text-slate-400">
+                                                    <div className="bg-white dark:bg-[#1b1e2c] border border-slate-200 dark:border-slate-700/80 px-2 py-0.5 rounded-lg shadow-xs mt-0.5">
+                                                        <p className="font-mono text-xs font-black text-pink-600 dark:text-pink-400">
+                                                            ₱{totalAmt.toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                    <span className="text-[9.5px] font-medium text-slate-500 dark:text-slate-400">
                                                         {item.quote.lead_time_days}d lead
                                                     </span>
                                                 </div>
 
-                                                {/* Stepped Podium Pillar */}
+                                                {/* Stepped Podium Pillar (SOLID PINK - NO GRADIENTS) */}
                                                 <div
-                                                    className={`w-full rounded-2xl border transition-all duration-200 flex flex-col justify-between items-center py-3 relative overflow-hidden ${pillarHeight} ${pillarBg} group-hover:border-pink-400/80 group-hover:shadow-[0_0_20px_rgba(236,72,153,0.3)]`}
+                                                    className={`w-full rounded-2xl transition-all duration-200 flex flex-col justify-between items-center pb-3 relative overflow-hidden ${pillarHeight} ${pillarBg} hover:scale-[1.02] shadow-sm`}
                                                 >
-                                                    {/* Glass highlight sheen */}
-                                                    <div className="absolute top-0 inset-x-0 h-1/3 bg-gradient-to-b from-white/30 to-transparent pointer-events-none" />
+                                                    {/* Solid Pillar Top Cap Line */}
+                                                    <div className={`w-full h-1.5 shrink-0 ${pillarCapBg}`} />
 
                                                     {/* Embossed Podium Rank Number */}
-                                                    <div className="text-2xl sm:text-3xl font-black text-slate-400/40 dark:text-white/20 select-none">
+                                                    <div className={`text-2xl sm:text-3xl font-black select-none ${rankNumberColor}`}>
                                                         #{item.rank}
                                                     </div>
 
-                                                    <div className="text-[10px] font-extrabold text-pink-600 dark:text-pink-300 flex items-center gap-0.5 group-hover:underline">
-                                                        <span>View Modal</span>
+                                                    <div className="px-2.5 py-0.5 rounded-full bg-white text-[10px] font-black text-pink-700 group-hover:bg-pink-50 transition-colors flex items-center gap-1 shadow-sm">
+                                                        <span>View</span>
                                                         <ExternalLink className="w-2.5 h-2.5" />
                                                     </div>
                                                 </div>
@@ -888,46 +910,51 @@ export function RequestQuotationsSummary({
                                     return (
                                         <div
                                             key={`podium-slot-empty-${rankNum}`}
-                                            className="group relative flex flex-col items-center flex-1 max-w-[155px] select-none opacity-60 z-0"
+                                            className="group relative flex flex-col items-center flex-1 min-w-[110px] sm:min-w-[125px] max-w-[155px] select-none opacity-60 z-0"
                                         >
                                             {/* Empty Card Floating Above Pillar */}
                                             <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
-                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-600">
+                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 px-2 py-0.5 rounded-full bg-slate-200/50 dark:bg-slate-800/40 border border-slate-300/40 dark:border-slate-800">
                                                     {rankLabel}
                                                 </span>
 
                                                 {/* Empty Avatar Badge */}
-                                                <div className="w-9 h-9 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-white/10 bg-slate-200/40 dark:bg-slate-800/30 text-slate-400 dark:text-slate-600">
-                                                    <Package className="w-4 h-4 opacity-40" />
+                                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500">
+                                                    <Package className="w-4 h-4 opacity-50" />
                                                 </div>
 
                                                 {/* Empty Supplier Name */}
-                                                <p className="font-semibold text-xs text-slate-400 dark:text-slate-600 italic truncate max-w-full">
+                                                <p className="font-semibold text-xs text-slate-400 dark:text-slate-500 italic truncate max-w-full">
                                                     Empty Slot
                                                 </p>
 
-                                                <span className="text-[10px] font-medium text-slate-400/80 dark:text-slate-600">
+                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
                                                     No Proposal
                                                 </span>
 
-                                                <p className="font-mono text-[11px] text-slate-400/60 dark:text-slate-700">
-                                                    —
-                                                </p>
-                                                <span className="text-[9.5px] text-slate-400/60 dark:text-slate-700">
+                                                <div className="bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-lg mt-0.5">
+                                                    <p className="font-mono text-xs text-slate-400 dark:text-slate-500">
+                                                        —
+                                                    </p>
+                                                </div>
+                                                <span className="text-[9.5px] text-slate-400 dark:text-slate-600">
                                                     Awaiting Bid
                                                 </span>
                                             </div>
 
-                                            {/* Empty Stepped Podium Pillar */}
+                                            {/* Empty Stepped Podium Pillar (SOLID PINK THEMED - NO GRADIENTS) */}
                                             <div
-                                                className={`w-full rounded-2xl border-2 border-dashed border-slate-300/70 dark:border-white/10 bg-slate-200/20 dark:bg-slate-900/30 flex flex-col justify-between items-center py-3 relative overflow-hidden ${pillarHeight}`}
+                                                className={`w-full rounded-2xl border-2 border-dashed border-pink-300 dark:border-pink-800/80 bg-pink-100/40 dark:bg-pink-950/30 flex flex-col justify-between items-center pb-3 relative overflow-hidden ${pillarHeight}`}
                                             >
+                                                {/* Solid Pillar Top Cap Line */}
+                                                <div className="w-full h-1.5 shrink-0 bg-pink-200 dark:bg-pink-900/60" />
+
                                                 {/* Embossed Podium Rank Number */}
-                                                <div className="text-2xl sm:text-3xl font-black text-slate-300/50 dark:text-white/5 select-none">
+                                                <div className="text-2xl sm:text-3xl font-black text-pink-300/80 dark:text-pink-700/60 select-none">
                                                     #{rankNum}
                                                 </div>
 
-                                                <div className="text-[10px] font-bold text-slate-400/70 dark:text-slate-600 select-none">
+                                                <div className="px-2 py-0.5 rounded-full bg-white/90 dark:bg-[#1a1c28] text-[10px] font-bold text-pink-600 dark:text-pink-400 select-none border border-pink-200 dark:border-pink-900/60">
                                                     Vacant
                                                 </div>
                                             </div>
@@ -936,8 +963,8 @@ export function RequestQuotationsSummary({
                                 })}
                             </div>
 
-                            {/* Podium Shelf Horizon Line */}
-                            <div className="h-2 w-full rounded-full bg-gradient-to-r from-transparent via-slate-300 dark:via-white/10 to-transparent -mt-1 shadow-inner" />
+                            {/* Podium Shelf Horizon Line (SOLID PINK - NO GRADIENT) */}
+                            <div className="h-2 w-full rounded-full bg-pink-500 dark:bg-pink-500 -mt-1 shadow-sm" />
                         </div>
                     </div>
                 )}
@@ -1012,7 +1039,7 @@ export function RequestQuotationsSummary({
                                     </h4>
 
                                     <div className="overflow-x-auto rounded-2xl border border-slate-300/80 dark:border-white/10 bg-[#e8ecf4]/60 dark:bg-black/30 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.3)]">
-                                        <table className="w-full text-left border-collapse">
+                                        <table className="table-pro w-full text-left border-collapse">
                                             <thead>
                                                 <tr className="border-b border-slate-300/80 dark:border-white/10 bg-[#e0e6f0] dark:bg-[#12131f] text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">
                                                     <th className="p-3">Rank &amp; Supplier</th>
@@ -1042,7 +1069,7 @@ export function RequestQuotationsSummary({
                                                             key={rankItem.id}
                                                             className={isTop ? "bg-pink-500/5 font-semibold" : ""}
                                                         >
-                                                            <td className="p-3">
+                                                            <td className="p-3" data-label="Rank & Supplier">
                                                                 <div className="flex items-center gap-2">
                                                                     <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-black ${
                                                                         isTop ? "bg-pink-600 text-white shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(219,39,119,0.4)]" : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
@@ -1054,10 +1081,10 @@ export function RequestQuotationsSummary({
                                                                     </span>
                                                                 </div>
                                                             </td>
-                                                            <td className="p-3 font-mono font-black text-pink-600 dark:text-pink-400">
+                                                            <td className="p-3 font-mono font-black text-pink-600 dark:text-pink-400" data-label="Total Bid">
                                                                 ₱{Number(q.total_amount).toLocaleString()}
                                                             </td>
-                                                            <td className="p-3 font-mono text-[11px]">
+                                                            <td className="p-3 font-mono text-[11px]" data-label="Price Delta">
                                                                 {rankItem.priceDeltaVsLowest === 0 ? (
                                                                     <span className="text-emerald-600 font-bold">Best Price</span>
                                                                 ) : (
@@ -1066,18 +1093,18 @@ export function RequestQuotationsSummary({
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="p-3 text-slate-700 dark:text-slate-300 font-bold">
+                                                            <td className="p-3 text-slate-700 dark:text-slate-300 font-bold" data-label="Lead Time">
                                                                 {q.lead_time_days} days
                                                             </td>
-                                                            <td className="p-3 text-slate-600 dark:text-slate-400">
+                                                            <td className="p-3 text-slate-600 dark:text-slate-400" data-label="Stock Readiness">
                                                                 {q.availability}
                                                             </td>
-                                                            <td className="p-3">
+                                                            <td className="p-3" data-label="AI Score">
                                                                 <span className="font-mono font-black text-xs px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
                                                                     {rankItem.overallScore}/100
                                                                 </span>
                                                             </td>
-                                                            <td className="p-3 text-right">
+                                                            <td className="p-3 text-right" data-label="Verdict">
                                                                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${
                                                                     isTop
                                                                         ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"

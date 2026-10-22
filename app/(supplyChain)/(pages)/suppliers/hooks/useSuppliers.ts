@@ -165,6 +165,39 @@ export function useSuppliers() {
                     fetchUnreadMessageCounts();
                 }
             )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "suppliers",
+                },
+                () => {
+                    fetchSuppliers();
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "purchase_orders",
+                },
+                () => {
+                    fetchPurchaseOrders();
+                }
+            )
+            .on(
+                "postgres_changes",
+                {
+                    event: "*",
+                    schema: "public",
+                    table: "supplier_meetings",
+                },
+                () => {
+                    fetchSuppliers();
+                }
+            )
             .subscribe();
 
         return () => {

@@ -764,7 +764,7 @@ export const RequestsTab = memo(function RequestsTab({
 
                 {/* Table Content */}
                 <div className="overflow-x-auto">
-                    <table className="min-w-[1380px] w-full text-left border-collapse table-fixed">
+                    <table className="table-pro min-w-full md:min-w-[1380px] w-full text-left border-collapse md:table-fixed">
                         <thead>
                             <tr className="border-b border-slate-200/60 dark:border-white/[0.06] text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider bg-[#ebf0f7]/40 dark:bg-[#12131b]/40">
                                 <th className="w-12 min-w-[48px] px-3.5 py-3.5 text-center">
@@ -813,7 +813,7 @@ export const RequestsTab = memo(function RequestsTab({
                                 />
                             ) : requests.length === 0 ? (
                                 <tr>
-                                    <td colSpan={11} className="py-20 text-center text-slate-400 dark:text-slate-500">
+                                    <td colSpan={11} className="py-20 text-center text-slate-400 dark:text-slate-500 block w-full md:table-cell">
                                         <div className="flex flex-col items-center justify-center gap-3">
                                             <div className="w-14 h-14 rounded-2xl bg-slate-100/80 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 flex items-center justify-center text-slate-400 dark:text-slate-500 shadow-inner">
                                                 <Inbox className="w-7 h-7" />
@@ -938,7 +938,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/30 transition-colors duration-150 ${selectedIds.has(req.id) ? 'bg-pink-50/30 dark:bg-pink-950/10' : ''}`}
                                         >
                                             {/* 0. Checkbox */}
-                                            <td className="w-12 min-w-[48px] px-3.5 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                                            <td className="w-12 min-w-[48px] px-3.5 py-3.5 text-center" data-label="Select" onClick={(e) => e.stopPropagation()}>
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedIds.has(req.id)}
@@ -949,7 +949,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 1. Request # */}
-                                            <td className="px-4 py-3.5 w-36 min-w-[130px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-36 min-w-[130px] whitespace-nowrap" data-label="Request #">
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedRequestForForm(req)}
@@ -962,7 +962,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 2. Date */}
-                                            <td className="px-4 py-3.5 w-28 min-w-[110px] whitespace-nowrap text-slate-500 dark:text-slate-400 font-mono text-[11px]">
+                                            <td className="px-4 py-3.5 w-28 min-w-[110px] whitespace-nowrap text-slate-500 dark:text-slate-400 font-mono text-[11px]" data-label="Date">
                                                 {req.created_at ? (
                                                     new Date(req.created_at).toLocaleDateString(undefined, {
                                                         month: 'short',
@@ -975,7 +975,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 3. Priority */}
-                                            <td className="px-4 py-3.5 w-28 min-w-[100px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-28 min-w-[100px] whitespace-nowrap" data-label="Priority">
                                                 <StatusBadge
                                                     tone={
                                                         priorityLower === 'critical'
@@ -992,7 +992,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 4. Department */}
-                                            <td className="px-4 py-3.5 w-36 min-w-[140px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-36 min-w-[140px] whitespace-nowrap" data-label="Department">
                                                 <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 font-medium">
                                                     <Building2 className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                                                     <span className="truncate" title={req.department || 'General'}>{req.department || 'General'}</span>
@@ -1000,7 +1000,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 5. Requester */}
-                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap" data-label="Requester">
                                                 <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
                                                     <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                                                     <span className="truncate max-w-[140px]" title={(req as any).requester_name || (isInternal ? 'Internal Staff' : (req.requester_system || 'External System'))}>
@@ -1010,7 +1010,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 6. Requested Item */}
-                                            <td className="px-4 py-3.5 w-60 min-w-[220px]">
+                                            <td className="px-4 py-3.5 w-60 min-w-[220px]" data-label="Requested Item">
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedRequestForStock(req)}
@@ -1022,7 +1022,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 7. Quantity */}
-                                            <td className="px-4 py-3.5 w-24 min-w-[90px] text-center whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-24 min-w-[90px] text-center whitespace-nowrap" data-label="Quantity">
                                                 {isReceived && isPartialHandover ? (
                                                     <div className="flex flex-col items-center">
                                                         <span className="font-mono font-extrabold text-sm whitespace-nowrap" title={`${issuedQty} of ${requestedQty} given`}>
@@ -1058,7 +1058,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 8. Stock Feasibility */}
-                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap" data-label="Stock Feasibility">
                                                 <button
                                                     type="button"
                                                     onClick={() => setSelectedRequestForStock(req)}
@@ -1095,7 +1095,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 9. Status Badge */}
-                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-44 min-w-[160px] whitespace-nowrap" data-label="Status">
                                                 {isRowLoading ? (
                                                     <StatusBadge tone="amber" dot size="xs">
                                                         <span className="inline-flex items-center gap-1.5 font-bold">
@@ -1204,7 +1204,7 @@ export const RequestsTab = memo(function RequestsTab({
                                             </td>
 
                                             {/* 10. Actions */}
-                                            <td className="px-4 py-3.5 w-40 min-w-[150px] text-right whitespace-nowrap">
+                                            <td className="px-4 py-3.5 w-40 min-w-[150px] text-right whitespace-nowrap" data-label="Actions">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     {/* Unified Review Request & Check Items */}
                                                     <CrudActionButton

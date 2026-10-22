@@ -139,27 +139,6 @@ export const DEFAULT_PAGE_PERMISSIONS: PagePermission[] = [
         section: 'Others',
         allowedRoles: ['Superadmin', 'Executive'],
     },
-    {
-        route: '/suppliers_page',
-        label: 'Supplier Portal',
-        description: 'Supplier dashboard, purchase orders, and communications',
-        section: 'Supplier Portal',
-        allowedRoles: ['Supplier'],
-    },
-    {
-        route: '/suppliers_page/purchase-orders',
-        label: 'Supplier Purchase Orders',
-        description: 'Supplier purchase order tracking and order fulfillment',
-        section: 'Supplier Portal',
-        allowedRoles: ['Supplier'],
-    },
-    {
-        route: '/suppliers_page/messages',
-        label: 'Supplier Messages',
-        description: 'Direct communications with supply chain management',
-        section: 'Supplier Portal',
-        allowedRoles: ['Supplier'],
-    },
 ];
 
 export const DEFAULT_INACTIVITY_SETTINGS: InactivitySettings = {

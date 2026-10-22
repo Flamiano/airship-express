@@ -29,20 +29,6 @@ export function DocumentsHeader({
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
                         Centralized evidence repository for daily operations and audit trail.
                     </p>
-
-                    <div className="inline-flex flex-wrap items-center gap-1.5 sm:gap-2 mt-2.5 px-3.5 py-1.5 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 max-w-full transition-all">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-                        <i className="fa-solid fa-user text-[10px] sm:text-[11px] text-pink-500 dark:text-pink-400"></i>
-                        <span>Logged in as:</span>
-                        <span className="font-bold text-slate-800 dark:text-slate-100 truncate max-w-[140px] sm:max-w-none">
-                            {userName}
-                        </span>
-                        {userEmail && (
-                            <span className="text-slate-400 dark:text-slate-500 font-medium sm:border-l sm:border-slate-300/60 dark:sm:border-slate-700 sm:pl-2 sm:ml-0.5 truncate max-w-[180px] sm:max-w-none">
-                                {userEmail}
-                            </span>
-                        )}
-                    </div>
                 </div>
             </div>
 

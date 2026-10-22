@@ -735,7 +735,7 @@ export function SearchDocumentWithPhotoModal({
                                     disabled={isSearching}
                                 >
                                     <Camera className="w-4 h-4 mr-1.5" />
-                                    <span>{isSearching ? 'Matching...' : 'Search Database with Photo'}</span>
+                                    <span>{isSearching ? 'Matching...' : 'Search with Photo'}</span>
                                 </AppButton>
                             )}
                         </div>

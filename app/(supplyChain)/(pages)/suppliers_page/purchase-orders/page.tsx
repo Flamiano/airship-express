@@ -941,21 +941,6 @@ export default function SupplierPurchaseOrdersPage() {
                         View orders, review line items, manage fulfillment stages, and review official defect claims & return workflows.
                     </p>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-                    <AppButton
-                        variant="neutral"
-                        size="sm"
-                        icon={RefreshCw}
-                        iconClassName={(isLoading || isLoadingReturns) ? "animate-spin text-pink-500" : "text-pink-500"}
-                        onClick={() => {
-                            fetchOrders();
-                            fetchReturnRequests();
-                        }}
-                        disabled={isLoading || isLoadingReturns}
-                    >
-                        Refresh
-                    </AppButton>
-                </div>
             </div>
 
             {/* Top-Level Main Tab Switcher */}

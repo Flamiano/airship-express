@@ -438,19 +438,8 @@ export const ReportDetailView: React.FC<ReportDetailViewProps> = ({
                             </div>
                         </div>
 
-                        {/* Top Action Buttons (Refresh, Print, Export Dropdown, Close) */}
+                        {/* Top Action Buttons (Print, Export Dropdown, Close) */}
                         <div className="flex items-center gap-2">
-                            {/* Refresh */}
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                disabled={isLoading}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#1f202e] border border-slate-200/80 dark:border-slate-700 hover:text-pink-600 shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] transition-all cursor-pointer disabled:opacity-50"
-                                title="Refresh report records"
-                            >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-pink-500' : ''}`} />
-                                <span className="hidden sm:inline">Refresh</span>
-                            </button>
 
                             {/* Print */}
                             <button

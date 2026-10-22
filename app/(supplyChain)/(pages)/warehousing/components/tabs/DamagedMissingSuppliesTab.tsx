@@ -575,7 +575,7 @@ export function DamagedMissingSuppliesTab({
                         type="button"
                         onClick={loadIncidents}
                         disabled={isLoadingIncidents}
-                        title="Reload Incidents from Database"
+                        title="Reload Incidents"
                         className="p-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-500 hover:text-pink-500 transition-colors cursor-pointer"
                     >
                         <RefreshCw className={`w-3.5 h-3.5 ${isLoadingIncidents ? "animate-spin" : ""}`} />
@@ -625,8 +625,8 @@ export function DamagedMissingSuppliesTab({
                 {isLoadingIncidents ? (
                     <div className="p-12 text-center">
                         <RefreshCw className="w-8 h-8 mx-auto text-pink-500 animate-spin mb-3" />
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Loading Incidents from Database...</h4>
-                        <p className="text-xs text-slate-400 mt-1">Connecting to warehouse_damage_incidents table.</p>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Loading Incidents...</h4>
+                        <p className="text-xs text-slate-400 mt-1">Fetching latest incident records.</p>
                     </div>
                 ) : filteredIncidents.length === 0 ? (
                     <div className="p-12 text-center">
@@ -638,7 +638,7 @@ export function DamagedMissingSuppliesTab({
                     </div>
                 ) : (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
+                        <table className="table-pro w-full text-left text-xs border-collapse">
                             <thead>
                                 <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
                                     <th className="pb-3">Incident #</th>
@@ -654,40 +654,40 @@ export function DamagedMissingSuppliesTab({
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {paginatedIncidents.map((inc) => (
                                     <tr key={inc.id} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                        <td className="py-3 font-mono font-bold text-pink-600 dark:text-pink-400">
+                                        <td data-label="Incident #" className="py-3 font-mono font-bold text-pink-600 dark:text-pink-400">
                                             {inc.incident_number}
                                             <div className="text-[10px] text-slate-400 font-sans">
                                                 {new Date(inc.reported_at).toLocaleDateString()}
                                             </div>
                                         </td>
 
-                                        <td className="py-3">
+                                        <td data-label="Item" className="py-3">
                                             <div className="font-bold text-slate-900 dark:text-slate-100">{inc.item_name}</div>
                                             <div className="text-[10px] text-slate-400 font-mono">
                                                 {inc.item_code} • {inc.category}
                                             </div>
                                         </td>
 
-                                        <td className="py-3">
+                                        <td data-label="Discrepancy" className="py-3">
                                             <div className="font-semibold text-slate-700 dark:text-slate-300">{inc.discrepancy_type}</div>
                                             {inc.incident_notes && (
                                                 <div className="text-[10px] text-slate-400 truncate max-w-xs">{inc.incident_notes}</div>
                                             )}
                                         </td>
 
-                                        <td className="py-3 text-right font-black text-red-600 dark:text-red-400 font-mono">
+                                        <td data-label="Quantity" className="py-3 text-right font-black text-red-600 dark:text-red-400 font-mono">
                                             -{inc.quantity} {inc.unit}
                                         </td>
 
-                                        <td className="py-3 text-right font-black text-slate-900 dark:text-white font-mono">
+                                        <td data-label="Est. Loss" className="py-3 text-right font-black text-slate-900 dark:text-white font-mono">
                                             ₱{inc.total_estimated_loss.toLocaleString()}
                                         </td>
 
-                                        <td className="py-3 text-slate-500 text-[11px]">
+                                        <td data-label="Location" className="py-3 text-slate-500 text-[11px]">
                                             {inc.detected_at_location || "-"}
                                         </td>
 
-                                        <td className="py-3">
+                                        <td data-label="Status" className="py-3">
                                             <select
                                                 value={inc.status}
                                                 onChange={(e) => handleUpdateStatus(inc.id, e.target.value as any)}
@@ -708,7 +708,7 @@ export function DamagedMissingSuppliesTab({
                                             </select>
                                         </td>
 
-                                        <td className="py-3 text-right">
+                                        <td data-label="Actions" className="py-3 text-right">
                                             <div className="flex items-center justify-end gap-1.5">
                                                 {inc.status !== "Replaced / Restored" ? (
                                                     <button

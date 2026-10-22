@@ -272,7 +272,7 @@ export default function IssuedPurchaseOrdersSection({
                 </div>
 
                 <div className="overflow-x-auto rounded-2xl border border-slate-200/70 dark:border-slate-800">
-                    <table className="w-full text-left text-xs border-collapse">
+                    <table className="table-pro w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200/80 dark:border-slate-800">
                                 <th className="py-3 px-3.5">PO Number</th>
@@ -288,7 +288,7 @@ export default function IssuedPurchaseOrdersSection({
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-200 font-medium">
                             {filteredOrders.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-8 text-center text-slate-400 italic">
+                                    <td colSpan={8} className="py-8 text-center text-slate-400 italic block w-full md:table-cell">
                                         No issued purchase order records match the criteria.
                                     </td>
                                 </tr>
@@ -298,7 +298,7 @@ export default function IssuedPurchaseOrdersSection({
                                         key={po.id}
                                         className="hover:bg-pink-50/50 dark:hover:bg-pink-950/15 transition-colors"
                                     >
-                                        <td className="py-3 px-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                                        <td className="py-3 px-3.5 font-mono font-bold text-slate-900 dark:text-white" data-label="PO Number">
                                             {po.po_number}
                                             {po.has_approval_inconsistency && (
                                                 <span
@@ -309,13 +309,13 @@ export default function IssuedPurchaseOrdersSection({
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="py-3 px-3.5 font-semibold text-slate-800 dark:text-slate-200">
+                                        <td className="py-3 px-3.5 font-semibold text-slate-800 dark:text-slate-200" data-label="Supplier Name">
                                             {po.supplier_name}
                                         </td>
-                                        <td className="py-3 px-3.5 text-right font-black font-mono text-pink-600 dark:text-pink-400">
+                                        <td className="py-3 px-3.5 text-right font-black font-mono text-pink-600 dark:text-pink-400" data-label="Authoritative Total">
                                             ₱{po.total_amount.toLocaleString()}
                                         </td>
-                                        <td className="py-3 px-3.5">
+                                        <td className="py-3 px-3.5" data-label="Ordered Items">
                                             <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                                                 {po.distinct_items.length > 0 ? po.distinct_items.join(", ") : "Standard Supply"}
                                             </div>
@@ -323,7 +323,7 @@ export default function IssuedPurchaseOrdersSection({
                                                 {po.items_count} line item{po.items_count === 1 ? "" : "s"}
                                             </div>
                                         </td>
-                                        <td className="py-3 px-3.5 text-center">
+                                        <td className="py-3 px-3.5 text-center" data-label="Delivery Status">
                                             <StatusBadge
                                                 tone={getDeliveryStatusTone(po.delivery_status)}
                                                 dot
@@ -331,17 +331,17 @@ export default function IssuedPurchaseOrdersSection({
                                                 {po.delivery_status}
                                             </StatusBadge>
                                         </td>
-                                        <td className="py-3 px-3.5 text-center">
+                                        <td className="py-3 px-3.5 text-center" data-label="Financial Approval">
                                             <StatusBadge
                                                 tone={po.financial_approval === "Approved" ? "emerald" : "amber"}
                                             >
                                                 {po.financial_approval || "Pending"}
                                             </StatusBadge>
                                         </td>
-                                        <td className="py-3 px-3.5 text-center font-mono text-[11px] text-slate-500">
+                                        <td className="py-3 px-3.5 text-center font-mono text-[11px] text-slate-500" data-label="Target Delivery Date">
                                             {po.delivery_date || "Open Schedule"}
                                         </td>
-                                        <td className="py-3 px-3.5 text-center">
+                                        <td className="py-3 px-3.5 text-center" data-label="Action">
                                             <button
                                                 type="button"
                                                 onClick={() => setSelectedPO(po)}

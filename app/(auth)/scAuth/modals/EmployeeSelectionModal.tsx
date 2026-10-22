@@ -240,22 +240,6 @@ export default function EmployeeSelectionModal({
                             </button>
                         </div>
 
-                        {/* user info bar */}
-                        <div className="px-4 sm:px-6 py-2.5 sm:py-3 bg-[#EAF0F6] dark:bg-[#13161F] border-b border-white/60 dark:border-white/[0.06] flex items-center justify-between text-xs shrink-0 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)]">
-                            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-                                <span className="text-slate-500 dark:text-slate-400 font-medium">Logged in as:</span>
-                                <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[140px] sm:max-w-none">
-                                    {loggedInUser?.display_name || maskEmail(loggedInUser?.email)}
-                                </span>
-                                <span className={`px-2.5 py-0.5 rounded-lg font-semibold text-[10px] sm:text-[11px] tracking-wide shadow-[1px_1px_3px_rgba(0,0,0,0.05)] ${getRoleColor(loggedInUser?.role)}`}>
-                                    {loggedInUser?.role}
-                                </span>
-                            </div>
-                            <span className="text-slate-500 dark:text-slate-400 hidden sm:inline-block font-medium">
-                                {isSupplier ? 'Select a supplier account to verify' : isSpecialRole ? 'Select an account to verify' : 'Select an employee to verify'}
-                            </span>
-                        </div>
-
                         {isDeviceBlocked ? (
                             // device blocked view
                             <div className="p-4 sm:p-8 text-center flex-1 overflow-y-auto custom-scrollbar bg-[#EEF2F6] dark:bg-[#161A23]">

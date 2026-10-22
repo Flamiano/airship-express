@@ -193,9 +193,6 @@ export const DEFAULT_PAGE_PERMISSIONS: Record<string, string[]> = {
     '/trash': ['Superadmin', 'Admin', 'Purchase Officer'],
     '/user-activity': ['Superadmin', 'Executive'],
     '/settings': ['Superadmin', 'Executive'],
-    '/suppliers_page': ['Supplier'],
-    '/suppliers_page/purchase-orders': ['Supplier'],
-    '/suppliers_page/messages': ['Supplier'],
 };
 
 /**

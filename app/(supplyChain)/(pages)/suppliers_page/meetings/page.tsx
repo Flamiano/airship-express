@@ -196,23 +196,10 @@ export default function SupplierMeetingsPage() {
                         </p>
                     </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                    <button
-                        type="button"
-                        onClick={fetchMeetingsData}
-                        disabled={isLoading}
-                        className="px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#1a1c2c] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.06] cursor-pointer flex items-center gap-2"
-                        title="Reload meetings"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-pink-500" : ""}`} />
-                        <span className="text-xs font-black">Refresh</span>
-                    </button>
-                </div>
             </div>
 
             {/* Quick Metrics Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.9),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-3px_-3px_8px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center justify-between">
                         <div>

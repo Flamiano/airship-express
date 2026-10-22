@@ -946,7 +946,7 @@ export default function MonthlyIntelligencePanel() {
                             </div>
                         ) : (
                             <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.25)]">
-                                <table className="w-full text-left text-xs">
+                                <table className="table-pro w-full text-left text-xs">
                                     <thead className="bg-slate-200/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200/60 dark:border-slate-800">
                                         <tr>
                                             <th className="p-3 pl-4">Item Code &amp; Name</th>
@@ -960,17 +960,17 @@ export default function MonthlyIntelligencePanel() {
                                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800/50">
                                         {metrics.inventoryVelocity.fastDepleting.map((item) => (
                                             <tr key={item.id} className="hover:bg-white/40 dark:hover:bg-slate-800/30 transition-colors">
-                                                <td className="p-3 pl-4 font-semibold text-slate-900 dark:text-white">
+                                                <td className="p-3 pl-4 font-semibold text-slate-900 dark:text-white" data-label="Item Code & Name">
                                                     <div>{item.item_name}</div>
                                                     <div className="text-[10px] text-slate-400">{item.item_code}</div>
                                                 </td>
-                                                <td className="p-3 text-slate-600 dark:text-slate-400">{item.category}</td>
-                                                <td className="p-3 font-bold text-pink-600 dark:text-pink-400">
+                                                <td className="p-3 text-slate-600 dark:text-slate-400" data-label="Category">{item.category}</td>
+                                                <td className="p-3 font-bold text-pink-600 dark:text-pink-400" data-label="Current Stock">
                                                     {item.current_stock} {item.unit}
                                                 </td>
-                                                <td className="p-3 text-slate-500">{item.minimum_stock} {item.unit}</td>
-                                                <td className="p-3 text-slate-500">{item.storage_location}</td>
-                                                <td className="p-3 pr-4">
+                                                <td className="p-3 text-slate-500" data-label="Min Stock">{item.minimum_stock} {item.unit}</td>
+                                                <td className="p-3 text-slate-500" data-label="Location">{item.storage_location}</td>
+                                                <td className="p-3 pr-4" data-label="Depletion Risk">
                                                     <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${
                                                         item.riskLevel === "Critical"
                                                             ? "bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/30"
@@ -1005,7 +1005,7 @@ export default function MonthlyIntelligencePanel() {
                             </div>
                         ) : (
                             <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_1px_1px_3px_rgba(166,175,195,0.25)]">
-                                <table className="w-full text-left text-xs">
+                                <table className="table-pro w-full text-left text-xs">
                                     <thead className="bg-slate-200/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-300 font-bold border-b border-slate-200/60 dark:border-slate-800">
                                         <tr>
                                             <th className="p-3 pl-4">Item Code &amp; Name</th>
@@ -1018,18 +1018,18 @@ export default function MonthlyIntelligencePanel() {
                                     <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800/50">
                                         {metrics.inventoryVelocity.untouched.map((item) => (
                                             <tr key={item.id} className="hover:bg-white/40 dark:hover:bg-slate-800/30 transition-colors">
-                                                <td className="p-3 pl-4 font-semibold text-slate-900 dark:text-white">
+                                                <td className="p-3 pl-4 font-semibold text-slate-900 dark:text-white" data-label="Item Code & Name">
                                                     <div>{item.item_name}</div>
                                                     <div className="text-[10px] text-slate-400">{item.item_code}</div>
                                                 </td>
-                                                <td className="p-3 text-slate-600 dark:text-slate-400">{item.category}</td>
-                                                <td className="p-3 font-semibold text-slate-800 dark:text-slate-200">
+                                                <td className="p-3 text-slate-600 dark:text-slate-400" data-label="Category">{item.category}</td>
+                                                <td className="p-3 font-semibold text-slate-800 dark:text-slate-200" data-label="Current Stock">
                                                     {item.current_stock} {item.unit}
                                                 </td>
-                                                <td className="p-3 text-slate-600 dark:text-slate-400">
+                                                <td className="p-3 text-slate-600 dark:text-slate-400" data-label="Holding Value">
                                                     ₱{item.holdingValue.toLocaleString()}
                                                 </td>
-                                                <td className="p-3 pr-4 text-slate-500">{item.storage_location}</td>
+                                                <td className="p-3 pr-4 text-slate-500" data-label="Storage Location">{item.storage_location}</td>
                                             </tr>
                                         ))}
                                     </tbody>

@@ -267,34 +267,28 @@ export function StageFindPotentialSuppliers({
                 </div>
             )}
 
-            {/* Sourcing Hub Configuration Container */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] shadow-[-6px_-6px_16px_rgba(255,255,255,0.85),_6px_6px_16px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.02),_2px_2px_10px_rgba(0,0,0,0.55)] space-y-5">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                    <Compass className="w-5 h-5 text-pink-500" />
+                    <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                        Find Potential Suppliers &amp; Logistics Sourcing Map
+                    </h3>
+                </div>
                 <div className="flex items-center justify-between gap-4 flex-wrap">
                     <div>
                         <div className="flex items-center gap-2.5 flex-wrap">
-                            <Compass className="w-5 h-5 text-pink-500" />
-                            <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                                Find Potential Suppliers &amp; Logistics Sourcing Map
-                            </h3>
                             {/* Saved suppliers counter & link to /procurement?stage=3 */}
                             <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)]">
                                 <Store className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                                <span className="text-[11px] font-black text-slate-800 dark:text-slate-100">
-                                    {suppliers.length} Saved
-                                </span>
-                                <span className="text-slate-300 dark:text-slate-600">•</span>
                                 <a
                                     href="/procurement?stage=3"
                                     className="text-[11px] font-black text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline flex items-center gap-1 cursor-pointer"
                                     title="View saved potential suppliers and quotations in Stage 3"
                                 >
-                                    <span>View in /procurement?stage=3 &rarr;</span>
+                                    <span className="underlined">View Supplier Quotations&rarr;</span>
                                 </a>
                             </div>
                         </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                            Search nearby stores and hardware vendors via OpenStreetMap Overpass API, compute distances to Airship HQ, and request quotes.
-                        </p>
                     </div>
 
                     <button
@@ -343,7 +337,7 @@ export function StageFindPotentialSuppliers({
                                 )}
                             </div>
                             <span className="text-[10px] text-slate-400 font-medium mt-1 block">
-                                Origin is fixed to Airship HQ ({ORIGIN_LOCATION}). Type to filter shortage items below or trigger supplier search.
+                                Origin is fixed to Airship HQ ({ORIGIN_LOCATION}).
                             </span>
                         </div>
 
@@ -377,7 +371,7 @@ export function StageFindPotentialSuppliers({
                             ) : (
                                 <Search className="w-3.5 h-3.5" />
                             )}
-                            <span>Search Nearby Suppliers ({selectedRadius}km from {ORIGIN_LOCATION})</span>
+                            <span>Find Suppliers ({selectedRadius}km from {ORIGIN_LOCATION})</span>
                         </button>
                     </div>
                 </div>

@@ -434,29 +434,6 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
 
                 {/* Status Filter Buttons + Realtime Status Badge */}
                 <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                    {/* Live Realtime Indicator */}
-                    <div
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-[#ebf0f7] dark:bg-[#1d1e28] border border-white/80 dark:border-[#2a2b38] shadow-[2px_2px_5px_rgba(166,175,195,0.3),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] shrink-0"
-                        title={isRealtimeActive ? 'Realtime sync connected: Instant updates for schedule & permission changes' : 'Reconnecting realtime...'}
-                    >
-                        <span className="relative flex h-2 w-2">
-                            {isRealtimeActive && (
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            )}
-                            <span className={`relative inline-flex rounded-full h-2 w-2 ${isRealtimeActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                        </span>
-                        <span className="text-slate-600 dark:text-slate-300">Live</span>
-                        {onRefresh && (
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                className="ml-1 text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 cursor-pointer transition-colors p-0.5"
-                                title="Sync now"
-                            >
-                                <i className={`fas fa-rotate-right text-[10px] ${isLoading ? 'fa-spin text-pink-500' : ''}`} />
-                            </button>
-                        )}
-                    </div>
 
                     <button
                         type="button"
@@ -604,7 +581,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
             {/* Table / List */}
             <div className="bg-[#ebf0f7] dark:bg-[#181924] border border-white/80 dark:border-white/[0.08] rounded-3xl shadow-[4px_4px_12px_rgba(166,175,195,0.35),-4px_-4px_12px_rgba(255,255,255,0.95)] dark:shadow-[4px_4px_14px_rgba(0,0,0,0.6),-1px_-1px_3px_rgba(255,255,255,0.03)] overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="table-pro w-full text-left border-collapse">
                         <thead>
                             <tr className="border-b border-white/60 dark:border-white/[0.06] bg-white/40 dark:bg-white/[0.02] text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                                 {/* Checkbox Select All Column */}
@@ -629,14 +606,14 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                         <tbody className="divide-y divide-white/50 dark:divide-white/[0.04] text-xs">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-slate-500">
+                                    <td colSpan={8} className="block w-full md:table-cell py-12 text-center text-slate-500">
                                         <i className="fas fa-circle-notch fa-spin text-lg text-pink-500 mb-2 block" />
                                         <span>Loading user access controls...</span>
                                     </td>
                                 </tr>
                             ) : paginatedList.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-12 text-center text-slate-500">
+                                    <td colSpan={8} className="block w-full md:table-cell py-12 text-center text-slate-500">
                                         <i className="fas fa-user-shield text-2xl text-slate-300 dark:text-slate-600 mb-2 block" />
                                         <p className="font-semibold">No user access records found</p>
                                         <p className="text-[11px] text-slate-400">
@@ -669,7 +646,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             } ${isRequested ? 'bg-amber-500/[0.06] dark:bg-amber-950/20' : ''}`}
                                         >
                                             {/* Row Checkbox */}
-                                            <td className="py-3.5 px-4 text-center">
+                                            <td data-label="Select" className="py-3.5 px-4 text-center">
                                                 <input
                                                     type="checkbox"
                                                     checked={isSelected}
@@ -683,7 +660,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* User Details */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="User Details" className="py-3.5 px-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-8 h-8 rounded-full text-white font-bold text-xs flex items-center justify-center shrink-0 ${
                                                         isTargetAdmin 
@@ -704,7 +681,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Role */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="Role" className="py-3.5 px-4">
                                                 <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
                                                     isTargetAdmin
                                                         ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-900/60'
@@ -715,7 +692,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Login Access Toggle with Loading State */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="Login Access" className="py-3.5 px-4">
                                                 <div className="flex items-center gap-2">
                                                     <button
                                                         type="button"
@@ -770,7 +747,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Allowed Days */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="Allowed Days" className="py-3.5 px-4">
                                                 <div className="flex flex-wrap gap-1 max-w-xs">
                                                     {(session.allowed_days && session.allowed_days.length > 0 ? session.allowed_days : DEFAULT_ALLOWED_DAYS).map(d => (
                                                         <span
@@ -784,7 +761,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Allowed Hours */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="Allowed Hours" className="py-3.5 px-4">
                                                 <span className="font-semibold text-slate-700 dark:text-slate-300 text-[11px] flex items-center gap-1.5">
                                                     <i className="fas fa-clock text-slate-400 text-[10px]" />
                                                     {formatTimeWindow(session.allowed_time_start, session.allowed_time_end)}
@@ -792,7 +769,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Auth Status & Indicator */}
-                                            <td className="py-3.5 px-4">
+                                            <td data-label="Auth Status" className="py-3.5 px-4">
                                                 {isRequested ? (
                                                     <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-800 text-[10px] font-bold animate-pulse">
                                                         <span className="relative flex h-2 w-2">
@@ -815,7 +792,7 @@ export const AccessControlTab: React.FC<AccessControlTabProps> = ({
                                             </td>
 
                                             {/* Actions */}
-                                            <td className="py-3.5 px-4 text-right">
+                                            <td data-label="Actions" className="py-3.5 px-4 text-right">
                                                 <div className="flex items-center justify-end gap-1.5">
                                                     {isRequested ? (
                                                         <button

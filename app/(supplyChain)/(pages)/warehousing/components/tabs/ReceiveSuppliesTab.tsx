@@ -798,7 +798,7 @@ export function ReceiveSuppliesTab({
                                             Ordered Items Breakdown:
                                         </h5>
                                         <div className="overflow-x-auto">
-                                            <table className="w-full text-left text-xs">
+                                            <table className="table-pro w-full text-left text-xs border-collapse">
                                                 <thead>
                                                     <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
                                                         <th className="pb-2">Item Name</th>
@@ -817,19 +817,19 @@ export function ReceiveSuppliesTab({
 
                                                         return (
                                                             <tr key={idx} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                                                <td className="py-2.5 font-bold text-slate-800 dark:text-slate-200">
+                                                                <td data-label="Item Name" className="py-2.5 font-bold text-slate-800 dark:text-slate-200">
                                                                     {item.item_name || item.name || "Supplies"}
                                                                 </td>
-                                                                <td className="py-2.5 font-mono text-[11px] text-slate-400">
+                                                                <td data-label="SKU / Code" className="py-2.5 font-mono text-[11px] text-slate-400">
                                                                     {item.item_code || matchedInv?.item_code || "—"}
                                                                 </td>
-                                                                <td className="py-2.5 text-right font-black text-pink-600 dark:text-pink-400">
+                                                                <td data-label="Quantity" className="py-2.5 text-right font-black text-pink-600 dark:text-pink-400">
                                                                     {item.quantity || item.quantity_ordered || 1} {item.unit || "units"}
                                                                 </td>
-                                                                <td className="py-2.5 text-right text-slate-600 dark:text-slate-300 font-mono">
+                                                                <td data-label="Unit Price" className="py-2.5 text-right text-slate-600 dark:text-slate-300 font-mono">
                                                                     ₱{Number(item.unit_price || item.price || 0).toLocaleString()}
                                                                 </td>
-                                                                <td className="py-2.5 text-right font-bold text-slate-700 dark:text-slate-300">
+                                                                <td data-label="Warehouse Stock" className="py-2.5 text-right font-bold text-slate-700 dark:text-slate-300">
                                                                     {matchedInv ? `${matchedInv.current_stock} ${matchedInv.unit}` : "Not in inventory"}
                                                                 </td>
                                                             </tr>

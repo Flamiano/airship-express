@@ -1160,6 +1160,11 @@ export default function SettingsContentWrapper() {
                                                         : 'border-white/60 dark:border-white/[0.08] focus:border-accent'
                                                 } ${isExecutive && !isExecutiveUser ? 'opacity-70 cursor-not-allowed' : ''}`}
                                             >
+                                                {!DEFAULT_PAGE_PERMISSIONS.some(p => p.route === currentTarget) && (
+                                                    <option value={currentTarget}>
+                                                        {currentTarget}
+                                                    </option>
+                                                )}
                                                 {DEFAULT_PAGE_PERMISSIONS.map((p) => {
                                                     const isPrivileged = role === 'Admin' || role === 'Executive';
                                                     const pageAllowed = settingsService.canAccessPage(role, p.route);

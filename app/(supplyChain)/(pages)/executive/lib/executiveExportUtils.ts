@@ -465,7 +465,7 @@ function exportExecutivePdf(
     </div>
     <div class="meta-box">
       <div><strong>Generated:</strong> ${reportDate}, ${reportTime}</div>
-      <div><strong>Status:</strong> Live Database Synchronized</div>
+      <div><strong>Status:</strong> Synchronized</div>
       <div><strong>Layout:</strong> ${includeCharts ? 'Visual Charts & Tables' : 'Text & Tables Only'}</div>
     </div>
   </div>
@@ -665,7 +665,7 @@ function exportExecutivePdf(
   ${showReports ? `
   <div class="section-title">
     <span>AUDIT LEDGER & RECENT PURCHASE ORDERS</span>
-    <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">Top 15 Verified Database Entries</span>
+    <span style="font-size: 8.5px; font-weight: normal; color: #64748b;">Top 15 Verified Entries</span>
   </div>
   <table class="table-custom">
     <thead>
@@ -982,7 +982,7 @@ function exportExecutiveExcel(
       <td colspan="5" class="title">AIRSHIP EXPRESS - ${scopeTitles[scope].toUpperCase()}</td>
     </tr>
     <tr>
-      <td colspan="5" class="subtitle">Generated on ${reportDate} | Live Database Synchronized</td>
+      <td colspan="5" class="subtitle">Generated on ${reportDate} | Synchronized</td>
     </tr>
     <tr><td></td></tr>
 

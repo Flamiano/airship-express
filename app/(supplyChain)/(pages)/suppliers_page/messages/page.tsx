@@ -91,7 +91,10 @@ function formatWeekRange(start: Date, end: Date) {
     return `${startStr} - ${endStr}`;
 }
 
+console.log("--> [SCRIPT TOP LEVEL] suppliers_page/messages/page.tsx evaluated");
+
 function SupplierMessagesContent() {
+    console.log("--> [COMPONENT RENDER] SupplierMessagesContent invoked");
     const searchParams = useSearchParams();
     const defaultPoNumber = searchParams ? searchParams.get("po") || "" : "";
 
@@ -132,15 +135,14 @@ function SupplierMessagesContent() {
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
     useEffect(() => {
-        const email = user.getEmail() || "";
-        const name = user.getName() || "Supplier Representative";
-        const id = user.getUserId() || null;
+        const email = user.getEmail() || (typeof window !== "undefined" ? sessionStorage.getItem("user_email") || "" : "");
+        const name = user.getName() || (typeof window !== "undefined" ? sessionStorage.getItem("user_name") || "" : "") || "Supplier Representative";
+        const id = user.getUserId() || (typeof window !== "undefined" ? sessionStorage.getItem("user_id") || null : null);
         setCurrentUserEmail(email);
         setCurrentUserName(name);
         setCurrentUserId(id);
-        if (email) {
-            fetchChatData(email);
-        }
+
+        fetchChatData(email);
     }, []);
 
     const scrollToBottom = () => {
@@ -229,57 +231,175 @@ function SupplierMessagesContent() {
 
     // Fast Parallel Fetch
     const fetchChatData = async (overrideEmail?: string) => {
-        const emailToLookup = (overrideEmail || currentUserEmail || user.getEmail() || "").trim();
-        if (!emailToLookup) return;
         setIsLoading(true);
 
+        // Safety watchdog: ensure loading state never hangs permanently
+        const safetyTimer = setTimeout(() => {
+            setIsLoading(false);
+        }, 5000);
+
         try {
-            const { data: acc, error: accErr } = await supabase
-                .from("suppliers_account")
-                .select("*, suppliers(*)")
-                .ilike("email", emailToLookup)
-                .maybeSingle();
-
-            if (accErr || !acc) {
-                console.warn("Supplier account lookup returned:", accErr, acc);
-                setIsLoading(false);
-                return;
+            let emailToLookup = (overrideEmail || currentUserEmail || user.getEmail() || "").trim();
+            if (!emailToLookup && typeof window !== "undefined") {
+                emailToLookup = (sessionStorage.getItem("user_email") || localStorage.getItem("user_email") || "").trim();
             }
 
-            setSupplierAccount(acc);
+            // If still no email from storage/in-memory, query validate-session API (uses session cookie)
+            if (!emailToLookup && typeof window !== "undefined") {
+                try {
+                    const sessionRes = await fetch("/api/supplyChain/validate-session", {
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                    });
+                    if (sessionRes.ok) {
+                        const sessionData = await sessionRes.json();
+                        if (sessionData?.user?.email) {
+                            emailToLookup = String(sessionData.user.email).trim();
+                            setCurrentUserEmail(emailToLookup);
+                            if (sessionData.user.name) setCurrentUserName(sessionData.user.name);
+                            if (sessionData.user.id) setCurrentUserId(sessionData.user.id);
+                        }
+                    }
+                } catch (sessionErr) {
+                    console.warn("Could not retrieve session from validate-session API:", sessionErr);
+                }
+            }
 
-            const [posRes, msgsRes] = await Promise.all([
-                supabase
+            let resolvedSupplierAccount: any = null;
+            let targetSupplierId: string | number | null = null;
+
+            // 1. Try lookup in suppliers_account by email
+            if (emailToLookup) {
+                const { data: acc, error: accErr } = await supabase
+                    .from("suppliers_account")
+                    .select("*, suppliers(*)")
+                    .ilike("email", emailToLookup)
+                    .maybeSingle();
+
+                if (acc && !accErr) {
+                    resolvedSupplierAccount = acc;
+                    targetSupplierId = acc.supplier_id;
+                } else {
+                    // 2. Try lookup in suppliers table by email (table does not have contact_email)
+                    const { data: sup } = await supabase
+                        .from("suppliers")
+                        .select("*")
+                        .ilike("email", emailToLookup)
+                        .maybeSingle();
+
+                    if (sup) {
+                        resolvedSupplierAccount = {
+                            id: sup.id,
+                            supplier_id: sup.id,
+                            email: sup.email || emailToLookup,
+                            company_name: sup.name,
+                            suppliers: sup,
+                        };
+                        targetSupplierId = sup.id;
+                    }
+                }
+            }
+
+            // 3. Fallback: If PO parameter was passed (?po=PO-xxxx), resolve supplier from that PO
+            if (!targetSupplierId && defaultPoNumber) {
+                const { data: poMatch } = await supabase
                     .from("purchase_orders")
-                    .select("id, po_number, status, total_amount")
-                    .eq("supplier_id", acc.supplier_id)
-                    .order("created_at", { ascending: false }),
-                supabase
-                    .from("messages")
-                    .select("*")
-                    .eq("supplier_id", acc.supplier_id)
-                    .order("created_at", { ascending: true })
-            ]);
+                    .select("*, suppliers(*)")
+                    .eq("po_number", defaultPoNumber)
+                    .maybeSingle();
 
-            if (posRes.data) {
-                const uniquePoMap = new Map();
-                posRes.data.forEach((po: any) => {
-                    if (po.id) uniquePoMap.set(po.id, po);
-                });
-                setPurchaseOrders(Array.from(uniquePoMap.values()));
+                if (poMatch?.supplier_id) {
+                    targetSupplierId = poMatch.supplier_id;
+                    resolvedSupplierAccount = {
+                        supplier_id: poMatch.supplier_id,
+                        email: poMatch.suppliers?.email || emailToLookup,
+                        company_name: poMatch.suppliers?.name,
+                        suppliers: poMatch.suppliers,
+                    };
+                }
             }
 
-            if (msgsRes.data) {
-                const uniqueMap = new Map();
-                msgsRes.data.forEach((m: any) => {
-                    uniqueMap.set(m.id, { ...m, send_status: "sent" });
-                });
-                setMessages(Array.from(uniqueMap.values()));
+            // 4. Fallback for internal staff/admins viewing portal: load first available supplier so chat can be previewed/tested
+            if (!targetSupplierId) {
+                const { data: fallbackSup } = await supabase
+                    .from("suppliers")
+                    .select("*")
+                    .order("name", { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (fallbackSup) {
+                    targetSupplierId = fallbackSup.id;
+                    resolvedSupplierAccount = {
+                        supplier_id: fallbackSup.id,
+                        email: fallbackSup.email || emailToLookup,
+                        company_name: fallbackSup.name,
+                        suppliers: fallbackSup,
+                    };
+                }
+            }
+
+            if (resolvedSupplierAccount) {
+                setSupplierAccount(resolvedSupplierAccount);
+            }
+
+            if (targetSupplierId) {
+                const [posRes, msgsRes] = await Promise.all([
+                    supabase
+                        .from("purchase_orders")
+                        .select("id, po_number, status, total_amount")
+                        .eq("supplier_id", targetSupplierId)
+                        .order("created_at", { ascending: false }),
+                    supabase
+                        .from("messages")
+                        .select("*")
+                        .eq("supplier_id", targetSupplierId)
+                        .order("created_at", { ascending: true })
+                ]);
+
+                if (posRes.data) {
+                    const uniquePoMap = new Map();
+                    posRes.data.forEach((po: any) => {
+                        if (po.id) uniquePoMap.set(po.id, po);
+                    });
+                    setPurchaseOrders(Array.from(uniquePoMap.values()));
+                }
+
+                let loadedMessages = msgsRes.data || [];
+
+                // If direct Supabase query returned no messages or errored, try server /api/messages fallback
+                if (!loadedMessages || loadedMessages.length === 0) {
+                    try {
+                        const apiRes = await fetch(`/api/messages?supplier_id=${targetSupplierId}`);
+                        if (apiRes.ok) {
+                            const apiJson = await apiRes.json();
+                            if (apiJson.success && Array.isArray(apiJson.data)) {
+                                loadedMessages = apiJson.data;
+                            }
+                        }
+                    } catch (apiErr) {
+                        console.warn("Fallback /api/messages error:", apiErr);
+                    }
+                }
+
+                if (loadedMessages && loadedMessages.length > 0) {
+                    const uniqueMap = new Map();
+                    loadedMessages.forEach((m: any) => {
+                        uniqueMap.set(m.id, { ...m, send_status: "sent" });
+                    });
+                    setMessages(Array.from(uniqueMap.values()));
+                } else {
+                    setMessages([]);
+                }
+            } else {
+                setPurchaseOrders([]);
+                setMessages([]);
             }
         } catch (err) {
             console.error("Error fetching messages:", err);
             toast.error("Failed to load messages");
         } finally {
+            clearTimeout(safetyTimer);
             setIsLoading(false);
             setTimeout(scrollToBottom, 100);
         }
@@ -418,6 +538,16 @@ function SupplierMessagesContent() {
             if (acc?.supplier_id) {
                 activeSupplierId = acc.supplier_id;
                 setSupplierAccount((prev: any) => ({ ...prev, supplier_id: acc.supplier_id }));
+            } else {
+                const { data: sup } = await supabase
+                    .from("suppliers")
+                    .select("id")
+                    .ilike("email", currentUserEmail.trim())
+                    .maybeSingle();
+                if (sup?.id) {
+                    activeSupplierId = sup.id;
+                    setSupplierAccount((prev: any) => ({ ...prev, supplier_id: sup.id }));
+                }
             }
         }
 
@@ -879,15 +1009,6 @@ function SupplierMessagesContent() {
                         Direct, confidential 1-on-1 communication channel with Airship Express Admins and Supply Chain Managers.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => fetchChatData()}
-                    disabled={isLoading}
-                    className="self-start sm:self-auto px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-[#ebf0f7] dark:bg-[#1a1b26] border border-white/80 dark:border-white/[0.08] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.6)] hover:shadow-[1px_1px_3px_rgba(166,175,195,0.3)] active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
-                >
-                    <RefreshCw className={`w-3.5 h-3.5 text-pink-500 ${isLoading ? "animate-spin" : ""}`} />
-                    <span>Refresh</span>
-                </button>
             </div>
 
             {/* KPI Stat Cards */}

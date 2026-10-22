@@ -73,31 +73,7 @@ export const BlockedDevicesTab: React.FC<BlockedDevicesTabProps> = ({
                     />
                 </div>
 
-                <div className="flex items-center gap-2">
-                    {/* Live Realtime Indicator */}
-                    <div
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold bg-[#ebf0f7] dark:bg-[#1d1e28] border border-white/80 dark:border-[#2a2b38] shadow-[2px_2px_5px_rgba(166,175,195,0.3),-2px_-2px_5px_rgba(255,255,255,0.8)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] shrink-0"
-                        title={isRealtimeActive ? 'Realtime sync connected: Instant updates for blocked device access' : 'Reconnecting realtime...'}
-                    >
-                        <span className="relative flex h-2 w-2">
-                            {isRealtimeActive && (
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            )}
-                            <span className={`relative inline-flex rounded-full h-2 w-2 ${isRealtimeActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                        </span>
-                        <span className="text-slate-600 dark:text-slate-300">Live</span>
-                        {onRefresh && (
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                className="ml-1 text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 cursor-pointer transition-colors p-0.5"
-                                title="Sync now"
-                            >
-                                <i className={`fas fa-rotate-right text-[10px] ${isLoading ? 'fa-spin text-pink-500' : ''}`} />
-                            </button>
-                        )}
-                    </div>
-                </div>
+
             </div>
 
             {/* bulk actions banner */}

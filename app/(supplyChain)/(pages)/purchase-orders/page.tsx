@@ -1656,14 +1656,6 @@ export default function PurchaseOrders() {
                         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 transition-colors">
                             Manage approved purchase orders, supplier orders, and delivery tracking.
                         </p>
-                        <div className="inline-flex items-center gap-2 mt-2 px-3.5 py-1.5 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.65)] transition-all">
-                            <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
-                            <i className="fas fa-user-tag text-[11px] text-pink-500 dark:text-pink-400" />
-                            <span className="font-medium text-slate-500 dark:text-slate-400">Role:</span>
-                            <span className="font-bold text-slate-800 dark:text-slate-100 capitalize">
-                                {userRole}
-                            </span>
-                        </div>
                     </div>
                 </div>
 
@@ -1686,19 +1678,15 @@ export default function PurchaseOrders() {
             <AiQuestions title="AI Suggested Questions" subtitle="Click to ask" questions={[
                 {
                     question: "PO summary",
-                    color: "bg-pink-500"
                 },
                 {
                     question: "Top suppliers by spend?",
-                    color: "bg-amber-500"
                 },
                 {
-                    question: "Delayed purchase orders?",
-                    color: "bg-blue-500"
+                    question: "Delayed purchase orders?"
                 },
                 {
-                    question: "Payment status breakdown?",
-                    color: "bg-emerald-500"
+                    question: "Payment status breakdown?"
                 }
             ]} />
 
@@ -1994,7 +1982,7 @@ export default function PurchaseOrders() {
 
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                                     {filteredOrders.length === 0 ? (<tr>
-                                        <td colSpan={10} className="py-12">
+                                        <td colSpan={10} className="block w-full md:table-cell py-12">
                                             <EmptyState
                                                 title={activeStatusFilter !== 'all' || debouncedSearch ? "No Purchase Orders Found" : "No Purchase Orders Yet"}
                                                 description={activeStatusFilter !== 'all'
@@ -2020,7 +2008,7 @@ export default function PurchaseOrders() {
                                         const rowBusy = pendingRowId === order.id || isRowVerifying;
                                         const isSelected = selectedIds.has(order.id);
                                         return (<tr key={order.id} onClick={() => !rowBusy && openOrderModal(order, 'details')} className={`group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${rowBusy ? "opacity-60 cursor-not-allowed" : "cursor-pointer"} ${isSelected ? "bg-pink-50/30 dark:bg-pink-950/20" : "bg-transparent"}`}>
-                                            <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                                            <td data-label="Select" className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                                                 <input type="checkbox" disabled={rowBusy} className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600 disabled:opacity-50" checked={isSelected} onChange={() => handleSelectOne(order.id)} />
                                             </td>
                                             <td data-label="PO #" className="py-3.5 px-4 font-mono text-xs font-semibold text-slate-900 dark:text-white whitespace-nowrap">

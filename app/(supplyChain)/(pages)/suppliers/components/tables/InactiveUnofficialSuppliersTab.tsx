@@ -50,7 +50,7 @@ interface InactiveUnofficialSuppliersTabProps {
     onViewPurchaseOrder?: (po: any) => void;
 }
 
-const ITEMS_PER_PAGE = 8;
+const ITEMS_PER_PAGE = 10;
 
 export function InactiveUnofficialSuppliersTab({
     onRefreshParent,
@@ -279,14 +279,11 @@ export function InactiveUnofficialSuppliersTab({
     }, [suppliersList]);
 
     const categoryOptions: SearchableDropdownOption[] = useMemo(() => {
-        return [
-            { value: "all", label: "All Categories", icon: "fas fa-layer-group" },
-            ...categories.map((cat) => ({
-                value: cat,
-                label: cat,
-                icon: "fas fa-tags",
-            })),
-        ];
+        return categories.map((cat) => ({
+            value: cat,
+            label: cat,
+            icon: "fas fa-tags",
+        }));
     }, [categories]);
 
     // Filter and Sort
@@ -399,37 +396,6 @@ export function InactiveUnofficialSuppliersTab({
         <div className="space-y-6 animate-in fade-in duration-200">
             {/* Header Card & Filter Bar */}
             <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75)] space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 dark:border-slate-800/80 pb-4">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-2xl bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30 flex items-center justify-center font-bold text-base shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35)]">
-                            <Building2 className="w-5 h-5" />
-                        </div>
-                        <div>
-                            <div className="flex items-center gap-2">
-                                <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                                    Inactive &amp; Unofficial Suppliers Directory
-                                </h2>
-                                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-mono font-black bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30">
-                                    {suppliersList.length} Total
-                                </span>
-                            </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
-                                Audit transaction histories, schedule verification meetings, and manage vendor records pending official activation.
-                            </p>
-                        </div>
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => loadInactiveSuppliersData(true)}
-                        className="p-2.5 px-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#1a1c2c] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.06] cursor-pointer flex items-center gap-2 self-start sm:self-auto"
-                        title="Refresh List"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-pink-500" : ""}`} />
-                        <span className="text-xs font-black">Refresh</span>
-                    </button>
-                </div>
-
                 {/* Filter and Search Controls */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Search Bar */}
@@ -452,11 +418,13 @@ export function InactiveUnofficialSuppliersTab({
                         <SearchableDropdown
                             value={categoryFilter}
                             onChange={(val) => {
-                                setCategoryFilter(val);
+                                setCategoryFilter(val || "all");
                                 setCurrentPage(1);
                             }}
                             options={categoryOptions}
                             placeholder="All Categories"
+                            emptyValue="all"
+                            hideAllOption={true}
                         />
                     </div>
 
@@ -543,244 +511,258 @@ export function InactiveUnofficialSuppliersTab({
                 </div>
             </div>
 
-            {/* Suppliers Cards / Table Grid */}
-            {isLoading ? (
-                <div className="p-12 text-center space-y-3 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c]">
-                    <RefreshCw className="w-8 h-8 text-pink-500 animate-spin mx-auto" />
-                    <p className="text-xs font-bold text-slate-500">Loading inactive and unofficial suppliers...</p>
-                </div>
-            ) : filteredAndSortedSuppliers.length === 0 ? (
-                <div className="p-12 text-center space-y-3 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[inset_2px_2px_6px_rgba(163,177,198,0.25)]">
-                    <Building2 className="w-10 h-10 text-slate-400 mx-auto" />
-                    <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                        No inactive or unofficial suppliers found
-                    </h3>
-                    <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                        No suppliers match your current search and filter criteria. Try resetting the filters above.
-                    </p>
-                </div>
-            ) : (
-                <div className="space-y-3">
-                    <div className="grid grid-cols-1 gap-3.5">
-                        {paginatedSuppliers.map((supplier) => {
-                            const isInactive = supplier.is_active === false;
-                            const isLead = supplier.classification === "unofficial_lead";
-                            const isPending = supplier.classification === "pending_verification";
-
-                            return (
-                                <div
-                                    key={supplier.id}
-                                    className="p-4 sm:p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#151724] border border-white/90 dark:border-white/10 shadow-[-6px_-6px_16px_rgba(255,255,255,0.85),_6px_6px_16px_rgba(163,177,198,0.35)] dark:shadow-[-3px_-3px_10px_rgba(255,255,255,0.02),_6px_6px_16px_rgba(0,0,0,0.6)] hover:border-pink-500/30 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                                >
-                                    {/* Left: Supplier Info & Classification Badges */}
-                                    <div className="space-y-2 min-w-0 flex-1">
-                                        <div className="flex items-center gap-2.5 flex-wrap">
-                                            <div className="w-9 h-9 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)]">
-                                                <Building2 className="w-4 h-4" />
-                                            </div>
-
-                                            <div>
-                                                <h3 className="font-black text-sm sm:text-base text-slate-900 dark:text-white truncate">
-                                                    {supplier.name}
-                                                </h3>
-                                                <p className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5 mt-0.5">
-                                                    <span>{supplier.category || "General Supplies"}</span>
-                                                    <span>•</span>
-                                                    <span className="font-mono text-pink-600 dark:text-pink-400">
-                                                        SUP-{String(supplier.id).padStart(3, "0")}
-                                                    </span>
-                                                </p>
-                                            </div>
-
-                                            {/* Status Badges */}
-                                            <div className="flex items-center gap-1.5 flex-wrap ml-auto md:ml-2">
-                                                {isInactive ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 flex items-center gap-1">
-                                                        <AlertTriangle className="w-3 h-3" />
-                                                        Inactive Status
-                                                    </span>
-                                                ) : (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                                                        <CheckCircle2 className="w-3 h-3" />
-                                                        Active Record
-                                                    </span>
-                                                )}
-
-                                                {isPending ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                                                        <Clock className="w-3 h-3" />
-                                                        Pending Verification
-                                                    </span>
-                                                ) : isLead ? (
-                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 flex items-center gap-1">
-                                                        <Sparkles className="w-3 h-3" />
-                                                        Unofficial Lead
-                                                    </span>
-                                                ) : null}
-                                            </div>
-                                        </div>
-
-                                        {/* Contacts & Location */}
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 text-xs text-slate-600 dark:text-slate-300">
-                                            <div className="flex items-center gap-1.5 truncate">
-                                                <MapPin className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                                                <span className="truncate">{supplier.location || "Metro Manila, Philippines"}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 truncate">
-                                                <Phone className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                                                <span className="truncate">{supplier.phone || "No phone listed"}</span>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 truncate">
-                                                <Mail className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                                                <span className="truncate">{supplier.email || "No email listed"}</span>
-                                            </div>
-                                        </div>
-
-                                        {/* Products & Services Preview */}
-                                        {(supplier.products || supplier.services_offered) && (
-                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-1 italic">
-                                                <span className="font-bold text-slate-700 dark:text-slate-300">Offers: </span>
-                                                {supplier.products || (Array.isArray(supplier.services_offered) ? supplier.services_offered.join(", ") : supplier.services_offered)}
-                                            </p>
-                                        )}
-                                    </div>
-
-                                    {/* Middle: Transactions History Summary */}
-                                    <div className="flex items-center gap-4 sm:gap-6 border-t md:border-t-0 md:border-l border-slate-300/70 dark:border-white/10 pt-3 md:pt-0 md:pl-5 shrink-0 flex-wrap sm:flex-nowrap">
-                                        <div className="text-center sm:text-left">
-                                            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
-                                                Purchase Orders
-                                            </span>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                <ShoppingBag className="w-3.5 h-3.5 text-pink-600" />
-                                                <span className="font-mono text-sm font-black text-slate-900 dark:text-white">
-                                                    {supplier.poCount || 0}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="text-center sm:text-left">
-                                            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
-                                                Quotations
-                                            </span>
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                <FileText className="w-3.5 h-3.5 text-pink-600" />
-                                                <span className="font-mono text-sm font-black text-slate-900 dark:text-white">
-                                                    {supplier.quoteCount || 0}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="text-center sm:text-left">
-                                            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
-                                                Last Transaction
-                                            </span>
-                                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mt-0.5 font-mono">
-                                                {supplier.lastTransactionDate
-                                                    ? new Date(supplier.lastTransactionDate).toLocaleDateString()
-                                                    : "None Recorded"}
-                                            </span>
-                                        </div>
-                                    </div>
-
-                                    {/* Right: Available Actions */}
-                                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end pt-2 md:pt-0 border-t md:border-t-0 border-slate-300/70 dark:border-white/10">
-                                        {/* View Details & Full History */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setSelectedViewSupplier(supplier);
-                                                setIsViewModalOpen(true);
-                                            }}
-                                            className="px-3 py-2 rounded-xl bg-[#e8ecf4] dark:bg-[#1a1c2d] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] flex items-center gap-1.5 cursor-pointer border border-white/60 dark:border-white/10"
-                                            title="View Supplier Profile & Full Transaction History"
-                                        >
-                                            <Eye className="w-3.5 h-3.5 text-pink-500" />
-                                            <span>Details &amp; History</span>
-                                        </button>
-
-                                        {/* Set / Update Meeting (Does NOT auto-activate) */}
-                                        {(() => {
-                                            const existingMeeting = getSupplierActiveMeeting(supplier);
-                                            return (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedMeetingSupplier({
-                                                            id: supplier.id,
-                                                            name: supplier.name,
-                                                            email: supplier.email,
-                                                            phone: supplier.phone,
-                                                            contact_person: supplier.contact_person,
-                                                        });
-                                                        setSelectedMeetingForEdit(existingMeeting);
-                                                        setIsMeetingModalOpen(true);
-                                                    }}
-                                                    className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 ${
-                                                        existingMeeting
-                                                            ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-300 border border-pink-500/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)]"
-                                                            : "bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(219,39,119,0.35)]"
-                                                    }`}
-                                                    title={
-                                                        existingMeeting
-                                                            ? `Update scheduled meeting with ${supplier.name} (${existingMeeting.meeting_date} @ ${existingMeeting.start_time})`
-                                                            : "Schedule verification or evaluation meeting with supplier"
-                                                    }
-                                                >
-                                                    <Video className={`w-3.5 h-3.5 ${existingMeeting ? "text-pink-600 dark:text-pink-400" : "text-pink-200"}`} />
-                                                    <span>{existingMeeting ? "Update" : "Set Meeting"}</span>
-                                                </button>
-                                            );
-                                        })()}
-
-                                        {/* Review & Activate (Supplier Review & Activation Modal - Same as Stage 3) */}
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const mappedPotentialSupplier: PotentialSupplierItem = {
-                                                    id: String(supplier.id),
-                                                    dbSupplierId: Number(supplier.id),
-                                                    name: supplier.name,
-                                                    category: supplier.category || "General",
-                                                    location: supplier.location || (supplier as any).address || "Manila, Philippines",
-                                                    phone: supplier.phone || "",
-                                                    email: supplier.email || "",
-                                                    website: supplier.website || "",
-                                                    contact_person: supplier.contact_person || "",
-                                                    products: supplier.products || (Array.isArray((supplier as any).other_products_offer) ? (supplier as any).other_products_offer.map((p: any) => p.item_name).join(", ") : ""),
-                                                    notes: supplier.notes || "",
-                                                    coords: { lat: 14.5995, lng: 120.9842, displayName: supplier.location || "Metro Manila" },
-                                                    distanceKm: 0,
-                                                    source: "inactive-suppliers",
-                                                    matchLevel: "exact",
-                                                    isSavedInDB: true,
-                                                };
-                                                setReviewActivationSupplier(mappedPotentialSupplier);
-                                            }}
-                                            className="px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(219,39,119,0.35)]"
-                                            title="Open Supplier Review & Activation Modal"
-                                        >
-                                            <ShieldCheck className="w-3.5 h-3.5 text-pink-200" />
-                                            <span>Verify &amp; Activate</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            );
-                        })}
+            {/* Suppliers Table Pro Container */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#191a24] border border-white/80 dark:border-[#2c2d3c] shadow-[8px_8px_24px_rgba(166,175,195,0.4),-8px_-8px_24px_rgba(255,255,255,0.95),inset_0_1px_1.5px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_30px_rgba(0,0,0,0.75),-6px_-6px_20px_rgba(255,255,255,0.03),inset_0_1px_1px_rgba(255,255,255,0.07)] flex flex-col">
+                {isLoading ? (
+                    <div className="p-12 text-center space-y-3">
+                        <RefreshCw className="w-8 h-8 text-pink-500 animate-spin mx-auto" />
+                        <p className="text-xs font-bold text-slate-500">Loading inactive and unofficial suppliers...</p>
                     </div>
+                ) : filteredAndSortedSuppliers.length === 0 ? (
+                    <div className="text-center py-12 text-slate-500 dark:text-slate-400 space-y-2">
+                        <Building2 className="w-10 h-10 text-slate-400 mx-auto" />
+                        <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300">
+                            No inactive or unofficial suppliers found
+                        </h3>
+                        <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                            No suppliers match your current search and filter criteria. Try resetting the filters above.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40 shadow-[inset_1.5px_1.5px_4px_rgba(166,175,195,0.25)]">
+                            <table className="table-pro w-full text-left text-xs border-collapse p-1" id="inactiveSuppliersTableId">
+                                <thead className="bg-[#e4ebf5] dark:bg-[#14151c] border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px]">
+                                    <tr>
+                                        <th className="py-3.5 px-4">Supplier</th>
+                                        <th className="py-3.5 px-4">Category</th>
+                                        <th className="py-3.5 px-4">Contact &amp; Location</th>
+                                        <th className="py-3.5 px-4">Classification</th>
+                                        <th className="py-3.5 px-4 text-center">Orders &amp; Quotes</th>
+                                        <th className="py-3.5 px-4">Last Activity</th>
+                                        <th className="py-3.5 px-4 text-right! sm:w-[230px] sm:min-w-[230px]">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60">
+                                    {paginatedSuppliers.map((supplier) => {
+                                        const isInactive = supplier.is_active === false;
+                                        const isLead = supplier.classification === "unofficial_lead";
+                                        const isPending = supplier.classification === "pending_verification";
+                                        const existingMeeting = getSupplierActiveMeeting(supplier);
 
-                    {/* Pagination */}
-                    {totalPages > 1 && (
-                        <div className="pt-2">
-                            <Pagination
-                                currentPage={currentPage}
-                                totalPages={totalPages}
-                                onPageChange={setCurrentPage}
-                            />
+                                        return (
+                                            <tr
+                                                key={supplier.id}
+                                                onClick={() => {
+                                                    setSelectedViewSupplier(supplier);
+                                                    setIsViewModalOpen(true);
+                                                }}
+                                                className="hover:bg-white/50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+                                            >
+                                                {/* Supplier */}
+                                                <td data-label="Supplier" className="py-3 px-4">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/25 shadow-[-1px_-1px_3px_rgba(255,255,255,0.8),_1px_1px_3px_rgba(163,177,198,0.3)]">
+                                                            <Building2 className="w-3.5 h-3.5" />
+                                                        </div>
+                                                        <div className="min-w-0 max-w-[200px] sm:max-w-none">
+                                                            <div className="font-semibold text-slate-900 dark:text-slate-100 truncate">
+                                                                {supplier.name}
+                                                            </div>
+                                                            <div className="font-mono text-[10px] text-pink-600 dark:text-pink-400 font-bold">
+                                                                SUP-{String(supplier.id).padStart(3, "0")}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Category */}
+                                                <td data-label="Category" className="py-3 px-4 text-slate-700 dark:text-slate-300 font-medium text-right sm:text-left">
+                                                    <span className="inline-block px-2 py-0.5 rounded-lg bg-slate-200/60 dark:bg-slate-800/80 text-[11px] font-semibold text-slate-700 dark:text-slate-300 border border-slate-300/40 dark:border-slate-700/50">
+                                                        {supplier.category || "General Supplies"}
+                                                    </span>
+                                                </td>
+
+                                                {/* Contact & Location */}
+                                                <td data-label="Contact & Location" className="py-3 px-4">
+                                                    <div className="text-right sm:text-left min-w-0 max-w-[220px] sm:max-w-none ml-auto sm:ml-0 space-y-0.5">
+                                                        <div className="font-medium text-slate-800 dark:text-slate-200 truncate">
+                                                            {supplier.contact_person || "No contact person"}
+                                                        </div>
+                                                        <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate flex items-center gap-1 justify-end sm:justify-start">
+                                                            {supplier.phone && <span>{supplier.phone}</span>}
+                                                            {supplier.phone && supplier.email && <span>•</span>}
+                                                            {supplier.email && <span className="truncate">{supplier.email}</span>}
+                                                            {!supplier.phone && !supplier.email && <span>{supplier.location || "Metro Manila, PH"}</span>}
+                                                        </div>
+                                                    </div>
+                                                </td>
+
+                                                {/* Classification / Status Badges */}
+                                                <td data-label="Classification" className="py-3 px-4" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center gap-1.5 flex-wrap justify-end sm:justify-start">
+                                                        {isInactive ? (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-rose-500/15 text-rose-700 dark:text-rose-400 border border-rose-500/30 inline-flex items-center gap-1">
+                                                                <AlertTriangle className="w-2.5 h-2.5" />
+                                                                Inactive
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1">
+                                                                <CheckCircle2 className="w-2.5 h-2.5" />
+                                                                Active
+                                                            </span>
+                                                        )}
+
+                                                        {isPending ? (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/30 inline-flex items-center gap-1">
+                                                                <Clock className="w-2.5 h-2.5" />
+                                                                Pending
+                                                            </span>
+                                                        ) : isLead ? (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 inline-flex items-center gap-1">
+                                                                <Sparkles className="w-2.5 h-2.5" />
+                                                                Lead
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                </td>
+
+                                                {/* Orders & Quotes */}
+                                                <td data-label="Orders & Quotes" className="py-3 px-4 text-center">
+                                                    <div className="inline-flex items-center gap-2 justify-end sm:justify-center">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-300 text-[11px] font-bold border border-pink-200/60 dark:border-pink-900/40" title={`${supplier.poCount || 0} Purchase Orders`}>
+                                                            <ShoppingBag className="w-3 h-3" />
+                                                            {supplier.poCount || 0}
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-bold border border-slate-200 dark:border-slate-700" title={`${supplier.quoteCount || 0} Quotations`}>
+                                                            <FileText className="w-3 h-3" />
+                                                            {supplier.quoteCount || 0}
+                                                        </span>
+                                                    </div>
+                                                </td>
+
+                                                {/* Last Activity */}
+                                                <td data-label="Last Activity" className="py-3 px-4 font-mono text-[11px] text-slate-600 dark:text-slate-400 text-right sm:text-left">
+                                                    {supplier.lastTransactionDate
+                                                        ? new Date(supplier.lastTransactionDate).toLocaleDateString()
+                                                        : "None Recorded"}
+                                                </td>
+
+                                                {/* Actions */}
+                                                <td data-label="Actions" className="py-3 px-4 text-right!" onClick={(e) => e.stopPropagation()}>
+                                                    <div className="flex items-center gap-1.5 justify-end">
+                                                        {/* Details */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedViewSupplier(supplier);
+                                                                setIsViewModalOpen(true);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-[#e8ecf4] dark:bg-[#1a1c2d] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] flex items-center gap-1 cursor-pointer border border-white/60 dark:border-white/10"
+                                                            title="View Details & Full History"
+                                                        >
+                                                            <Eye className="w-3.5 h-3.5 text-pink-500" />
+                                                            <span className="hidden xl:inline">Details</span>
+                                                        </button>
+
+                                                        {/* Meeting */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSelectedMeetingSupplier({
+                                                                    id: supplier.id,
+                                                                    name: supplier.name,
+                                                                    email: supplier.email,
+                                                                    phone: supplier.phone,
+                                                                    contact_person: supplier.contact_person,
+                                                                });
+                                                                setSelectedMeetingForEdit(existingMeeting);
+                                                                setIsMeetingModalOpen(true);
+                                                            }}
+                                                            className={`px-2.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer active:scale-95 ${
+                                                                existingMeeting
+                                                                    ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-300 border border-pink-500/40 hover:bg-pink-100 dark:hover:bg-pink-900/50 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)]"
+                                                                    : "bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(219,39,119,0.35)]"
+                                                            }`}
+                                                            title={
+                                                                existingMeeting
+                                                                    ? `Update scheduled meeting (${existingMeeting.meeting_date} @ ${existingMeeting.start_time})`
+                                                                    : "Schedule verification meeting"
+                                                            }
+                                                        >
+                                                            <Video className={`w-3.5 h-3.5 ${existingMeeting ? "text-pink-600 dark:text-pink-400" : "text-pink-200"}`} />
+                                                            <span className="hidden xl:inline">{existingMeeting ? "Update" : "Meeting"}</span>
+                                                        </button>
+
+                                                        {/* Activate */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const mappedPotentialSupplier: PotentialSupplierItem = {
+                                                                    id: String(supplier.id),
+                                                                    dbSupplierId: Number(supplier.id),
+                                                                    name: supplier.name,
+                                                                    category: supplier.category || "General",
+                                                                    location: supplier.location || (supplier as any).address || "Manila, Philippines",
+                                                                    phone: supplier.phone || "",
+                                                                    email: supplier.email || "",
+                                                                    website: supplier.website || "",
+                                                                    contact_person: supplier.contact_person || "",
+                                                                    products: supplier.products || (Array.isArray((supplier as any).other_products_offer) ? (supplier as any).other_products_offer.map((p: any) => p.item_name).join(", ") : ""),
+                                                                    notes: supplier.notes || "",
+                                                                    coords: { lat: 14.5995, lng: 120.9842, displayName: supplier.location || "Metro Manila" },
+                                                                    distanceKm: 0,
+                                                                    source: "inactive-suppliers",
+                                                                    matchLevel: "exact",
+                                                                    isSavedInDB: true,
+                                                                };
+                                                                setReviewActivationSupplier(mappedPotentialSupplier);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1 cursor-pointer active:scale-95 bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(219,39,119,0.35)]"
+                                                            title="Review & Activate Supplier"
+                                                        >
+                                                            <ShieldCheck className="w-3.5 h-3.5 text-pink-200" />
+                                                            <span>Activate</span>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
-                    )}
-                </div>
-            )}
+
+                        {/* Pagination footer */}
+                        {totalPages > 0 && (
+                            <div className="flex-shrink-0 pt-3.5 mt-3 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-3 text-xs text-slate-600 dark:text-slate-400 text-center sm:text-left">
+                                <div className="w-full sm:w-auto text-center sm:text-left">
+                                    Showing{" "}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {paginatedSuppliers.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0}
+                                    </span>{" "}
+                                    to{" "}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {Math.min(currentPage * ITEMS_PER_PAGE, filteredAndSortedSuppliers.length)}
+                                    </span>{" "}
+                                    of{" "}
+                                    <span className="font-semibold text-slate-800 dark:text-slate-200">
+                                        {filteredAndSortedSuppliers.length}
+                                    </span>{" "}
+                                    suppliers
+                                </div>
+                                <div className="flex justify-center w-full sm:w-auto">
+                                    <Pagination
+                                        currentPage={currentPage}
+                                        totalPages={totalPages}
+                                        onPageChange={setCurrentPage}
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
 
             {/* View Supplier Modal (Enhanced with Full Transaction History) */}
             {isViewModalOpen && selectedViewSupplier && (

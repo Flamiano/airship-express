@@ -130,7 +130,13 @@ export default function InventoryClient() {
     const [movements, setMovements] = useState<StockMovement[]>([]);
     const [totalMovements, setTotalMovements] = useState<number>(0);
     const [movementsTotalPages, setMovementsTotalPages] = useState<number>(1);
-    const [movementsPage, setMovementsPage] = useState<number>(1);
+    const [movementsPage, setMovementsPage] = useState<number>(() => {
+        if (urlTab === 'movements') {
+            const p = parseInt(searchParams.get('page') || '1', 10);
+            return !isNaN(p) && p > 0 ? p : 1;
+        }
+        return 1;
+    });
     const [movementsSearchTerm, setMovementsSearchTerm] = useState<string>('');
     const [movementsTypeFilter, setMovementsTypeFilter] = useState<string>('all');
     const [movementsDateRangeFilter, setMovementsDateRangeFilter] = useState<string>('all');
@@ -138,6 +144,18 @@ export default function InventoryClient() {
     const [movementsUserDeptOptions, setMovementsUserDeptOptions] = useState<string[]>([]);
     const [movementsStats, setMovementsStats] = useState<StockMovementStats | null>(null);
     const [loadingMovements, setLoadingMovements] = useState<boolean>(false);
+
+    // Sync movements page if page is specified in URL query
+    useEffect(() => {
+        const currentUrlTab = searchParams.get('tab');
+        if (currentUrlTab === 'movements' || activeTab === 'movements') {
+            const pageParam = searchParams.get('page');
+            const targetPage = pageParam ? parseInt(pageParam, 10) : 1;
+            if (!isNaN(targetPage) && targetPage > 0 && targetPage !== movementsPage) {
+                setMovementsPage(targetPage);
+            }
+        }
+    }, [searchParams, activeTab, movementsPage]);
 
     const debouncedSearchTerm = useDebounce(searchTerm, 300);
     const debouncedRequestsSearch = useDebounce(requestsSearchTerm, 300);
@@ -460,6 +478,25 @@ export default function InventoryClient() {
             setInventoryPage(page);
         }
     }, [inventoryTotalPages, inventoryPage]);
+
+    const handleMovementsPageChange = useCallback((page: number) => {
+        if (page >= 1 && page <= movementsTotalPages && page !== movementsPage) {
+            setMovementsPage(page);
+            try {
+                const url = new URL(window.location.href);
+                if (url.searchParams.get('tab') === 'movements') {
+                    if (page > 1) {
+                        url.searchParams.set('page', String(page));
+                    } else {
+                        url.searchParams.delete('page');
+                    }
+                    window.history.replaceState(null, '', url.pathname + url.search);
+                }
+            } catch (e) {
+                // ignore
+            }
+        }
+    }, [movementsTotalPages, movementsPage]);
 
     const handleAddItem = useCallback(async (data: any) => {
         await addItem(data);
@@ -1060,18 +1097,46 @@ export default function InventoryClient() {
                             onSearchChange={(val) => {
                                 setMovementsSearchTerm(val);
                                 setMovementsPage(1);
+                                try {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('tab') === 'movements' && url.searchParams.has('page')) {
+                                        url.searchParams.delete('page');
+                                        window.history.replaceState(null, '', url.pathname + url.search);
+                                    }
+                                } catch (e) {}
                             }}
                             onTypeChange={(val) => {
                                 setMovementsTypeFilter(val);
                                 setMovementsPage(1);
+                                try {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('tab') === 'movements' && url.searchParams.has('page')) {
+                                        url.searchParams.delete('page');
+                                        window.history.replaceState(null, '', url.pathname + url.search);
+                                    }
+                                } catch (e) {}
                             }}
                             onDateRangeChange={(val) => {
                                 setMovementsDateRangeFilter(val);
                                 setMovementsPage(1);
+                                try {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('tab') === 'movements' && url.searchParams.has('page')) {
+                                        url.searchParams.delete('page');
+                                        window.history.replaceState(null, '', url.pathname + url.search);
+                                    }
+                                } catch (e) {}
                             }}
                             onUserDeptChange={(val) => {
                                 setMovementsUserDeptFilter(val);
                                 setMovementsPage(1);
+                                try {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('tab') === 'movements' && url.searchParams.has('page')) {
+                                        url.searchParams.delete('page');
+                                        window.history.replaceState(null, '', url.pathname + url.search);
+                                    }
+                                } catch (e) {}
                             }}
                             onClearFilters={() => {
                                 setMovementsSearchTerm('');
@@ -1079,9 +1144,15 @@ export default function InventoryClient() {
                                 setMovementsDateRangeFilter('all');
                                 setMovementsUserDeptFilter('all');
                                 setMovementsPage(1);
+                                try {
+                                    const url = new URL(window.location.href);
+                                    if (url.searchParams.get('tab') === 'movements' && url.searchParams.has('page')) {
+                                        url.searchParams.delete('page');
+                                        window.history.replaceState(null, '', url.pathname + url.search);
+                                    }
+                                } catch (e) {}
                             }}
-                            onPageChange={setMovementsPage}
-                            onRefresh={() => fetchMovementsData(true, true)}
+                            onPageChange={handleMovementsPageChange}
                         />
                     )}
                 </div>

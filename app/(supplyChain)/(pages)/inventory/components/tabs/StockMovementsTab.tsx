@@ -21,7 +21,6 @@ import {
     Hash, 
     ChevronDown, 
     History,
-    RefreshCw,
     ExternalLink,
     Building2,
     Store
@@ -53,7 +52,6 @@ interface StockMovementsTabProps {
     onUserDeptChange: (value: string) => void;
     onClearFilters: () => void;
     onPageChange: (page: number) => void;
-    onRefresh: () => void;
 }
 
 export const StockMovementsTab = memo(function StockMovementsTab({
@@ -74,7 +72,6 @@ export const StockMovementsTab = memo(function StockMovementsTab({
     onUserDeptChange,
     onClearFilters,
     onPageChange,
-    onRefresh,
 }: StockMovementsTabProps) {
     const [selectedMovement, setSelectedMovement] = useState<StockMovement | null>(null);
     const [showDetailModal, setShowDetailModal] = useState<boolean>(false);
@@ -85,6 +82,10 @@ export const StockMovementsTab = memo(function StockMovementsTab({
     };
 
     const hasActiveFilters = searchTerm !== '' || typeFilter !== 'all' || dateRangeFilter !== 'all' || userDeptFilter !== 'all';
+
+    const itemsPerPage = 20;
+    const startIndex = totalMovements === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+    const endIndex = Math.min(currentPage * itemsPerPage, totalMovements);
 
     return (
         <div className="space-y-6">
@@ -100,20 +101,6 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                     <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
                         Track all inventory stock-in, stock-out, and adjustment activities.
                     </p>
-                </div>
-
-                <div className="flex items-center gap-2 self-start sm:self-auto">
-                    <AppButton
-                        type="button"
-                        variant="neutral"
-                        size="sm"
-                        onClick={onRefresh}
-                        disabled={isLoading}
-                        className="cursor-pointer"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${isLoading ? 'animate-spin' : ''}`} />
-                        <span>Refresh</span>
-                    </AppButton>
                 </div>
             </div>
 
@@ -299,7 +286,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                         <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04] text-xs">
                             {movements.length === 0 && !isLoading ? (
                                 <tr>
-                                    <td colSpan={13} className="px-6 py-16 text-center">
+                                    <td colSpan={13} className="block w-full md:table-cell px-6 py-16 text-center">
                                         <div className="flex flex-col items-center justify-center max-w-sm mx-auto space-y-3">
                                             <div className="w-14 h-14 rounded-3xl bg-[#ebf0f7] dark:bg-[#14151e] border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-slate-400 dark:text-slate-500">
                                                 <History className="w-7 h-7 stroke-[1.5]" />
@@ -352,7 +339,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             title="Click to view full movement details"
                                         >
                                             {/* Date & Time */}
-                                            <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                                            <td data-label="Date & Time" className="px-4 py-3.5 text-slate-600 dark:text-slate-300 whitespace-nowrap">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                                                     <span className="font-medium">{formattedDate}</span>
@@ -360,14 +347,14 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Item Code */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td data-label="Item Code" className="px-4 py-3.5 whitespace-nowrap">
                                                 <span className="font-mono text-[11px] font-bold text-pink-600 dark:text-pink-400 bg-pink-500/10 dark:bg-pink-500/15 px-2 py-0.5 rounded-lg border border-pink-500/20">
                                                     {movement.item_code}
                                                 </span>
                                             </td>
 
                                             {/* Item Name */}
-                                            <td className="px-4 py-3.5 font-bold text-slate-900 dark:text-white max-w-[200px] truncate">
+                                            <td data-label="Item Name" className="px-4 py-3.5 font-bold text-slate-900 dark:text-white max-w-[200px] truncate">
                                                 <div className="flex items-center gap-1.5" title={movement.item_name}>
                                                     <Package className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                                                     <span className="truncate">{movement.item_name}</span>
@@ -375,7 +362,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Movement Type */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td data-label="Movement Type" className="px-4 py-3.5 whitespace-nowrap">
                                                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                                                     isStockIn
                                                         ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
@@ -391,7 +378,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Quantity */}
-                                            <td className="px-4 py-3.5 text-right whitespace-nowrap font-mono font-bold text-sm">
+                                            <td data-label="Quantity" className="px-4 py-3.5 text-right whitespace-nowrap font-mono font-bold text-sm">
                                                 <span className={
                                                     isStockIn
                                                         ? 'text-emerald-600 dark:text-emerald-400'
@@ -404,29 +391,29 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Previous Stock */}
-                                            <td className="px-4 py-3.5 text-right whitespace-nowrap font-mono text-slate-600 dark:text-slate-400">
+                                            <td data-label="Previous" className="px-4 py-3.5 text-right whitespace-nowrap font-mono text-slate-600 dark:text-slate-400">
                                                 {movement.previous_stock.toLocaleString()}
                                             </td>
 
                                             {/* New Stock */}
-                                            <td className="px-4 py-3.5 text-right whitespace-nowrap font-mono font-bold text-slate-900 dark:text-white">
+                                            <td data-label="New Stock" className="px-4 py-3.5 text-right whitespace-nowrap font-mono font-bold text-slate-900 dark:text-white">
                                                 {movement.new_stock.toLocaleString()}
                                             </td>
 
                                             {/* Reference */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td data-label="Reference" className="px-4 py-3.5 whitespace-nowrap">
                                                 <span className="font-mono text-[11px] text-slate-700 dark:text-slate-300 bg-slate-200/60 dark:bg-white/[0.05] px-2 py-0.5 rounded-md border border-slate-300/50 dark:border-white/[0.08]">
                                                     {movement.reference_number || movement.reference || '—'}
                                                 </span>
                                             </td>
 
                                             {/* Reason */}
-                                            <td className="px-4 py-3.5 text-slate-600 dark:text-slate-400 max-w-[220px] truncate" title={movement.reason || movement.notes || ''}>
+                                            <td data-label="Reason" className="px-4 py-3.5 text-slate-600 dark:text-slate-400 max-w-[220px] truncate" title={movement.reason || movement.notes || ''}>
                                                 {movement.reason || movement.notes || '—'}
                                             </td>
 
                                             {/* Department */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                                            <td data-label="Department" className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
                                                 <div className="flex items-center gap-1.5">
                                                     <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                                                     <span className="truncate max-w-[130px]" title={movement.department || 'Warehouse'}>
@@ -436,7 +423,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Supplier (from metadata) */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
+                                            <td data-label="Supplier" className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300">
                                                 {movement.metadata?.supplier ? (
                                                     <div className="flex items-center gap-1.5 font-medium text-xs">
                                                         <Store className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
@@ -450,7 +437,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Action (from metadata) */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap">
+                                            <td data-label="Action" className="px-4 py-3.5 whitespace-nowrap">
                                                 {movement.metadata?.action ? (
                                                     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold border ${
                                                         String(movement.metadata.action).includes('NEW') || String(movement.metadata.action).includes('STOCK_IN')
@@ -467,7 +454,7 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                                             </td>
 
                                             {/* Performed By */}
-                                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
+                                            <td data-label="Performed By" className="px-4 py-3.5 whitespace-nowrap text-slate-700 dark:text-slate-300 font-medium">
                                                 <div className="flex items-center gap-1.5">
                                                     <User className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                                                     <span>{movement.performed_by || 'Warehouse Staff'}</span>
@@ -482,21 +469,18 @@ export const StockMovementsTab = memo(function StockMovementsTab({
                 </div>
 
                 {/* Pagination Footer */}
-                {totalMovements > 0 && (
-                    <div className="flex-shrink-0 p-4 border-t border-slate-200/60 dark:border-white/[0.06] bg-[#ebf0f7]/70 dark:bg-[#14151e]/60 flex flex-col sm:flex-row items-center justify-between gap-3">
-                        <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                            Showing <span className="font-bold text-slate-700 dark:text-slate-200">{movements.length > 0 ? (currentPage - 1) * 20 + 1 : 0}</span> to <span className="font-bold text-slate-700 dark:text-slate-200">{Math.min(currentPage * 20, totalMovements)}</span> of <span className="font-bold text-slate-700 dark:text-slate-200">{totalMovements}</span> movement records
-                        </div>
-
-                        {totalPages > 1 && (
-                            <Pagination
-                                currentPage={currentPage}
-                                totalPages={totalPages}
-                                onPageChange={onPageChange}
-                            />
-                        )}
-                    </div>
-                )}
+                <div className="flex-shrink-0 p-4 border-t border-slate-200/60 dark:border-white/[0.06] bg-[#ebf0f7]/70 dark:bg-[#14151e]/60 backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                        Showing <span className="font-extrabold text-slate-900 dark:text-slate-100">{startIndex}</span> to{' '}
+                        <span className="font-extrabold text-slate-900 dark:text-slate-100">{endIndex}</span> of{' '}
+                        <span className="font-extrabold text-slate-900 dark:text-slate-100">{totalMovements}</span> movement records
+                    </span>
+                    <Pagination
+                        currentPage={currentPage}
+                        totalPages={totalPages}
+                        onPageChange={onPageChange}
+                    />
+                </div>
             </div>
 
             {/* Movement Details Modal */}

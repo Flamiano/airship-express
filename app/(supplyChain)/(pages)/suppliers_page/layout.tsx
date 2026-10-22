@@ -69,14 +69,39 @@ export default function SupplierPortalLayout({
         let channel: any = null;
 
         const fetchSupplierInfo = async () => {
-            const activeEmail = email || user.getEmail();
-            if (!activeEmail) return;
+            let activeEmail = email || user.getEmail();
+            if (!activeEmail && typeof window !== "undefined") {
+                activeEmail = (sessionStorage.getItem("user_email") || localStorage.getItem("user_email") || "").trim();
+            }
+
+            if (!activeEmail && typeof window !== "undefined") {
+                try {
+                    const sessionRes = await fetch("/api/supplyChain/validate-session", {
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                    });
+                    if (sessionRes.ok) {
+                        const sessionData = await sessionRes.json();
+                        if (sessionData?.user?.email) {
+                            activeEmail = String(sessionData.user.email).trim();
+                            setCurrentUserEmail(activeEmail);
+                            if (sessionData.user.name) setCurrentUserName(sessionData.user.name);
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (!activeEmail) {
+                setIsLoading(false);
+                return;
+            }
+
             try {
                 // Fetch supplier account info
                 const { data: acc } = await supabase
                     .from("suppliers_account")
                     .select("*, suppliers(*)")
-                    .eq("email", activeEmail)
+                    .ilike("email", activeEmail)
                     .maybeSingle();
 
                 if (acc) {

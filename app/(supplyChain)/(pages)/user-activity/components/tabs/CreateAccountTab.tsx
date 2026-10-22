@@ -346,24 +346,6 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5">
-                        {/* Realtime Live Sync status indicator */}
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            <span className={`w-2 h-2 rounded-full ${isRealtimeActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`}></span>
-                            <span>{isRealtimeActive ? 'Live Realtime' : 'Connecting...'}</span>
-                        </div>
-
-                        <AppButton
-                            variant="neutral"
-                            size="sm"
-                            icon={RefreshCw}
-                            loading={isRefreshing}
-                            onClick={() => fetchEmployees(true)}
-                            className="shrink-0"
-                        >
-                            Refresh
-                        </AppButton>
-                    </div>
                 </div>
 
                 {/* Quick stats ribbon */}
@@ -456,7 +438,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
             {/* Table */}
             <div className="bg-white dark:bg-[#151722] rounded-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden shadow-[2px_2px_8px_rgba(0,0,0,0.04)]">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm">
+                    <table className="table-pro w-full text-left text-sm border-collapse">
                         <thead className="bg-slate-50/90 dark:bg-slate-900/80 border-b border-slate-200/80 dark:border-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[11px] font-bold tracking-wider">
                             <tr>
                                 <th className="px-5 py-3.5">Employee</th>
@@ -470,7 +452,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                             {isLoading ? (
                                 <tr>
-                                    <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="block w-full md:table-cell px-5 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <RefreshCw className="w-6 h-6 animate-spin text-pink-600" />
                                             <span>Loading administrative employees...</span>
@@ -479,7 +461,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                 </tr>
                             ) : filteredEmployees.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="px-5 py-12 text-center text-slate-500">
+                                    <td colSpan={6} className="block w-full md:table-cell px-5 py-12 text-center text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <AlertCircle className="w-8 h-8 text-slate-400" />
                                             <span className="font-medium text-slate-700 dark:text-slate-300">
@@ -506,7 +488,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                             className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors"
                                         >
                                             {/* Employee info */}
-                                            <td className="px-5 py-4">
+                                            <td data-label="Employee" className="px-5 py-4">
                                                 <div className="flex items-center gap-3">
                                                     <div className="w-9 h-9 rounded-xl bg-pink-600 text-white font-bold flex items-center justify-center text-xs shadow-sm">
                                                         {initials}
@@ -538,7 +520,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                             </td>
 
                                             {/* Position & Department */}
-                                            <td className="px-5 py-4">
+                                            <td data-label="Position & Dept" className="px-5 py-4">
                                                 <div className="space-y-1">
                                                     <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-pink-50 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300 border border-pink-200/80 dark:border-pink-900/60">
                                                         <span>{emp.position}</span>
@@ -551,14 +533,14 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                             </td>
 
                                             {/* Assigned Role */}
-                                            <td className="px-5 py-4">
+                                            <td data-label="Assigned Role" className="px-5 py-4">
                                                 <StatusBadge tone="purple" size="sm" dot>
                                                     Purchase Officer
                                                 </StatusBadge>
                                             </td>
 
                                             {/* Account status */}
-                                            <td className="px-5 py-4">
+                                            <td data-label="Account Status" className="px-5 py-4">
                                                 {emp.has_account ? (
                                                     <div className="space-y-0.5">
                                                         <StatusBadge tone="emerald" size="sm" icon={<BadgeCheck className="w-3.5 h-3.5" />}>
@@ -578,7 +560,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                             </td>
 
                                             {/* Password status */}
-                                            <td className="px-5 py-4">
+                                            <td data-label="Password" className="px-5 py-4">
                                                 {emp.has_password || emp.has_account ? (
                                                     <span className="font-mono text-xs text-slate-500 tracking-widest">
                                                         ••••••••••••
@@ -591,7 +573,7 @@ export const CreateAccountTab: React.FC<CreateAccountTabProps> = ({ onAccountsCo
                                             </td>
 
                                             {/* Action buttons */}
-                                            <td className="px-5 py-4 text-right">
+                                            <td data-label="Actions" className="px-5 py-4 text-right">
                                                 <div className="flex items-center justify-end gap-2">
                                                     {!emp.has_account ? (
                                                         <AppButton

@@ -90,32 +90,7 @@ export const ActivityLogTab: React.FC<ActivityLogTabProps> = ({
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
-                        <div className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-semibold transition-all ${
-                            isRealtimeActive
-                                ? 'bg-emerald-500/10 dark:bg-emerald-500/20 border border-emerald-500/30 text-emerald-700 dark:text-emerald-400'
-                                : 'bg-slate-200/50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400'
-                        }`}>
-                            <span className="relative flex h-2 w-2">
-                                {isRealtimeActive && (
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                )}
-                                <span className={`relative inline-flex rounded-full h-2 w-2 ${isRealtimeActive ? 'bg-emerald-500' : 'bg-slate-400'}`}></span>
-                            </span>
-                            <span>{isRealtimeActive ? 'Live Log' : 'Offline'}</span>
-                        </div>
 
-                        {onRefresh && (
-                            <button
-                                type="button"
-                                onClick={onRefresh}
-                                className="p-1.5 rounded-xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7] dark:bg-[#14151c] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shadow-sm transition-all"
-                                title="Refresh activity logs"
-                            >
-                                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin text-pink-500' : ''}`} />
-                            </button>
-                        )}
-                    </div>
                 </div>
             </div>
 

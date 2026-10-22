@@ -120,20 +120,6 @@ function ArchiveContent() {
                             </p>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-2">
-                        <AppButton
-                            variant="neutral"
-                            size="sm"
-                            pill
-                            onClick={handleRefresh}
-                            disabled={isRefreshing}
-                            className="cursor-pointer"
-                        >
-                            <i className={`fas fa-rotate text-xs mr-1.5 ${isRefreshing ? 'fa-spin text-pink-500' : 'text-slate-500 dark:text-slate-400'}`}></i>
-                            <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
-                        </AppButton>
-                    </div>
                 </div>
 
                 {/* 10-day auto-purge retention notice banner */}

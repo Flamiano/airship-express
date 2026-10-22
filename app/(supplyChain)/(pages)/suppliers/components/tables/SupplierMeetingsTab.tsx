@@ -109,6 +109,13 @@ export function SupplierMeetingsTab({
                     loadMeetings(true);
                 }
             )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "suppliers" },
+                () => {
+                    loadMeetings(true);
+                }
+            )
             .subscribe();
 
         return () => {
@@ -275,7 +282,7 @@ export function SupplierMeetingsTab({
     return (
         <div className="space-y-6 animate-in fade-in duration-200">
             {/* Top Stats Overview */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {/* 1. Scheduled / Upcoming */}
                 <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.9),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.5)]">
                     <div className="flex items-center justify-between">
@@ -411,15 +418,7 @@ export function SupplierMeetingsTab({
 
                 {/* Right Action: Refresh + Set Meeting */}
                 <div className="flex items-center gap-2 shrink-0">
-                    <button
-                        type="button"
-                        onClick={() => loadMeetings(false)}
-                        disabled={isLoading}
-                        className="p-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/10 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_5px_rgba(255,255,255,0.03),_2px_2px_5px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.2)] transition-all cursor-pointer disabled:opacity-50"
-                        title="Reload meetings"
-                    >
-                        <RefreshCw className={`w-4 h-4 ${isLoading ? "animate-spin text-pink-600" : ""}`} />
-                    </button>
+
 
                     <button
                         type="button"

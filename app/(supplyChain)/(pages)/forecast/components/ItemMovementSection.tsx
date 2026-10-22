@@ -1019,11 +1019,11 @@ export default function ItemMovementSection({
                         </div>
                     ) : (
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/70 dark:border-slate-800">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="table-pro w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200/80 dark:border-slate-800">
                                         <th className="py-3 px-3.5 text-center w-12">#</th>
-                                        <th className="py-3 px-3.5">Item Code & Description</th>
+                                        <th className="py-3 px-3.5">Item Code &amp; Description</th>
                                         <th className="py-3 px-3.5">Category</th>
                                         <th className="py-3 px-3.5 text-right">Total Issued Qty</th>
                                         <th className="py-3 px-3.5 text-center">Transactions</th>
@@ -1037,7 +1037,7 @@ export default function ItemMovementSection({
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-200 font-medium">
                                     {displayedFastMoving.length === 0 ? (
                                         <tr>
-                                            <td colSpan={10} className="py-8 text-center text-slate-400 italic">
+                                            <td colSpan={10} className="py-8 text-center text-slate-400 italic block w-full md:table-cell">
                                                 <i className="fas fa-boxes-packing text-2xl mb-2 block opacity-40" />
                                                 No warehouse stock issuance records found for the selected {periodDays}-day window.
                                             </td>
@@ -1048,10 +1048,10 @@ export default function ItemMovementSection({
                                                 key={item.id}
                                                 className="hover:bg-pink-50/50 dark:hover:bg-pink-950/15 transition-colors"
                                             >
-                                                <td className="py-3 px-3.5 text-center font-bold text-pink-600 dark:text-pink-400">
+                                                <td className="py-3 px-3.5 text-center font-bold text-pink-600 dark:text-pink-400" data-label="#">
                                                     #{index + 1}
                                                 </td>
-                                                <td className="py-3 px-3.5">
+                                                <td className="py-3 px-3.5" data-label="Item Code & Description">
                                                     <div className="font-bold text-slate-900 dark:text-white">
                                                         {item.item_name}
                                                     </div>
@@ -1059,32 +1059,32 @@ export default function ItemMovementSection({
                                                         {item.item_code}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-3.5">
+                                                <td className="py-3 px-3.5" data-label="Category">
                                                     <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                                                         {item.category}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right font-black text-slate-900 dark:text-white">
+                                                <td className="py-3 px-3.5 text-right font-black text-slate-900 dark:text-white" data-label="Total Issued Qty">
                                                     {item.total_quantity_issued.toLocaleString()} <span className="text-[10px] font-normal text-slate-400">{item.unit}</span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center font-semibold">
+                                                <td className="py-3 px-3.5 text-center font-semibold" data-label="Transactions">
                                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900">
                                                         {item.issuance_transactions_count} orders
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right font-mono font-bold text-pink-600 dark:text-pink-400">
+                                                <td className="py-3 px-3.5 text-right font-mono font-bold text-pink-600 dark:text-pink-400" data-label="Avg Daily Issued">
                                                     {item.average_daily_issued.toFixed(2)} <span className="text-[10px] font-normal text-slate-400">/day</span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right font-bold text-slate-800 dark:text-slate-200">
+                                                <td className="py-3 px-3.5 text-right font-bold text-slate-800 dark:text-slate-200" data-label="Usable Stock">
                                                     {item.usable_stock.toLocaleString()}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right text-slate-500 font-mono">
+                                                <td className="py-3 px-3.5 text-right text-slate-500 font-mono" data-label="Safety Min">
                                                     {item.minimum_stock.toLocaleString()}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center text-[11px] text-slate-500">
+                                                <td className="py-3 px-3.5 text-center text-[11px] text-slate-500" data-label="Last Issuance">
                                                     {item.last_issuance_date || "N/A"}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center">
+                                                <td className="py-3 px-3.5 text-center" data-label="Stock Posture">
                                                     <StatusBadge
                                                         tone={getStockStatusTone(item.stock_status)}
                                                         dot
@@ -1268,10 +1268,10 @@ export default function ItemMovementSection({
                         </div>
                     ) : (
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/70 dark:border-slate-800">
-                            <table className="w-full text-left text-xs border-collapse">
+                            <table className="table-pro w-full text-left text-xs border-collapse">
                                 <thead>
                                     <tr className="bg-slate-100/80 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200/80 dark:border-slate-800">
-                                        <th className="py-3 px-3.5">Item Code & Name</th>
+                                        <th className="py-3 px-3.5">Item Code &amp; Name</th>
                                         <th className="py-3 px-3.5">Category</th>
                                         <th className="py-3 px-3.5 text-right">Period Issued Qty</th>
                                         <th className="py-3 px-3.5 text-center">Transactions</th>
@@ -1279,13 +1279,13 @@ export default function ItemMovementSection({
                                         <th className="py-3 px-3.5 text-right">Safety Min</th>
                                         <th className="py-3 px-3.5 text-center">Last Issuance</th>
                                         <th className="py-3 px-3.5 text-center">Inactivity (Days)</th>
-                                        <th className="py-3 px-3.5 text-center">Classification & Rule</th>
+                                        <th className="py-3 px-3.5 text-center">Classification &amp; Rule</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-700 dark:text-slate-200 font-medium">
                                     {displayedSlowMoving.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="py-8 text-center text-slate-400 italic">
+                                            <td colSpan={9} className="py-8 text-center text-slate-400 italic block w-full md:table-cell">
                                                 <i className="fas fa-cubes text-2xl mb-2 block opacity-40" />
                                                 No inventory records match the selected slow movement filters.
                                             </td>
@@ -1296,7 +1296,7 @@ export default function ItemMovementSection({
                                                 key={item.id}
                                                 className="hover:bg-amber-50/50 dark:hover:bg-amber-950/15 transition-colors"
                                             >
-                                                <td className="py-3 px-3.5">
+                                                <td className="py-3 px-3.5" data-label="Item Code & Name">
                                                     <div className="font-bold text-slate-900 dark:text-white">
                                                         {item.item_name}
                                                     </div>
@@ -1304,12 +1304,12 @@ export default function ItemMovementSection({
                                                         {item.item_code}
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-3.5">
+                                                <td className="py-3 px-3.5" data-label="Category">
                                                     <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-200/60 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                                                         {item.category}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right font-black">
+                                                <td className="py-3 px-3.5 text-right font-black" data-label="Period Issued Qty">
                                                     {item.total_quantity_issued === 0 ? (
                                                         <span className="text-slate-400 font-mono">0 {item.unit}</span>
                                                     ) : (
@@ -1318,25 +1318,25 @@ export default function ItemMovementSection({
                                                         </span>
                                                     )}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center">
+                                                <td className="py-3 px-3.5 text-center" data-label="Transactions">
                                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
                                                         {item.issuance_transactions_count}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right font-bold text-slate-800 dark:text-slate-200">
+                                                <td className="py-3 px-3.5 text-right font-bold text-slate-800 dark:text-slate-200" data-label="Usable Stock">
                                                     {item.usable_stock.toLocaleString()}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-right text-slate-500 font-mono">
+                                                <td className="py-3 px-3.5 text-right text-slate-500 font-mono" data-label="Safety Min">
                                                     {item.minimum_stock.toLocaleString()}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center text-[11px]">
+                                                <td className="py-3 px-3.5 text-center text-[11px]" data-label="Last Issuance">
                                                     {item.last_issuance_date ? (
                                                         <span className="text-slate-600 dark:text-slate-400 font-mono">{item.last_issuance_date}</span>
                                                     ) : (
                                                         <span className="text-slate-400 italic">Never Issued</span>
                                                     )}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center">
+                                                <td className="py-3 px-3.5 text-center" data-label="Inactivity (Days)">
                                                     {item.days_since_last_issuance !== null ? (
                                                         <span className="font-mono text-xs font-semibold text-slate-700 dark:text-slate-300">
                                                             {item.days_since_last_issuance} days
@@ -1345,7 +1345,7 @@ export default function ItemMovementSection({
                                                         <span className="text-slate-400 text-[10px] italic">No historic issues</span>
                                                     )}
                                                 </td>
-                                                <td className="py-3 px-3.5 text-center">
+                                                <td className="py-3 px-3.5 text-center" data-label="Classification & Rule">
                                                     <StatusBadge
                                                         tone={getClassificationTone(item.movement_classification)}
                                                         dot

@@ -586,7 +586,7 @@ export function StorageLocationsTab({
                             type="button"
                             onClick={loadZones}
                             disabled={isLoadingZones}
-                            title="Reload Zones from Database"
+                            title="Reload Zones"
                             className="p-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 text-slate-500 hover:text-pink-500 transition-colors cursor-pointer"
                         >
                             <RefreshCw className={`w-3.5 h-3.5 ${isLoadingZones ? "animate-spin" : ""}`} />
@@ -630,14 +630,14 @@ export function StorageLocationsTab({
                 {isLoadingZones ? (
                     <div className="p-8 rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] text-center">
                         <RefreshCw className="w-8 h-8 text-pink-500 animate-spin mx-auto mb-2" />
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Loading Zones from Database...</h4>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Loading Zones...</h4>
                     </div>
                 ) : zones.length === 0 ? (
                     <div className="p-8 rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)] text-center">
                         <Warehouse className="w-10 h-10 text-pink-400 mx-auto mb-2 opacity-60" />
-                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Storage Zones in Database</h4>
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Storage Zones Found</h4>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-                            There are currently no storage zones recorded in the database. Click &quot;New Zone / Bin&quot; to establish your warehouse sections.
+                            There are currently no storage zones recorded. Click &quot;New Zone / Bin&quot; to establish your warehouse sections.
                         </p>
                     </div>
                 ) : (
@@ -831,7 +831,7 @@ export function StorageLocationsTab({
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                    <table className="table-pro w-full text-left text-xs border-collapse">
                         <thead>
                             <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
                                 <th className="pb-2.5">Item Name</th>
@@ -852,25 +852,25 @@ export function StorageLocationsTab({
                             ) : (
                                 paginatedItems.map((item) => (
                                     <tr key={item.id} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                        <td className="py-3 font-bold text-slate-800 dark:text-slate-200">
+                                        <td data-label="Item Name" className="py-3 font-bold text-slate-800 dark:text-slate-200">
                                             {item.item_name}
                                         </td>
-                                        <td className="py-3 font-mono text-[11px] text-slate-400">
+                                        <td data-label="SKU / Code" className="py-3 font-mono text-[11px] text-slate-400">
                                             {item.item_code}
                                         </td>
-                                        <td className="py-3 text-slate-500">
+                                        <td data-label="Category" className="py-3 text-slate-500">
                                             {item.category}
                                         </td>
-                                        <td className="py-3">
+                                        <td data-label="Location" className="py-3">
                                             <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 font-mono text-[11px] font-bold text-slate-700 dark:text-slate-200">
                                                 <MapPin className="w-3 h-3 text-pink-500" />
                                                 <span>{item.storage_location || "Unassigned"}</span>
                                             </span>
                                         </td>
-                                        <td className="py-3 text-right font-black text-slate-900 dark:text-white font-mono">
+                                        <td data-label="In Stock" className="py-3 text-right font-black text-slate-900 dark:text-white font-mono">
                                             {item.current_stock} {item.unit || "units"}
                                         </td>
-                                        <td className="py-3 text-right">
+                                        <td data-label="Actions" className="py-3 text-right">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -1459,7 +1459,7 @@ export function StorageLocationsTab({
                                 </div>
 
                                 <div className="overflow-x-auto max-h-[280px] rounded-2xl border border-slate-200/60 dark:border-slate-800">
-                                    <table className="w-full text-left text-xs">
+                                    <table className="table-pro w-full text-left text-xs border-collapse">
                                         <thead className="sticky top-0 bg-[#f0f3f8] dark:bg-[#1d1e28] border-b border-slate-200 dark:border-slate-800 text-[10px] uppercase font-bold text-slate-400">
                                             <tr>
                                                 <th className="py-2.5 px-3">Item Name</th>
@@ -1488,19 +1488,19 @@ export function StorageLocationsTab({
 
                                                     return (
                                                         <tr key={item.id} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                                            <td className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                                            <td data-label="Item Name" className="py-2.5 px-3 font-bold text-slate-800 dark:text-slate-200">
                                                                 {item.item_name}
                                                             </td>
-                                                            <td className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
+                                                            <td data-label="SKU / Code" className="py-2.5 px-3 font-mono text-[11px] text-slate-400">
                                                                 {item.item_code}
                                                             </td>
-                                                            <td className="py-2.5 px-3 text-slate-500">
+                                                            <td data-label="Category" className="py-2.5 px-3 text-slate-500">
                                                                 {item.category || "General"}
                                                             </td>
-                                                            <td className="py-2.5 px-3 text-right font-black text-slate-900 dark:text-white font-mono">
+                                                            <td data-label="Stock Level" className="py-2.5 px-3 text-right font-black text-slate-900 dark:text-white font-mono">
                                                                 {stock} {item.unit || "units"}
                                                             </td>
-                                                            <td className="py-2.5 px-3 text-right">
+                                                            <td data-label="Status" className="py-2.5 px-3 text-right">
                                                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
                                                                     isOutOfStock
                                                                         ? "bg-red-50 text-red-600 dark:bg-red-950/40 border border-red-200 dark:border-red-800/40"
@@ -1511,7 +1511,7 @@ export function StorageLocationsTab({
                                                                     {isOutOfStock ? "Out of Stock" : isLowStock ? "Low Stock" : "In Stock"}
                                                                 </span>
                                                             </td>
-                                                            <td className="py-2.5 px-3 text-right">
+                                                            <td data-label="Actions" className="py-2.5 px-3 text-right">
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => {

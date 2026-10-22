@@ -415,12 +415,12 @@ export default function DefectiveAndReplacementSection({
 
                         {/* Table */}
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800">
-                            <table className="w-full text-left border-collapse">
+                            <table className="table-pro w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200/60 dark:border-slate-800">
                                         <th className="py-3 px-4">Incident ID</th>
-                                        <th className="py-3 px-4">Item & Code</th>
-                                        <th className="py-3 px-4">Supplier & PO</th>
+                                        <th className="py-3 px-4">Item &amp; Code</th>
+                                        <th className="py-3 px-4">Supplier &amp; PO</th>
                                         <th className="py-3 px-4 text-center">Defective Qty</th>
                                         <th className="py-3 px-4">Discrepancy / Severity</th>
                                         <th className="py-3 px-4">Status</th>
@@ -430,38 +430,38 @@ export default function DefectiveAndReplacementSection({
                                 <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                                     {filteredIncidents.length === 0 ? (
                                         <tr>
-                                            <td colSpan={7} className="py-8 text-center text-slate-400">
+                                            <td colSpan={7} className="py-8 text-center text-slate-400 block w-full md:table-cell">
                                                 No damage incidents match the selected filters.
                                             </td>
                                         </tr>
                                     ) : (
                                         filteredIncidents.map((inc) => (
                                             <tr key={inc.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors">
-                                                <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                                                <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white" data-label="Incident ID">
                                                     {inc.incident_number}
                                                     <span className="block text-[10px] text-slate-500 font-sans font-normal">
                                                         {inc.reported_at ? new Date(inc.reported_at).toLocaleDateString() : "-"}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200">
+                                                <td className="py-3 px-4 font-bold text-slate-800 dark:text-slate-200" data-label="Item & Code">
                                                     {inc.item_name}
                                                     <span className="block text-[10px] font-mono text-slate-500 font-normal">
                                                         {inc.item_code}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-4">
+                                                <td className="py-3 px-4" data-label="Supplier & PO">
                                                     <span className="font-semibold">{inc.supplier_name}</span>
                                                     <span className="block text-[10px] font-mono text-slate-500">
                                                         {inc.po_number || "No PO linked"}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-4 text-center">
+                                                <td className="py-3 px-4 text-center" data-label="Defective Qty">
                                                     <span className="font-black text-rose-600 dark:text-rose-400 text-sm">
                                                         {inc.quantity}
                                                     </span>
                                                     <span className="text-[10px] text-slate-500 ml-1">{inc.unit}</span>
                                                 </td>
-                                                <td className="py-3 px-4">
+                                                <td className="py-3 px-4" data-label="Discrepancy / Severity">
                                                     <span className="font-semibold text-slate-800 dark:text-slate-200">
                                                         {inc.discrepancy_type}
                                                     </span>
@@ -469,12 +469,12 @@ export default function DefectiveAndReplacementSection({
                                                         Severity: <strong className="capitalize">{inc.severity}</strong>
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-4">
+                                                <td className="py-3 px-4" data-label="Status">
                                                     <StatusBadge tone={getIncidentBadgeTone(inc.status)}>
                                                         {inc.status}
                                                     </StatusBadge>
                                                 </td>
-                                                <td className="py-3 px-4 text-right">
+                                                <td className="py-3 px-4 text-right" data-label="Action">
                                                     <button
                                                         type="button"
                                                         onClick={() => setSelectedIncident(inc)}
@@ -618,12 +618,12 @@ export default function DefectiveAndReplacementSection({
 
                         {/* Table */}
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800">
-                            <table className="w-full text-left border-collapse">
+                            <table className="table-pro w-full text-left border-collapse">
                                 <thead>
                                     <tr className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200/60 dark:border-slate-800">
                                         <th className="py-3 px-4">Return Request #</th>
                                         <th className="py-3 px-4">Original PO #</th>
-                                        <th className="py-3 px-4">Supplier & Item</th>
+                                        <th className="py-3 px-4">Supplier &amp; Item</th>
                                         <th className="py-3 px-4 text-center">Defective Qty</th>
                                         <th className="py-3 px-4 text-center">Received Qty</th>
                                         <th className="py-3 px-4 text-center">Outstanding</th>
@@ -635,7 +635,7 @@ export default function DefectiveAndReplacementSection({
                                 <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                                     {filteredReplacements.length === 0 ? (
                                         <tr>
-                                            <td colSpan={9} className="py-8 text-center text-slate-400">
+                                            <td colSpan={9} className="py-8 text-center text-slate-400 block w-full md:table-cell">
                                                 No replacement records match the selected filters.
                                             </td>
                                         </tr>
@@ -644,16 +644,16 @@ export default function DefectiveAndReplacementSection({
                                             const badge = getReplacementBadge(rep);
                                             return (
                                                 <tr key={rep.id} className="hover:bg-slate-100/50 dark:hover:bg-slate-800/30 transition-colors">
-                                                    <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white">
+                                                    <td className="py-3 px-4 font-mono font-bold text-slate-900 dark:text-white" data-label="Return Request #">
                                                         {rep.return_request_number}
                                                         <span className="block text-[10px] text-slate-500 font-sans font-normal">
                                                             {rep.created_at ? new Date(rep.created_at).toLocaleDateString() : "-"}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                                    <td className="py-3 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200" data-label="Original PO #">
                                                         {rep.po_number || "Direct RMA"}
                                                     </td>
-                                                    <td className="py-3 px-4">
+                                                    <td className="py-3 px-4" data-label="Supplier & Item">
                                                         <span className="font-bold text-slate-800 dark:text-slate-200 block">
                                                             {rep.item_name}
                                                         </span>
@@ -661,13 +661,13 @@ export default function DefectiveAndReplacementSection({
                                                             {rep.supplier_name}
                                                         </span>
                                                     </td>
-                                                    <td className="py-3 px-4 text-center font-bold text-rose-600 dark:text-rose-400">
+                                                    <td className="py-3 px-4 text-center font-bold text-rose-600 dark:text-rose-400" data-label="Defective Qty">
                                                         {rep.defective_quantity}
                                                     </td>
-                                                    <td className="py-3 px-4 text-center font-black text-emerald-600 dark:text-emerald-400">
+                                                    <td className="py-3 px-4 text-center font-black text-emerald-600 dark:text-emerald-400" data-label="Received Qty">
                                                         {rep.replacement_quantity_received}
                                                     </td>
-                                                    <td className="py-3 px-4 text-center">
+                                                    <td className="py-3 px-4 text-center" data-label="Outstanding">
                                                         {rep.outstanding_quantity > 0 ? (
                                                             <span className="font-bold text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40">
                                                                 {rep.outstanding_quantity} due
@@ -678,7 +678,7 @@ export default function DefectiveAndReplacementSection({
                                                             </span>
                                                         )}
                                                     </td>
-                                                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400">
+                                                    <td className="py-3 px-4 text-slate-600 dark:text-slate-400" data-label="Receipt Date">
                                                         {rep.replacement_received_date
                                                             ? new Date(rep.replacement_received_date).toLocaleDateString()
                                                             : (
@@ -687,12 +687,12 @@ export default function DefectiveAndReplacementSection({
                                                                 </span>
                                                             )}
                                                     </td>
-                                                    <td className="py-3 px-4">
+                                                    <td className="py-3 px-4" data-label="Fulfillment Status">
                                                         <StatusBadge tone={badge.tone}>
                                                             {badge.label}
                                                         </StatusBadge>
                                                     </td>
-                                                    <td className="py-3 px-4 text-right">
+                                                    <td className="py-3 px-4 text-right" data-label="Action">
                                                         <button
                                                             type="button"
                                                             onClick={() => setSelectedReturn(rep)}

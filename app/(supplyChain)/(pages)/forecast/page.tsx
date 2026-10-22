@@ -791,7 +791,7 @@ export default function ForecastPage() {
                 {loading ? (
                     <CardsSkeleton />
                 ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         {/* Card 1: Items Forecasted */}
                         <Cards
                             frontIcon="fas fa-boxes-stacked"
@@ -1117,7 +1117,7 @@ export default function ForecastPage() {
                         )}
 
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
-                            <table className="w-full text-left text-xs">
+                            <table className="table-pro w-full text-left text-xs">
                                 <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
                                     <tr>
                                         <th className="p-3.5 font-bold">Item Code</th>
@@ -1136,13 +1136,13 @@ export default function ForecastPage() {
                                 <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
                                     {displayItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={11} className="p-10 text-center text-slate-400">
+                                            <td colSpan={11} className="p-10 text-center text-slate-400 block w-full md:table-cell">
                                                 No inventory items match the current filter criteria.
                                             </td>
                                         </tr>
                                     ) : (
                                         displayItems.map((item) => {
-                                            const riskTone: BadgeTone =
+                                             const riskTone: BadgeTone =
                                                 item.risk_level === "Critical"
                                                     ? "rose"
                                                     : item.risk_level === "Low Stock Risk"
@@ -1154,19 +1154,19 @@ export default function ForecastPage() {
                                                     key={item.id}
                                                     className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors"
                                                 >
-                                                    <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">
+                                                    <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white" data-label="Item Code">
                                                         {item.item_code}
                                                     </td>
-                                                    <td className="p-3.5 font-medium text-slate-800 dark:text-slate-200">
+                                                    <td className="p-3.5 font-medium text-slate-800 dark:text-slate-200" data-label="Item Name">
                                                         {item.item_name}
                                                     </td>
-                                                    <td className="p-3.5 text-slate-500 font-medium">
+                                                    <td className="p-3.5 text-slate-500 font-medium" data-label="Category">
                                                         {item.category}
                                                     </td>
-                                                    <td className="p-3.5 text-right font-semibold">
+                                                    <td className="p-3.5 text-right font-semibold" data-label="Available">
                                                         {item.available_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
                                                     </td>
-                                                    <td className="p-3.5 text-right font-bold text-amber-600 dark:text-amber-400">
+                                                    <td className="p-3.5 text-right font-bold text-amber-600 dark:text-amber-400" data-label="Forecast Demand">
                                                         {item.is_prediction_valid === false || summary?.has_three_years_history === false ? (
                                                             <div>
                                                                 <span className="text-slate-500 dark:text-slate-400">0</span> <span className="text-[10px] text-slate-400">{item.unit}</span>
@@ -1178,7 +1178,7 @@ export default function ForecastPage() {
                                                             </>
                                                         )}
                                                     </td>
-                                                    <td className="p-3.5 text-right font-semibold text-sky-600 dark:text-sky-400">
+                                                    <td className="p-3.5 text-right font-semibold text-sky-600 dark:text-sky-400" data-label="Expected Incoming">
                                                         +{item.expected_incoming}
                                                     </td>
                                                     <td
@@ -1189,21 +1189,22 @@ export default function ForecastPage() {
                                                                 ? "text-amber-600 dark:text-amber-400"
                                                                 : "text-emerald-600 dark:text-emerald-400"
                                                         }`}
+                                                        data-label="Projected Stock"
                                                     >
                                                         {item.projected_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
                                                     </td>
-                                                    <td className="p-3.5 text-right text-slate-500 font-medium">
+                                                    <td className="p-3.5 text-right text-slate-500 font-medium" data-label="Min Stock">
                                                         {item.minimum_stock}
                                                     </td>
-                                                    <td className="p-3.5 text-center">
+                                                    <td className="p-3.5 text-center" data-label="Risk Level">
                                                         <StatusBadge tone={riskTone} dot>
                                                             {item.risk_level}
                                                         </StatusBadge>
                                                     </td>
-                                                    <td className="p-3.5 text-[11px] text-slate-600 dark:text-slate-300 max-w-xs font-medium">
+                                                    <td className="p-3.5 text-[11px] text-slate-600 dark:text-slate-300 max-w-xs font-medium" data-label="Recommended Action">
                                                         {item.recommended_action}
                                                     </td>
-                                                    <td className="p-3.5 text-center">
+                                                    <td className="p-3.5 text-center" data-label="Actions">
                                                         <div className="flex items-center justify-center gap-1.5">
                                                             <button
                                                                 type="button"
@@ -1455,7 +1456,7 @@ export default function ForecastPage() {
                                 Current Active Session Runs ({sessionHistory.length})
                             </span>
                             <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
-                                <table className="w-full text-left text-xs">
+                                <table className="table-pro w-full text-left text-xs">
                                     <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
                                         <tr>
                                             <th className="p-3.5 font-bold">Run ID</th>
@@ -1471,14 +1472,14 @@ export default function ForecastPage() {
                                     <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
                                         {sessionHistory.map((run) => (
                                             <tr key={run.id} className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors">
-                                                <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white">{run.id}</td>
-                                                <td className="p-3.5 text-slate-500 font-medium">{run.timestamp}</td>
-                                                <td className="p-3.5 font-medium">{run.periodDays} Days</td>
-                                                <td className="p-3.5 font-bold text-pink-600 dark:text-pink-400">{run.horizonDays} Days</td>
-                                                <td className="p-3.5 font-semibold">{run.itemsForecasted}</td>
-                                                <td className="p-3.5 font-bold">{run.predictedDemand} units</td>
-                                                <td className="p-3.5 text-slate-500 font-medium">{run.modelSummary}</td>
-                                                <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400">{run.accuracyLabel}</td>
+                                                <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white" data-label="Run ID">{run.id}</td>
+                                                <td className="p-3.5 text-slate-500 font-medium" data-label="Time">{run.timestamp}</td>
+                                                <td className="p-3.5 font-medium" data-label="Window">{run.periodDays} Days</td>
+                                                <td className="p-3.5 font-bold text-pink-600 dark:text-pink-400" data-label="Horizon">{run.horizonDays} Days</td>
+                                                <td className="p-3.5 font-semibold" data-label="Forecasted Items">{run.itemsForecasted}</td>
+                                                <td className="p-3.5 font-bold" data-label="Predicted Demand">{run.predictedDemand} units</td>
+                                                <td className="p-3.5 text-slate-500 font-medium" data-label="Model Engine">{run.modelSummary}</td>
+                                                <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400" data-label="Accuracy">{run.accuracyLabel}</td>
                                             </tr>
                                         ))}
                                     </tbody>

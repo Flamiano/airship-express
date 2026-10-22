@@ -2071,17 +2071,6 @@ export function PotentialSuppliersTab({
                         <PlusCircle className="w-4 h-4" />
                         <span>Add Potential Supplier</span>
                     </button>
-
-                    <button
-                        type="button"
-                        onClick={() => loadPotentialSuppliersData(false)}
-                        disabled={isLoading}
-                        className="px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_6px_rgba(255,255,255,0.9),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 text-xs font-bold"
-                        title="Reload potential suppliers"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin text-pink-500" : ""}`} />
-                        <span>Refresh</span>
-                    </button>
                 </div>
             </div>
 
@@ -2112,7 +2101,7 @@ export function PotentialSuppliersTab({
                         Loading potential suppliers...
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500">
-                        Fetching selected suppliers from database
+                        Fetching potential suppliers...
                     </p>
                 </div>
             ) : filteredGroups.length === 0 ? (

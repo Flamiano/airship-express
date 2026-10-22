@@ -22,6 +22,7 @@ export interface SearchableDropdownProps {
     allOptionLabel?: string;
     unassignedOptionLabel?: string;
     hasUnassigned?: boolean;
+    hideAllOption?: boolean;
     disabled?: boolean;
     className?: string;
     title?: string;
@@ -40,6 +41,7 @@ export function SearchableDropdown({
     allOptionLabel = 'All Options',
     unassignedOptionLabel = 'Unassigned',
     hasUnassigned = false,
+    hideAllOption = false,
     disabled = false,
     className = '',
     title,
@@ -122,11 +124,15 @@ export function SearchableDropdown({
 
     const handleSelect = useCallback(
         (val: string) => {
-            onChange(val);
+            if (hideAllOption && val === value) {
+                onChange(emptyValue);
+            } else {
+                onChange(val);
+            }
             setIsOpen(false);
             setSearchTerm('');
         },
-        [onChange]
+        [onChange, hideAllOption, value, emptyValue]
     );
 
     const handleClear = useCallback(
@@ -239,7 +245,7 @@ export function SearchableDropdown({
                     {/* Options List */}
                     <div className="max-h-56 overflow-y-auto space-y-0.5 pr-1 custom-scrollbar">
                         {/* "All" Option */}
-                        {(!searchTerm || 'all'.includes(searchTerm.toLowerCase())) && (
+                        {!hideAllOption && (!searchTerm || 'all'.includes(searchTerm.toLowerCase())) && (
                             <button
                                 type="button"
                                 onClick={() => handleSelect(emptyValue)}

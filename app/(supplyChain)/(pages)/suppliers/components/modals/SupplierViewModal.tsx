@@ -233,37 +233,37 @@ export function SupplierViewModal({
     return (
         <Portal>
             <div
-                className="fixed inset-0 z-[130] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+                className="fixed inset-0 z-[130] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
                 onClick={onClose}
             >
                 <div
-                    className="relative w-full max-w-4xl bg-[#f0f4fa] dark:bg-[#151724] rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-none overflow-hidden my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
+                    className="relative w-full max-w-4xl bg-[#f0f4fa] dark:bg-[#151724] rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-none overflow-hidden my-auto flex flex-col max-h-[96vh] sm:max-h-[92vh] animate-in zoom-in-95 duration-200"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
-                        <div className="flex items-center gap-3.5">
-                            <div className="w-11 h-11 rounded-2xl bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)]">
-                                <Building2 className="w-6 h-6 drop-shadow" />
+                    <div className="p-3.5 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-start sm:items-center justify-between gap-2.5 bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
+                        <div className="flex items-start sm:items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
+                            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)] mt-0.5 sm:mt-0">
+                                <Building2 className="w-4 h-4 sm:w-6 sm:h-6 drop-shadow" />
                             </div>
-                            <div>
-                                <div className="flex items-center gap-2.5 flex-wrap">
-                                    <h3 className="font-black text-lg text-slate-900 dark:text-white tracking-tight">
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 sm:gap-2.5 flex-wrap">
+                                    <h3 className="font-black text-sm sm:text-lg text-slate-900 dark:text-white tracking-tight break-words">
                                         {supplier.name}
                                     </h3>
-                                    <span className="font-mono text-[11px] px-2.5 py-0.5 rounded-none bg-[#e8ecf4] dark:bg-[#10121b] text-pink-600 dark:text-pink-400 font-bold border border-slate-300/80 dark:border-white/10 shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)]">
+                                    <span className="font-mono text-[9px] sm:text-[11px] px-2 py-0.5 rounded-md bg-[#e8ecf4] dark:bg-[#10121b] text-pink-600 dark:text-pink-400 font-bold border border-slate-300/80 dark:border-white/10 shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)] shrink-0">
                                         SUP-{String(supplier.id).padStart(3, "0")}
                                     </span>
-                                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                                    <span className={`px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-black uppercase tracking-wider border shrink-0 ${
                                         supplier.is_active !== false
                                             ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/60"
                                             : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/60"
                                     }`}>
-                                        {supplier.is_active !== false ? "Active Supplier" : "Inactive / On Hold"}
+                                        {supplier.is_active !== false ? "Active" : "Inactive"}
                                     </span>
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Category: <strong className="text-slate-700 dark:text-slate-300">{supplier.category || "General Supplies"}</strong> • Registered Supplier Profile
+                                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                    Category: <strong className="text-slate-700 dark:text-slate-300">{supplier.category || "General Supplies"}</strong> • Registered Profile
                                 </p>
                             </div>
                         </div>
@@ -271,7 +271,7 @@ export function SupplierViewModal({
                         <button
                             type="button"
                             onClick={onClose}
-                            className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
+                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] shrink-0 cursor-pointer transition-all active:scale-95 mt-0.5 sm:mt-0"
                             aria-label="Close modal"
                         >
                             <X className="w-4 h-4" />
@@ -279,41 +279,41 @@ export function SupplierViewModal({
                     </div>
 
                     {/* Navigation Tabs Bar */}
-                    <div className="px-6 py-3 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2 shrink-0">
-                        <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] flex-wrap">
+                    <div className="px-3 sm:px-6 py-2 sm:py-2.5 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] overflow-x-auto no-scrollbar shrink-0">
+                        <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] flex-nowrap shrink-0 w-max">
                             <button
                                 type="button"
                                 onClick={() => setActiveTab("general")}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "general"
                                         ? "bg-pink-600 text-white shadow-xs"
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                1. General & Info
+                                1. General &amp; Info
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab("terms")}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "terms"
                                         ? "bg-pink-600 text-white shadow-xs"
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                2. Commercial & Terms
+                                2. Commercial &amp; Terms
                             </button>
                             <button
                                 type="button"
                                 onClick={() => setActiveTab("products")}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "products"
                                         ? "bg-pink-600 text-white shadow-xs"
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
                                 <Package className="w-3.5 h-3.5" />
-                                <span>3. Products to Supply</span>
+                                <span>3. Products</span>
                                 {rawOtherProducts.length > 0 && (
                                     <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black ${
                                         activeTab === "products" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
@@ -325,13 +325,13 @@ export function SupplierViewModal({
                             <button
                                 type="button"
                                 onClick={() => setActiveTab("docs")}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "docs"
                                         ? "bg-pink-600 text-white shadow-xs"
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                <span>4. Docs & AI</span>
+                                <span>4. Docs &amp; AI</span>
                                 {documents.length > 0 && (
                                     <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black ${
                                         activeTab === "docs" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
@@ -343,20 +343,20 @@ export function SupplierViewModal({
                             <button
                                 type="button"
                                 onClick={() => setActiveTab("orders")}
-                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "orders"
                                         ? "bg-emerald-600 text-white shadow-xs"
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
                                 <ShoppingBag className="w-3.5 h-3.5" />
-                                <span>5. Transactions &amp; Orders ({supplierFullOrders.length + supplierQuotations.length})</span>
+                                <span>5. Orders ({supplierFullOrders.length + supplierQuotations.length})</span>
                             </button>
                         </div>
                     </div>
 
                     {/* Scrollable Content */}
-                    <div className="p-6 overflow-y-auto space-y-5 flex-1 text-xs">
+                    <div className="p-3.5 sm:p-6 overflow-y-auto space-y-4 sm:space-y-5 flex-1 text-xs">
                         {/* TAB 1: General & Profile Information */}
                         {activeTab === "general" && (
                             <div className="space-y-5 animate-in fade-in duration-200">
@@ -825,15 +825,15 @@ export function SupplierViewModal({
                                         <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-3 flex-wrap gap-2">
                                             <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                                 <ShoppingBag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                                <span>Actual Database Transaction History ({supplierFullOrders.length + supplierQuotations.length})</span>
+                                                <span>Actual Transaction History ({supplierFullOrders.length + supplierQuotations.length})</span>
                                             </h4>
 
                                             {/* Subtab Switcher */}
-                                            <div className="flex items-center gap-1 bg-[#e8ecf4] dark:bg-[#10121b] p-1 rounded-2xl border border-slate-300/70 dark:border-white/10 text-[11px] font-bold">
+                                            <div className="flex items-center gap-1 bg-[#e8ecf4] dark:bg-[#10121b] p-1 rounded-2xl border border-slate-300/70 dark:border-white/10 text-[11px] font-bold overflow-x-auto no-scrollbar max-w-full flex-nowrap">
                                                 <button
                                                     type="button"
                                                     onClick={() => setHistorySubTab("all")}
-                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                    className={`px-2.5 py-1 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                                                         historySubTab === "all" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
                                                     }`}
                                                 >
@@ -842,7 +842,7 @@ export function SupplierViewModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setHistorySubTab("active")}
-                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                    className={`px-2.5 py-1 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                                                         historySubTab === "active" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
                                                     }`}
                                                 >
@@ -851,7 +851,7 @@ export function SupplierViewModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setHistorySubTab("completed")}
-                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                    className={`px-2.5 py-1 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                                                         historySubTab === "completed" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
                                                     }`}
                                                 >
@@ -860,7 +860,7 @@ export function SupplierViewModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setHistorySubTab("rejected")}
-                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                    className={`px-2.5 py-1 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                                                         historySubTab === "rejected" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
                                                     }`}
                                                 >
@@ -869,7 +869,7 @@ export function SupplierViewModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => setHistorySubTab("quotes")}
-                                                    className={`px-2.5 py-1 rounded-xl transition-all ${
+                                                    className={`px-2.5 py-1 rounded-xl transition-all shrink-0 whitespace-nowrap ${
                                                         historySubTab === "quotes" ? "bg-emerald-600 text-white shadow-xs" : "text-slate-600 dark:text-slate-400"
                                                     }`}
                                                 >
@@ -1011,34 +1011,36 @@ export function SupplierViewModal({
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="px-6 py-4 border-t border-slate-300/80 dark:border-white/10 bg-[#ebf0f7] dark:bg-[#131522] flex items-center justify-between shrink-0 flex-wrap gap-2">
+                    <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-slate-300/80 dark:border-white/10 bg-[#ebf0f7] dark:bg-[#131522] flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between shrink-0 gap-2.5">
                         <AppButton
                             type="button"
                             variant="danger"
                             size="sm"
+                            className="w-full sm:w-auto justify-center"
                             onClick={() => onDelete(supplier.id, supplier.name)}
                         >
                             Delete Supplier
                         </AppButton>
 
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
                             {onScheduleMeeting && (
                                 <button
                                     type="button"
                                     onClick={() => onScheduleMeeting(supplier)}
-                                    className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                                    className="flex-1 sm:flex-initial justify-center px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
                                 >
                                     <Video className="w-3.5 h-3.5" />
                                     <span>Schedule Meeting</span>
                                 </button>
                             )}
-                            <AppButton type="button" variant="neutral" size="sm" onClick={onClose}>
+                            <AppButton type="button" variant="neutral" size="sm" className="flex-1 sm:flex-initial justify-center" onClick={onClose}>
                                 Close
                             </AppButton>
                             <AppButton
                                 type="button"
                                 variant="primary"
                                 size="sm"
+                                className="flex-1 sm:flex-initial justify-center"
                                 onClick={() => {
                                     onEdit(supplier);
                                     onClose();

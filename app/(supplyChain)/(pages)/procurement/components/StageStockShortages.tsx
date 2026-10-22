@@ -272,16 +272,6 @@ export function StageStockShortages({
                             Showing all inventory items with low stock and out-of-stock statuses requiring vendor replenishment.
                         </p>
                     </div>
-
-                    <button
-                        type="button"
-                        onClick={onRefresh}
-                        className="p-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#1a1c2c] text-slate-600 dark:text-slate-300 hover:text-pink-600 text-xs font-bold transition-all shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.06] cursor-pointer flex items-center gap-1.5"
-                        title="Refresh Shortages"
-                    >
-                        <RefreshCw className="w-4 h-4" />
-                        <span className="text-xs font-bold hidden sm:inline">Refresh</span>
-                    </button>
                 </div>
 
                 {/* Filters with Debounced Search */}
@@ -332,7 +322,7 @@ export function StageStockShortages({
 
                 {/* Structured Multi-Column Table */}
                 <div className="overflow-x-auto rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)]">
-                    <table className="min-w-[1380px] w-full text-left border-collapse text-xs table-fixed">
+                    <table className="table-pro min-w-full md:min-w-[1380px] w-full text-left border-collapse text-xs md:table-fixed">
                         <thead>
                             <tr className="bg-[#e2e8f0]/80 dark:bg-[#10121d] text-slate-500 dark:text-slate-400 font-extrabold uppercase tracking-wider text-[10px] border-b border-slate-200/70 dark:border-white/[0.06]">
                                 <th className="py-3 px-4 w-[230px]">Item Code &amp; Name</th>
@@ -795,7 +785,7 @@ export function StageStockShortages({
 
                                                                     {item.related_requests && item.related_requests.length > 0 ? (
                                                                         <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
-                                                                            <table className="w-full text-left text-[11px]">
+                                                                            <table className="table-pro w-full text-left text-[11px]">
                                                                                 <thead>
                                                                                     <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
                                                                                         <th className="py-2 px-3">Req Number</th>
@@ -808,19 +798,19 @@ export function StageStockShortages({
                                                                                 <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
                                                                                     {item.related_requests.map((req, rIdx) => (
                                                                                         <tr key={`${req.id || req.request_number}-${rIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
-                                                                                            <td className="py-2 px-3 font-mono font-bold text-pink-600 dark:text-pink-400">
+                                                                                            <td data-label="Req Number" className="py-2 px-3 font-mono font-bold text-pink-600 dark:text-pink-400">
                                                                                                 #{req.request_number || req.id}
                                                                                             </td>
-                                                                                            <td className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200" title="Original user input casing preserved">
+                                                                                            <td data-label="Original Item Name" className="py-2 px-3 font-semibold text-slate-800 dark:text-slate-200" title="Original user input casing preserved">
                                                                                                 {req.item_name}
                                                                                             </td>
-                                                                                            <td className="py-2 px-3 text-slate-600 dark:text-slate-400">
+                                                                                            <td data-label="Department" className="py-2 px-3 text-slate-600 dark:text-slate-400">
                                                                                                 {req.department || "Staff Requisition"}
                                                                                             </td>
-                                                                                            <td className="py-2 px-3 text-right font-black text-slate-900 dark:text-white">
+                                                                                            <td data-label="Qty" className="py-2 px-3 text-right font-black text-slate-900 dark:white">
                                                                                                 {req.quantity} {item.unit}
                                                                                             </td>
-                                                                                            <td className="py-2 px-3 text-right">
+                                                                                            <td data-label="Status" className="py-2 px-3 text-right">
                                                                                                 <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[9px]">
                                                                                                     {req.status}
                                                                                                 </span>
@@ -851,7 +841,7 @@ export function StageStockShortages({
 
                                                                     {item.covering_purchase_orders && item.covering_purchase_orders.length > 0 ? (
                                                                         <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
-                                                                            <table className="w-full text-left text-[11px]">
+                                                                            <table className="table-pro w-full text-left text-[11px]">
                                                                                 <thead>
                                                                                     <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
                                                                                         <th className="py-2 px-3">PO Number</th>
@@ -865,16 +855,16 @@ export function StageStockShortages({
                                                                                         const isDelivered = String(po.status || "").toLowerCase() === "delivered" || String(po.status || "").toLowerCase() === "completed";
                                                                                         return (
                                                                                             <tr key={`${po.id || po.po_number}-${pIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
-                                                                                                <td className="py-2 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
+                                                                                                <td data-label="PO Number" className="py-2 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
                                                                                                     #{po.po_number || po.id}
                                                                                                 </td>
-                                                                                                <td className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                                                                                                <td data-label="Supplier" className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
                                                                                                     {po.supplier_name || "Supplier"}
                                                                                                 </td>
-                                                                                                <td className="py-2 px-3 text-right font-black text-sky-600 dark:text-sky-400">
+                                                                                                <td data-label="Qty Covered" className="py-2 px-3 text-right font-black text-sky-600 dark:text-sky-400">
                                                                                                     {po.covered_quantity || po.quantity} {item.unit}
                                                                                                 </td>
-                                                                                                <td className="py-2 px-3 text-right">
+                                                                                                <td data-label="Lifecycle Status" className="py-2 px-3 text-right">
                                                                                                     <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
                                                                                                         isDelivered
                                                                                                             ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"

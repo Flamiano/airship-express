@@ -274,31 +274,12 @@ function WarehousingContent() {
                             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5">
                                 End-to-end warehouse materials control: Receive supplies from suppliers, issue approved requests to departments, manage storage locations, and record damaged or missing supplies.
                             </p>
-
-                            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#14151c] shadow-[inset_2px_2px_4px_rgba(166,175,195,0.35),inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5),inset_-1px_-1px_3px_rgba(255,255,255,0.04)] border border-slate-200/60 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-300">
-                                <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
-                                <span className="font-medium text-slate-500">Authenticated Role:</span>
-                                <span className="font-extrabold text-slate-800 dark:text-slate-100 capitalize">
-                                    {userRole}
-                                </span>
-                            </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                            type="button"
-                            onClick={() => loadWarehouseData(true)}
-                            className="p-2.5 rounded-2xl bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-600 dark:text-slate-300 hover:text-pink-600 text-xs font-bold transition-all shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)] border border-white/70 dark:border-[#2a2b38] active:scale-95 cursor-pointer flex items-center gap-1.5"
-                            title="Refresh Warehouse Datasets"
-                        >
-                            <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-pink-500" : ""}`} />
-                            <span className="text-xs font-bold hidden sm:inline">Refresh</span>
-                        </button>
-                    </div>
                 </div>
 
-                {/* 2. AI Questions Helper - Strictly Solid Pink and Slate */}
+            
                 <AiQuestions
                     title="Warehouse Logistics Co-Pilot"
                     subtitle="Ask questions or trigger instant warehouse operations"
@@ -376,4 +357,4 @@ export default function WarehousingPage() {
             <WarehousingContent />
         </Suspense>
     );
-}
+}

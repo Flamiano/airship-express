@@ -879,40 +879,9 @@ function ProcurementContent() {
                             <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
                                 End-to-end operational procurement: Monitor stock shortages, find potential suppliers, and collect &amp; compare quotations.
                             </p>
-
-                            <div className="inline-flex items-center gap-2 mt-2 px-3 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.3),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] text-[11px] text-slate-600 dark:text-slate-300">
-                                <span className="w-2 h-2 rounded-full bg-pink-500 shadow-xs shadow-pink-500/50" />
-                                <span className="font-bold text-slate-500">Authenticated Role:</span>
-                                <span className="font-black text-slate-800 dark:text-slate-100 capitalize">
-                                    {userRole}
-                                </span>
-                            </div>
                         </div>
                     </div>
-
-                    <div className="flex items-center gap-2 flex-wrap">
-                        <button
-                            type="button"
-                            onClick={() => loadAllProcurementData(true)}
-                            className="p-2.5 px-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#1a1c2c] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-3px_-3px_8px_rgba(255,255,255,0.9),_3px_3px_8px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.06] cursor-pointer flex items-center gap-2"
-                            title="Refresh Datasets"
-                        >
-                            <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-pink-500" : ""}`} />
-                            <span className="text-xs font-black hidden sm:inline">Refresh Hub</span>
-                        </button>
-                    </div>
                 </div>
-
-                {/* 2. AI Questions Helper - Strictly Solid Pink and Slate */}
-                <AiQuestions
-                    title="Procurement Intelligent Co-Pilot"
-                    subtitle="Ask questions or trigger instant workflow actions"
-                    questions={[
-                        { question: "Monitor warehouse stock shortages and deficits", color: "bg-pink-500" },
-                        { question: "Find potential suppliers on logistics sourcing map", color: "bg-pink-500" },
-                        { question: "Collect and compare supplier quotations and pricing", color: "bg-pink-500" },
-                    ]}
-                />
 
                 {/* 3. 3-Stage Lifecycle Stepper Navigation */}
                 <ProcurementLifecycleNav

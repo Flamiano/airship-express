@@ -463,7 +463,7 @@ export function InventoryTab() {
                         <tbody>
                             {paginatedItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} className="py-12 text-center text-slate-400 dark:text-slate-500">
+                                    <td colSpan={10} className="block w-full md:table-cell py-12 text-center text-slate-400 dark:text-slate-500">
                                         <div className="flex flex-col items-center justify-center gap-2">
                                             <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 dark:text-slate-500 mb-1">
                                                 <i className="fas fa-trash-can text-xl"></i>
@@ -486,48 +486,48 @@ export function InventoryTab() {
                                                 <div className="flex items-center justify-start md:justify-center w-full">
                                                     <label className="inline-flex items-center gap-2 cursor-pointer">
                                                         <input
-                                                            type="checkbox"
-                                                            checked={isSelected}
-                                                            onChange={() => {
-                                                                const newSelected = new Set(selectedItemIds);
-                                                                if (newSelected.has(item.id)) newSelected.delete(item.id);
-                                                                else newSelected.add(item.id);
-                                                                setSelectedItemIds(newSelected);
-                                                            }}
-                                                            aria-label={`Select ${item.item_name}`}
-                                                            className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"
-                                                        />
-                                                        <span className="md:hidden text-xs font-semibold text-slate-700 dark:text-slate-200">Select</span>
-                                                    </label>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                                                {item.item_code}
-                                            </td>
-                                            <td className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">
-                                                {item.item_name}
-                                            </td>
-                                            <td className="py-3 px-4">
-                                                <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
-                                                    {item.category}
-                                                </span>
-                                            </td>
-                                            <td className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
-                                                {item.current_stock}
-                                            </td>
-                                            <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
-                                                {item.unit}
-                                            </td>
-                                            <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                                                {item.archived_by}
-                                            </td>
-                                            <td className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
-                                                {formatDate(item.archived_at)}
-                                            </td>
-                                            <td className="py-3 px-4 text-slate-600 dark:text-slate-300 max-w-[150px] truncate" title={item.archived_reason || ''}>
-                                                {item.archived_reason || '—'}
-                                            </td>
-                                            <td className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
+                                                             type="checkbox"
+                                                             checked={isSelected}
+                                                             onChange={() => {
+                                                                 const newSelected = new Set(selectedItemIds);
+                                                                 if (newSelected.has(item.id)) newSelected.delete(item.id);
+                                                                 else newSelected.add(item.id);
+                                                                 setSelectedItemIds(newSelected);
+                                                             }}
+                                                             aria-label={`Select ${item.item_name}`}
+                                                             className="w-4 h-4 rounded border-slate-300 dark:border-slate-700 text-pink-500 focus:ring-pink-500/20 cursor-pointer accent-pink-500 bg-transparent"
+                                                         />
+                                                         <span className="md:hidden text-xs font-semibold text-slate-700 dark:text-slate-200">Select</span>
+                                                     </label>
+                                                 </div>
+                                             </td>
+                                             <td data-label="Code" className="py-3 px-4 font-mono text-[11px] font-semibold text-slate-600 dark:text-slate-400">
+                                                 {item.item_code}
+                                             </td>
+                                             <td data-label="Item Name" className="py-3 px-4 font-semibold text-slate-800 dark:text-slate-200">
+                                                 {item.item_name}
+                                             </td>
+                                             <td data-label="Category" className="py-3 px-4">
+                                                 <span className="inline-flex items-center px-2 py-0.5 rounded-lg text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60">
+                                                     {item.category}
+                                                 </span>
+                                             </td>
+                                             <td data-label="Stock" className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                                 {item.current_stock}
+                                             </td>
+                                             <td data-label="Unit" className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px]">
+                                                 {item.unit}
+                                             </td>
+                                             <td data-label="Archived By" className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                                                 {item.archived_by}
+                                             </td>
+                                             <td data-label="Archived At" className="py-3 px-4 text-slate-500 dark:text-slate-400 text-[11px] whitespace-nowrap">
+                                                 {formatDate(item.archived_at)}
+                                             </td>
+                                             <td data-label="Reason" className="py-3 px-4 text-slate-600 dark:text-slate-300 max-w-[150px] truncate" title={item.archived_reason || ''}>
+                                                 {item.archived_reason || '—'}
+                                             </td>
+                                             <td data-label="Actions" className="py-3 px-4 text-right whitespace-nowrap w-[130px] min-w-[130px]">
                                                 <div className="flex items-center justify-end gap-2.5">
                                                     <CrudActionButton
                                                         action="restore"

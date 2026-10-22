@@ -30,6 +30,7 @@ import Cards from "../../../../components/global/Cards";
 import { Pagination } from "../../../../components/global/pagination";
 import { useConfirm } from "../../../../components/ui/ConfirmModal";
 import { Supplier } from "../../types";
+import { supabase } from "../../../../lib/services/client/supabase";
 import { SupplierDocumentPreviewModal } from "../modals/SupplierDocumentPreviewModal";
 import { UploadSupplierDocumentModal } from "../modals/UploadSupplierDocumentModal";
 
@@ -135,7 +136,31 @@ export function ContractsAndSupplierDocumentsTab({
 
     useEffect(() => {
         loadDocuments();
-    }, [loadDocuments]);
+
+        const channelId = `contracts_and_documents_realtime_${Date.now()}`;
+        const channel = supabase
+            .channel(channelId)
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_documents" },
+                () => {
+                    loadDocuments(true);
+                }
+            )
+            .on(
+                "postgres_changes",
+                { event: "*", schema: "public", table: "suppliers" },
+                () => {
+                    loadDocuments(true);
+                    onRefresh?.();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [loadDocuments, onRefresh]);
 
     // Delete document handler
     const handleDeleteDocument = async (doc: SupplierDocumentItem) => {
@@ -302,7 +327,7 @@ export function ContractsAndSupplierDocumentsTab({
     return (
         <div className="space-y-6 animate-in fade-in duration-200">
             {/* 1. Top KPI Summary Cards - Using 3D Flipping Cards Component */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards
                     frontIcon="fa-solid fa-file-lines mr-1"
                     header="Total Documents"
@@ -478,17 +503,6 @@ export function ContractsAndSupplierDocumentsTab({
                     >
                         <PlusCircle className="w-4 h-4" />
                         <span>Upload Document</span>
-                    </button>
-
-                    {/* Refresh */}
-                    <button
-                        type="button"
-                        onClick={() => loadDocuments(true)}
-                        disabled={isLoading || isRefreshing}
-                        className="p-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 dark:text-slate-300 hover:text-pink-600 border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_6px_rgba(255,255,255,0.9),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] active:scale-95 transition-all cursor-pointer disabled:opacity-50"
-                        title="Reload documents"
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-pink-500" : ""}`} />
                     </button>
                 </div>
             </div>

@@ -1893,7 +1893,7 @@ export function NotificationBell() {
                                                 </div>
 
                                                 <div className="overflow-x-auto">
-                                                    <table className="w-full text-left border-collapse">
+                                                    <table className="table-pro w-full text-left border-collapse">
                                                         <thead>
                                                             <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-200/40 dark:border-white/[0.03]">
                                                                 <th className="py-2 px-3">Item Name</th>
@@ -1910,7 +1910,7 @@ export function NotificationBell() {
                                                                 const total = qty * price;
                                                                 return (
                                                                     <tr key={index} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                                                                        <td className="py-2 px-2">
+                                                                        <td data-label="Item Name" className="py-2 px-2">
                                                                             <input
                                                                                 type="text"
                                                                                 value={item.name || item.item_name || ''}
@@ -1919,7 +1919,7 @@ export function NotificationBell() {
                                                                                 className="w-full h-11 bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] rounded-xl px-3 py-2.5 text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]"
                                                                             />
                                                                         </td>
-                                                                        <td className="py-2 px-2 text-center">
+                                                                        <td data-label="Qty" className="py-2 px-2 text-center">
                                                                             <input
                                                                                 type="number"
                                                                                 min="1"
@@ -1928,7 +1928,7 @@ export function NotificationBell() {
                                                                                 className="w-20 h-11 text-center bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] rounded-xl px-2.5 py-2.5 text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]"
                                                                             />
                                                                         </td>
-                                                                        <td className="py-2 px-2 text-right">
+                                                                        <td data-label="Unit Price" className="py-2 px-2 text-right">
                                                                             <input
                                                                                 type="number"
                                                                                 min="0"
@@ -1938,10 +1938,10 @@ export function NotificationBell() {
                                                                                 className="w-32 h-11 text-right bg-[#e4ebf5] dark:bg-[#111218] border border-slate-200/60 dark:border-white/[0.08] rounded-xl px-3 py-2.5 text-xs text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:border-pink-500 shadow-[inset_1px_1px_3px_rgba(166,175,195,0.3)]"
                                                                             />
                                                                         </td>
-                                                                        <td className="py-2 px-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
+                                                                        <td data-label="Total" className="py-2 px-3 text-right font-bold text-slate-900 dark:text-white whitespace-nowrap">
                                                                             ₱{total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                         </td>
-                                                                        <td className="py-2 px-2 text-center">
+                                                                        <td data-label="Action" className="py-2 px-2 text-center">
                                                                             {(editPRData?.items || []).length > 1 && (
                                                                                 <button
                                                                                     type="button"
@@ -1974,7 +1974,7 @@ export function NotificationBell() {
                                                     </div>
 
                                                     <div className="overflow-x-auto">
-                                                        <table className="w-full text-left border-collapse">
+                                                        <table className="table-pro w-full text-left border-collapse">
                                                             <thead>
                                                                 <tr className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 border-b border-slate-200/40 dark:border-white/[0.03]">
                                                                     <th className="py-2 px-3">Item</th>
@@ -1996,16 +1996,16 @@ export function NotificationBell() {
 
                                                                     return (
                                                                         <tr key={index} className="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
-                                                                            <td className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
+                                                                            <td data-label="Item" className="py-2.5 px-3 font-semibold text-slate-800 dark:text-slate-200">
                                                                                 {item.name || item.item_name || item.description || 'Inventory Item'}
                                                                             </td>
-                                                                            <td className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-400">
+                                                                            <td data-label="Qty" className="py-2.5 px-3 text-center text-slate-600 dark:text-slate-400">
                                                                                 {qty}
                                                                             </td>
-                                                                            <td className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-400">
+                                                                            <td data-label="Unit Price" className="py-2.5 px-3 text-right text-slate-600 dark:text-slate-400">
                                                                                 ₱{unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                             </td>
-                                                                            <td className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
+                                                                            <td data-label="Total" className="py-2.5 px-3 text-right font-bold text-slate-900 dark:text-white">
                                                                                 ₱{rowTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                             </td>
                                                                         </tr>

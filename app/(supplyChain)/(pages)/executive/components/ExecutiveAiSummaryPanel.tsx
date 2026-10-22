@@ -331,7 +331,7 @@ export default function ExecutiveAiSummaryPanel({
                 <div className="space-y-4">
                     {/* 1. Cross-Tab AI Summary Matrix Table */}
                     <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)]">
-                        <table className="w-full text-left border-collapse">
+                        <table className="table-pro w-full text-left border-collapse">
                             <thead>
                                 <tr className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-500 dark:text-slate-400 text-[11px] font-bold uppercase tracking-wider border-b border-slate-200/60 dark:border-slate-800">
                                     <th className="py-3 px-4 min-w-[170px]">Dashboard Tab</th>
@@ -345,7 +345,7 @@ export default function ExecutiveAiSummaryPanel({
                             <tbody className="divide-y divide-slate-200/50 dark:divide-slate-800 text-xs text-slate-700 dark:text-slate-300">
                                 {filteredTableRows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="py-8 text-center text-slate-400">
+                                        <td colSpan={6} className="py-8 text-center text-slate-400 block w-full md:table-cell">
                                             No tab summaries match your search query.
                                         </td>
                                     </tr>
@@ -356,7 +356,7 @@ export default function ExecutiveAiSummaryPanel({
                                             className="hover:bg-slate-100/60 dark:hover:bg-slate-800/40 transition-colors"
                                         >
                                             {/* Tab & Icon */}
-                                            <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white">
+                                            <td className="py-3.5 px-4 font-bold text-slate-900 dark:text-white" data-label="Dashboard Tab">
                                                 <div className="flex items-center gap-2.5">
                                                     <div className="w-7 h-7 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[1px_1px_3px_rgba(166,175,195,0.25)] flex items-center justify-center text-pink-500 shrink-0 text-xs">
                                                         <i className={`fas ${row.icon}`} />
@@ -371,19 +371,19 @@ export default function ExecutiveAiSummaryPanel({
                                             </td>
 
                                             {/* Audited Metrics */}
-                                            <td className="py-3.5 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200">
+                                            <td className="py-3.5 px-4 font-mono font-semibold text-slate-800 dark:text-slate-200" data-label="Audited Metrics">
                                                 {row.metricsDisplay}
                                             </td>
 
                                             {/* AI Health Status */}
-                                            <td className="py-3.5 px-4 text-center">
+                                            <td className="py-3.5 px-4 text-center" data-label="AI Status">
                                                 <StatusBadge tone={row.statusTone} size="xs">
                                                     {row.healthStatus}
                                                 </StatusBadge>
                                             </td>
 
                                             {/* AI Key Findings (Bulleted List in Cell) */}
-                                            <td className="py-3.5 px-4">
+                                            <td className="py-3.5 px-4" data-label="AI Key Findings">
                                                 <ul className="space-y-1 text-[11px] list-disc pl-4 text-slate-600 dark:text-slate-300">
                                                     {row.findings.map((finding, fIdx) => (
                                                         <li key={fIdx} className="leading-snug">{finding}</li>
@@ -392,12 +392,12 @@ export default function ExecutiveAiSummaryPanel({
                                             </td>
 
                                             {/* Strategic Recommendation */}
-                                            <td className="py-3.5 px-4 text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed pl-3 border-l-2 border-pink-500/20">
+                                            <td className="py-3.5 px-4 text-[11px] text-slate-700 dark:text-slate-300 leading-relaxed pl-3 border-l-2 border-pink-500/20" data-label="Strategic Recommendation">
                                                 {row.recommendation}
                                             </td>
 
                                             {/* Action Link to Jump to Tab */}
-                                            <td className="py-3.5 px-4 text-right">
+                                            <td className="py-3.5 px-4 text-right" data-label="Navigation">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleJumpToTab(row.tabKey)}
@@ -422,7 +422,7 @@ export default function ExecutiveAiSummaryPanel({
                                 Issued Purchase Orders Audit Breakdown
                             </h4>
                             <div className="overflow-x-auto rounded-xl border border-slate-200/50 dark:border-slate-800">
-                                <table className="w-full text-left text-xs">
+                                <table className="table-pro w-full text-left text-xs">
                                     <thead>
                                         <tr className="bg-[#f0f3f8] dark:bg-[#161722] text-slate-500 text-[10px] font-bold uppercase border-b border-slate-200/60 dark:border-slate-800">
                                             <th className="p-2.5">PO Number</th>
@@ -435,11 +435,11 @@ export default function ExecutiveAiSummaryPanel({
                                     <tbody className="divide-y divide-slate-200/40 dark:divide-slate-800">
                                         {(data?.issuedPOsAnalytics?.issuedOrdersList || []).slice(0, 5).map((po) => (
                                             <tr key={po.id} className="hover:bg-slate-100/40 dark:hover:bg-slate-800/20">
-                                                <td className="p-2.5 font-mono font-bold text-slate-900 dark:text-white">{po.po_number}</td>
-                                                <td className="p-2.5">{po.supplier_name}</td>
-                                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">₱{po.total_amount.toLocaleString()}</td>
-                                                <td className="p-2.5 text-center"><StatusBadge tone={po.delivery_status === "Fully Received" ? "emerald" : "amber"} size="xs">{po.delivery_status}</StatusBadge></td>
-                                                <td className="p-2.5 text-center"><StatusBadge tone="neutral" size="xs">{po.financial_approval || "Approved"}</StatusBadge></td>
+                                                <td className="p-2.5 font-mono font-bold text-slate-900 dark:text-white" data-label="PO Number">{po.po_number}</td>
+                                                <td className="p-2.5" data-label="Supplier">{po.supplier_name}</td>
+                                                <td className="p-2.5 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400" data-label="Total Outlay">₱{po.total_amount.toLocaleString()}</td>
+                                                <td className="p-2.5 text-center" data-label="Fulfillment"><StatusBadge tone={po.delivery_status === "Fully Received" ? "emerald" : "amber"} size="xs">{po.delivery_status}</StatusBadge></td>
+                                                <td className="p-2.5 text-center" data-label="Financial Sign-Off"><StatusBadge tone="neutral" size="xs">{po.financial_approval || "Approved"}</StatusBadge></td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -452,10 +452,10 @@ export default function ExecutiveAiSummaryPanel({
                         <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-slate-200/60 dark:border-slate-800 space-y-2">
                             <h4 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider flex items-center gap-2">
                                 <i className="fas fa-boxes-packing text-rose-500" />
-                                Defective Incidents & Replacement Delivery Tracking
+                                Defective Incidents &amp; Replacement Delivery Tracking
                             </h4>
                             <div className="overflow-x-auto rounded-xl border border-slate-200/50 dark:border-slate-800">
-                                <table className="w-full text-left text-xs">
+                                <table className="table-pro w-full text-left text-xs">
                                     <thead>
                                         <tr className="bg-[#f0f3f8] dark:bg-[#161722] text-slate-500 text-[10px] font-bold uppercase border-b border-slate-200/60 dark:border-slate-800">
                                             <th className="p-2.5">Reference #</th>
@@ -469,12 +469,12 @@ export default function ExecutiveAiSummaryPanel({
                                     <tbody className="divide-y divide-slate-200/40 dark:divide-slate-800">
                                         {(data?.replacementAnalytics?.replacementCases || []).slice(0, 5).map((rep) => (
                                             <tr key={rep.id} className="hover:bg-slate-100/40 dark:hover:bg-slate-800/20">
-                                                <td className="p-2.5 font-mono font-bold text-slate-900 dark:text-white">{rep.return_request_number}</td>
-                                                <td className="p-2.5 font-semibold">{rep.item_name}</td>
-                                                <td className="p-2.5 text-center font-bold text-rose-600">{rep.defective_quantity}</td>
-                                                <td className="p-2.5 text-center font-bold text-emerald-600">{rep.replacement_quantity_received}</td>
-                                                <td className="p-2.5 text-center font-bold">{rep.outstanding_quantity}</td>
-                                                <td className="p-2.5 text-center"><StatusBadge tone={rep.outstanding_quantity === 0 ? "emerald" : "amber"} size="xs">{rep.outstanding_quantity === 0 ? "Fulfilled" : "Pending"}</StatusBadge></td>
+                                                <td className="p-2.5 font-mono font-bold text-slate-900 dark:text-white" data-label="Reference #">{rep.return_request_number}</td>
+                                                <td className="p-2.5 font-semibold" data-label="Item Name">{rep.item_name}</td>
+                                                <td className="p-2.5 text-center font-bold text-rose-600" data-label="Defective Qty">{rep.defective_quantity}</td>
+                                                <td className="p-2.5 text-center font-bold text-emerald-600" data-label="Received Replacement">{rep.replacement_quantity_received}</td>
+                                                <td className="p-2.5 text-center font-bold" data-label="Outstanding">{rep.outstanding_quantity}</td>
+                                                <td className="p-2.5 text-center" data-label="Status"><StatusBadge tone={rep.outstanding_quantity === 0 ? "emerald" : "amber"} size="xs">{rep.outstanding_quantity === 0 ? "Fulfilled" : "Pending"}</StatusBadge></td>
                                             </tr>
                                         ))}
                                     </tbody>

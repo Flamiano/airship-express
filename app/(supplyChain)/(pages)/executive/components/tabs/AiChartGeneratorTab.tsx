@@ -838,7 +838,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                 {isLoading ? (
                                     <>
                                         <i className="fas fa-circle-notch animate-spin text-xs" />
-                                        <span>Analyzing Database...</span>
+                                        <span>Analyzing Data...</span>
                                     </>
                                 ) : (
                                     <>
@@ -1557,7 +1557,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                                     <span>Data Breakdown Table</span>
                                                 </h4>
                                                 <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35)]">
-                                                    <table className="w-full text-left text-xs">
+                                                    <table className="table-pro w-full text-left text-xs">
                                                         <thead className="bg-[#e4ebf5] dark:bg-[#14151c] text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">
                                                             <tr>
                                                                 {activeResult.tableData.headers.map((h, i) => (
@@ -1569,7 +1569,7 @@ export default function AiChartGeneratorTab({ data: executiveData }: AiChartGene
                                                             {activeResult.tableData.rows.map((row, rIdx) => (
                                                                 <tr key={rIdx} className="hover:bg-white/50 dark:hover:bg-slate-800/40">
                                                                     {row.map((cell, cIdx) => (
-                                                                        <td key={cIdx} className="px-3.5 py-2 text-slate-600 dark:text-slate-300">
+                                                                        <td key={cIdx} data-label={activeResult.tableData?.headers[cIdx] || ''} className="px-3.5 py-2 text-slate-600 dark:text-slate-300">
                                                                             {cell}
                                                                         </td>
                                                                     ))}

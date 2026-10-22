@@ -357,12 +357,13 @@
 
   .bgCard {
     padding: 1.5rem;
-    margin: 1.25rem;
+    margin: 1.25rem auto;
     background-color: var(--sc-bg-surface);
     border-radius: 1.25rem;
     border: 1px solid var(--sc-border-card);
     box-shadow: var(--sc-shadow-card);
     transition: all 0.25s ease;
+    width: calc(100% - 2.5rem);
     max-width: calc(100% - 2.5rem);
     box-sizing: border-box;
   }
@@ -857,10 +858,6 @@
   }
 
   @media (max-width: 768px) {
-    .main-shell {
-      padding-left: 0 !important;
-    }
-
     .chart-container {
       @apply max-w-[180px] mx-auto;
     }
