@@ -641,10 +641,10 @@ export function ReceiveSuppliesTab({
                 </div>
             )}
 
-            {/* 3. Inbound Supplier Shipments Table / Cards */}
-            <div className="space-y-3">
+            {/* 3. Inbound Supplier Shipments Table */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]">
                 {filteredOrders.length === 0 ? (
-                    <div className="p-12 text-center rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)]">
+                    <div className="p-12 text-center">
                         <Truck className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Supplier Orders Found</h4>
                         <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
@@ -652,202 +652,238 @@ export function ReceiveSuppliesTab({
                         </p>
                     </div>
                 ) : (
-                    paginatedOrders.map((po) => {
-                        const isDelivered = po.status === "Delivered" || po.status === "received";
-                        const isExpanded = expandedPOId === po.id;
-                        const itemsList = Array.isArray(po.items) ? po.items : [];
-                        const poReplacements = approvedReplacements.filter(
-                            (r) => r.po_number === po.po_number || r.purchase_order_id === po.id
-                        );
+                    <div className="overflow-x-auto">
+                        <table className="table-pro w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                                    <th className="pb-3">PO Number</th>
+                                    <th className="pb-3">Supplier</th>
+                                    <th className="pb-3">Items</th>
+                                    <th className="pb-3">Approvals</th>
+                                    <th className="pb-3">Status</th>
+                                    <th className="pb-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {paginatedOrders.map((po) => {
+                                    const isDelivered = po.status === "Delivered" || po.status === "received";
+                                    const isExpanded = expandedPOId === po.id;
+                                    const itemsList = Array.isArray(po.items) ? po.items : [];
+                                    const poReplacements = approvedReplacements.filter(
+                                        (r) => r.po_number === po.po_number || r.purchase_order_id === po.id
+                                    );
 
-                        return (
-                            <div
-                                key={po.id}
-                                className="rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)] overflow-hidden transition-all"
-                            >
-                                <div className="p-4 sm:p-5 flex items-center justify-between gap-4 flex-wrap">
-                                    <div className="flex items-start gap-3.5 min-w-[240px]">
-                                        <div
-                                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 mt-0.5 ${
-                                                isDelivered
-                                                    ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400"
-                                                    : "bg-[#f0f4f9] dark:bg-[#14151c] text-slate-600 dark:text-slate-300"
-                                            }`}
-                                        >
-                                            <Truck className="w-5 h-5" />
-                                        </div>
+                                    return (
+                                        <React.Fragment key={po.id}>
+                                            <tr className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10 transition-colors">
+                                                <td data-label="PO Number" className="py-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div
+                                                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                                                isDelivered
+                                                                    ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400"
+                                                                    : "bg-[#f0f4f9] dark:bg-[#14151c] text-slate-600 dark:text-slate-300"
+                                                            }`}
+                                                        >
+                                                            <Truck className="w-4 h-4" />
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-black text-slate-900 dark:text-white font-mono text-xs">
+                                                                #{po.po_number || `PO-${po.id}`}
+                                                            </span>
+                                                            <div className="text-[10px] text-slate-400">
+                                                                Ordered: {new Date(po.created_at || Date.now()).toLocaleDateString()}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
 
-                                        <div>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono">
-                                                    #{po.po_number || `PO-${po.id}`}
-                                                </span>
-                                                <span
-                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                                        isDelivered
-                                                            ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40"
-                                                            : "bg-pink-500 text-white"
-                                                    }`}
-                                                >
-                                                    {isDelivered ? "Received" : "Issued"}
-                                                </span>
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                                                    <ShieldCheck className="w-3 h-3 text-emerald-500" />
-                                                    <span>Admin: Approved</span>
-                                                </span>
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                                                    <CheckCircle2 className="w-3 h-3 text-blue-500" />
-                                                    <span>Finance: Approved</span>
-                                                </span>
-                                                {poReplacements.length > 0 && (
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 animate-pulse">
-                                                        <RotateCcw className="w-3 h-3 text-emerald-500" />
-                                                        <span>Replacement Ready ({poReplacements.length})</span>
+                                                <td data-label="Supplier" className="py-3">
+                                                    <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                                        <Building2 className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                                                        <span className="truncate max-w-[180px]">{po.supplier_name || "Assigned Supplier"}</span>
+                                                    </div>
+                                                    {po.delivery_date && (
+                                                        <div className="text-[10px] text-slate-400">
+                                                            Delivered: {new Date(po.delivery_date).toLocaleDateString()}
+                                                        </div>
+                                                    )}
+                                                </td>
+
+                                                <td data-label="Items" className="py-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                                                            {itemsList.length} {itemsList.length === 1 ? "item" : "items"}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setExpandedPOId(isExpanded ? null : po.id)}
+                                                            className="px-2 py-0.5 rounded-lg bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e2e8f0] text-slate-600 dark:text-slate-300 text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-slate-200/60 dark:border-white/[0.05]"
+                                                        >
+                                                            <span>{isExpanded ? "Hide" : "Details"}</span>
+                                                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                </td>
+
+                                                <td data-label="Approvals" className="py-3">
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                                                            <ShieldCheck className="w-3 h-3 text-emerald-500" />
+                                                            <span>Admin</span>
+                                                        </span>
+                                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                                                            <CheckCircle2 className="w-3 h-3 text-blue-500" />
+                                                            <span>Finance</span>
+                                                        </span>
+                                                        {poReplacements.length > 0 && (
+                                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 animate-pulse">
+                                                                <RotateCcw className="w-3 h-3 text-emerald-500" />
+                                                                <span>RMA ({poReplacements.length})</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+
+                                                <td data-label="Status" className="py-3">
+                                                    <span
+                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                                            isDelivered
+                                                                ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40"
+                                                                : "bg-pink-500 text-white"
+                                                        }`}
+                                                    >
+                                                        {isDelivered ? "Received" : "Issued"}
                                                     </span>
-                                                )}
-                                            </div>
+                                                </td>
 
-                                            <div className="text-xs font-bold text-slate-600 dark:text-slate-300 mt-1 flex items-center gap-2">
-                                                <Building2 className="w-3.5 h-3.5 text-pink-500" />
-                                                <span>{po.supplier_name || "Assigned Supplier"}</span>
-                                            </div>
+                                                <td data-label="Actions" className="py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setViewingPO(po)}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e2e8f0] dark:hover:bg-[#1a1c2d] text-slate-700 dark:text-slate-300 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-white/60 dark:border-white/[0.05]"
+                                                            title="View complete purchase order details (view only)"
+                                                        >
+                                                            <FileText className="w-3 h-3 text-pink-500" />
+                                                            <span>View PO</span>
+                                                        </button>
 
-                                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3">
-                                                <span>Ordered: {new Date(po.created_at || Date.now()).toLocaleDateString()}</span>
-                                                {po.delivery_date && (
-                                                    <span>• Delivered: {new Date(po.delivery_date).toLocaleDateString()}</span>
-                                                )}
-                                                <span>• {itemsList.length} items</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setDefectModalTargetPO(po);
+                                                                setIsDefectModalOpen(true);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1"
+                                                            title="Report Defective / Damaged items for this purchase order"
+                                                        >
+                                                            <AlertCircle className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                                                            <span>Report Defect</span>
+                                                        </button>
 
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-2.5 flex-wrap">
-                                        <button
-                                            type="button"
-                                            onClick={() => setViewingPO(po)}
-                                            className="px-3 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e2e8f0] dark:hover:bg-[#1a1c2d] text-slate-700 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_4px_rgba(255,255,255,0.02),_1px_1px_4px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] border border-white/60 dark:border-white/[0.05]"
-                                            title="View complete purchase order details (view only)"
-                                        >
-                                            <FileText className="w-3.5 h-3.5 text-pink-500" />
-                                            <span>View PO Details</span>
-                                        </button>
+                                                        {poReplacements.map((rep) => (
+                                                            <button
+                                                                key={`btn_rep_${rep.id}`}
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setSelectedReplacementClaim(rep);
+                                                                    setIsReplacementModalOpen(true);
+                                                                }}
+                                                                className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                                                                title={`Receive approved replacement for Claim #${rep.return_request_number} (${rep.item_name})`}
+                                                            >
+                                                                <RotateCcw className="w-3 h-3" />
+                                                                <span>Receive Replacement ({rep.defective_quantity})</span>
+                                                            </button>
+                                                        ))}
 
-                                        <button
-                                            type="button"
-                                            onClick={() => setExpandedPOId(isExpanded ? null : po.id)}
-                                            className="px-3 py-2 rounded-2xl bg-[#f0f4f9] dark:bg-[#14151c] hover:bg-[#e4ebf5] text-slate-600 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                                        >
-                                            <span>{isExpanded ? "Hide Items" : "View Items"}</span>
-                                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                        </button>
+                                                        {!isDelivered ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenReceiveModal(po)}
+                                                                className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                                                            >
+                                                                <ArrowDownToLine className="w-3 h-3" />
+                                                                <span>Receive Supplies</span>
+                                                            </button>
+                                                        ) : (
+                                                            <span className="px-2.5 py-1 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 text-[11px] font-bold border border-pink-200 dark:border-pink-800/40 flex items-center gap-1">
+                                                                <CheckCircle2 className="w-3 h-3" />
+                                                                <span>Stocked</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setDefectModalTargetPO(po);
-                                                setIsDefectModalOpen(true);
-                                            }}
-                                            className="px-3 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                                            title="Report Defective / Damaged items for this purchase order"
-                                        >
-                                            <AlertCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                                            <span>Report Defect</span>
-                                        </button>
+                                            {/* Collapsible Line Items Sub-Row */}
+                                            {isExpanded && (
+                                                <tr>
+                                                    <td colSpan={6} className="p-0 border-b border-slate-200 dark:border-slate-800">
+                                                        <div className="p-4 bg-[#f8fafc]/70 dark:bg-[#141624]/50 border-t border-slate-200/50 dark:border-slate-800/50">
+                                                            <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                                                                <Boxes className="w-3.5 h-3.5 text-pink-500" />
+                                                                <span>Ordered Items Breakdown:</span>
+                                                            </h5>
+                                                            <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#1d1e28]/60">
+                                                                <table className="table-pro w-full text-left text-xs border-collapse">
+                                                                    <thead>
+                                                                        <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                                                                            <th className="py-2 px-3">Item Name</th>
+                                                                            <th className="py-2 px-3">SKU / Code</th>
+                                                                            <th className="py-2 px-3 text-right">Quantity Ordered</th>
+                                                                            <th className="py-2 px-3 text-right">Unit Price</th>
+                                                                            <th className="py-2 px-3 text-right">Current Warehouse Stock</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                                        {itemsList.map((item: any, idx: number) => {
+                                                                            const matchedInv = inventoryItems.find(
+                                                                                (inv) =>
+                                                                                    inv.item_name &&
+                                                                                    (item.item_name || item.name) &&
+                                                                                    inv.item_name.toLowerCase() === (item.item_name || item.name).toLowerCase()
+                                                                            );
 
-                                        {/* Approved Replacement Receiving Button if this PO has approved replacement claims */}
-                                        {poReplacements.map((rep) => (
-                                            <button
-                                                key={`btn_rep_${rep.id}`}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedReplacementClaim(rep);
-                                                    setIsReplacementModalOpen(true);
-                                                }}
-                                                className="px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white text-xs font-black shadow-md shadow-emerald-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                                                title={`Receive approved replacement for Claim #${rep.return_request_number} (${rep.item_name})`}
-                                            >
-                                                <RotateCcw className="w-3.5 h-3.5" />
-                                                <span>Receive Replacement ({rep.defective_quantity} {rep.unit})</span>
-                                            </button>
-                                        ))}
-
-                                        {!isDelivered ? (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenReceiveModal(po)}
-                                                className="px-4 py-2 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-md shadow-pink-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                                            >
-                                                <ArrowDownToLine className="w-3.5 h-3.5" />
-                                                <span>Receive Supplies</span>
-                                            </button>
-                                        ) : (
-                                            <div className="px-3 py-1.5 rounded-2xl bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 text-xs font-bold border border-pink-200 dark:border-pink-800/40 flex items-center gap-1">
-                                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                                <span>Stocked in Warehouse</span>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                {/* Expanded Line Items Detail */}
-                                {isExpanded && (
-                                    <div className="px-5 pb-5 pt-2 border-t border-slate-100 dark:border-white/[0.04] bg-[#f8fafc]/50 dark:bg-[#141624]/30">
-                                        <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2.5">
-                                            Ordered Items Breakdown:
-                                        </h5>
-                                        <div className="overflow-x-auto">
-                                            <table className="table-pro w-full text-left text-xs border-collapse">
-                                                <thead>
-                                                    <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                                                        <th className="pb-2">Item Name</th>
-                                                        <th className="pb-2">SKU / Code</th>
-                                                        <th className="pb-2 text-right">Quantity Ordered</th>
-                                                        <th className="pb-2 text-right">Unit Price</th>
-                                                        <th className="pb-2 text-right">Current Warehouse Stock</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                    {itemsList.map((item: any, idx: number) => {
-                                                        const matchedInv = inventoryItems.find(
-                                                            (inv) => 
-                                                                (inv.item_name && (item.item_name || item.name) && inv.item_name.toLowerCase() === (item.item_name || item.name).toLowerCase())
-                                                        );
-
-                                                        return (
-                                                            <tr key={idx} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                                                <td data-label="Item Name" className="py-2.5 font-bold text-slate-800 dark:text-slate-200">
-                                                                    {item.item_name || item.name || "Supplies"}
-                                                                </td>
-                                                                <td data-label="SKU / Code" className="py-2.5 font-mono text-[11px] text-slate-400">
-                                                                    {item.item_code || matchedInv?.item_code || "—"}
-                                                                </td>
-                                                                <td data-label="Quantity" className="py-2.5 text-right font-black text-pink-600 dark:text-pink-400">
-                                                                    {item.quantity || item.quantity_ordered || 1} {item.unit || "units"}
-                                                                </td>
-                                                                <td data-label="Unit Price" className="py-2.5 text-right text-slate-600 dark:text-slate-300 font-mono">
-                                                                    ₱{Number(item.unit_price || item.price || 0).toLocaleString()}
-                                                                </td>
-                                                                <td data-label="Warehouse Stock" className="py-2.5 text-right font-bold text-slate-700 dark:text-slate-300">
-                                                                    {matchedInv ? `${matchedInv.current_stock} ${matchedInv.unit}` : "Not in inventory"}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })
+                                                                            return (
+                                                                                <tr key={idx} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
+                                                                                    <td data-label="Item Name" className="py-2 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                                                                        {item.item_name || item.name || "Supplies"}
+                                                                                    </td>
+                                                                                    <td data-label="SKU / Code" className="py-2 px-3 font-mono text-[11px] text-slate-400">
+                                                                                        {item.item_code || matchedInv?.item_code || "—"}
+                                                                                    </td>
+                                                                                    <td data-label="Quantity" className="py-2 px-3 text-right font-black text-pink-600 dark:text-pink-400">
+                                                                                        {item.quantity || item.quantity_ordered || 1} {item.unit || "units"}
+                                                                                    </td>
+                                                                                    <td data-label="Unit Price" className="py-2 px-3 text-right text-slate-600 dark:text-slate-300 font-mono">
+                                                                                        ₱{Number(item.unit_price || item.price || 0).toLocaleString()}
+                                                                                    </td>
+                                                                                    <td data-label="Warehouse Stock" className="py-2 px-3 text-right font-bold text-slate-700 dark:text-slate-300">
+                                                                                        {matchedInv ? `${matchedInv.current_stock} ${matchedInv.unit}` : "Not in inventory"}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
 
                 {/* Pagination Controls */}
                 {filteredOrders.length > 0 && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 px-1">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 px-1 border-t border-slate-200/50 dark:border-white/[0.05] mt-4">
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                             Showing <span className="font-bold text-slate-800 dark:text-slate-200">{(currentPage - 1) * pageSize + 1}</span> to{" "}
                             <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(currentPage * pageSize, filteredOrders.length)}</span> of{" "}

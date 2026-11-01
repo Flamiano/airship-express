@@ -285,385 +285,357 @@ export function VendorQuotationViewModal({
                             </div>
                         ) : (
                             <>
-                                {/* Top Vendor Profile Strip */}
-                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-3">
-                                    <div className="flex items-start justify-between flex-wrap gap-2">
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <Building2 className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                                <h4 className="font-black text-base text-slate-900 dark:text-white">
-                                                    {quote?.supplier_name || supplier.name}
-                                                </h4>
-                                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
-                                                    {quote?.category || supplier.category || "General Supplies"}
+                                {/* 1. Top Vendor Profile & Summary Overview */}
+                                <div className="p-5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_10px_rgba(166,175,195,0.25)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),_3px_3px_8px_rgba(0,0,0,0.5)] flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2.5 flex-wrap">
+                                            <Building2 className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
+                                            <h4 className="font-black text-base text-slate-900 dark:text-white tracking-tight">
+                                                {quote?.supplier_name || supplier.name}
+                                            </h4>
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
+                                                {quote?.category || supplier.category || "General Supplies"}
+                                            </span>
+                                        </div>
+
+                                        <p className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                            <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                            <span>{quote?.location || supplier.location || "Metro Manila, Philippines"}</span>
+                                        </p>
+
+                                        <div className="flex items-center gap-4 text-xs text-slate-600 dark:text-slate-300 pt-1 flex-wrap">
+                                            <div className="flex items-center gap-1.5">
+                                                <span className="text-slate-400">Contact:</span>
+                                                <span className="font-semibold text-slate-800 dark:text-slate-100">
+                                                    {quote?.contact_person || supplier.contact_person || "Store Representative"}
                                                 </span>
                                             </div>
-                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5">
-                                                <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                <span>{quote?.location || supplier.location || "Metro Manila, Philippines"}</span>
-                                            </p>
+                                            {(quote?.contact_phone || supplier.phone) && (
+                                                <div className="flex items-center gap-1 font-mono text-slate-600 dark:text-slate-300">
+                                                    <Phone className="w-3 h-3 text-pink-500 shrink-0" />
+                                                    <span>{quote?.contact_phone || supplier.phone}</span>
+                                                </div>
+                                            )}
+                                            {(quote?.contact_email || supplier.email) && (
+                                                <div className="flex items-center gap-1 text-slate-600 dark:text-slate-300">
+                                                    <Mail className="w-3 h-3 text-pink-500 shrink-0" />
+                                                    <span>{quote?.contact_email || supplier.email}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Right Side: Status Badge & Total Amount */}
+                                    <div className="flex md:flex-col items-center md:items-end justify-between md:justify-center border-t md:border-t-0 md:border-l border-slate-300/70 dark:border-white/10 pt-3 md:pt-0 md:pl-6 shrink-0 gap-3">
+                                        <div className="text-left md:text-right">
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                                                Quotation Status
+                                            </span>
+                                            <div className="mt-0.5">
+                                                {isQuoteAwarded ? (
+                                                    <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 inline-flex items-center gap-1.5">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <span>Bid Awarded</span>
+                                                    </span>
+                                                ) : (
+                                                    <span className="px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/70 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800 inline-block">
+                                                        {quote?.status || "Quotation Submitted"}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="text-right">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Quotation Status</span>
-                                            {isQuoteAwarded ? (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 inline-flex items-center gap-1 mt-0.5">
-                                                    <CheckCircle2 className="w-3 h-3" />
-                                                    <span>Bid Awarded</span>
-                                                </span>
-                                            ) : (
-                                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/70 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800 inline-block mt-0.5">
-                                                    {quote?.status || "Quotation Submitted"}
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Contact Details */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-slate-200/80 dark:border-white/5 text-[11px]">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-slate-400">Contact:</span>
-                                            <strong className="text-slate-800 dark:text-slate-200 truncate">
-                                                {quote?.contact_person || supplier.contact_person || "Store Representative"}
-                                            </strong>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Phone className="w-3 h-3 text-pink-500 shrink-0" />
-                                            <span className="font-mono text-slate-800 dark:text-slate-200">
-                                                {quote?.contact_phone || supplier.phone || "Not provided"}
+                                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">
+                                                Total Quoted Value
                                             </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Mail className="w-3 h-3 text-pink-500 shrink-0" />
-                                            <span className="text-slate-800 dark:text-slate-200 truncate" title={quote?.contact_email || supplier.email}>
-                                                {quote?.contact_email || supplier.email || "Not provided"}
-                                            </span>
+                                            <p className="font-mono font-black text-xl text-pink-600 dark:text-pink-400">
+                                                ₱{Number(quote?.total_amount || (quote?.unit_price && quote?.quantity ? Number(quote.unit_price) * Number(quote.quantity) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
 
-                                {/* Quotation Financials & Pricing Summary */}
-                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">
-                                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2 border-b border-slate-300/70 dark:border-white/10 pb-2.5">
-                                        <Tag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                        <span>Quoted Products &amp; Pricing Breakdown</span>
-                                    </h4>
-
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Item / Supply</span>
-                                            <p className="font-bold text-slate-900 dark:text-white truncate">
-                                                {quote?.item_name || quote?.products || supplier.products || "Requested Items"}
-                                            </p>
-                                            {quote?.request_number && (
-                                                <span className="text-[10px] font-mono text-pink-600 dark:text-pink-400">Ref: {quote.request_number}</span>
-                                            )}
-                                        </div>
-
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Quoted Quantity</span>
-                                            <p className="font-bold text-slate-900 dark:text-white">
-                                                {quote?.quantity ? `${quote.quantity.toLocaleString()} ${quote.unit || "units"}` : "Standard"}
-                                            </p>
-                                            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold capitalize">
-                                                {quote?.availability || "In Stock"}
+                                {/* 2. Itemized Quotation & Pricing Breakdown (Invoice Proposal Table) */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                                            <Tag className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                                            <span>Quoted Products &amp; Pricing Breakdown</span>
+                                        </h4>
+                                        {quote?.request_number && (
+                                            <span className="text-[11px] font-mono text-slate-500">
+                                                Reference: <b className="text-pink-600 dark:text-pink-400">{quote.request_number}</b>
                                             </span>
-                                        </div>
-
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Quoted Unit Price</span>
-                                            <p className="font-black text-pink-600 dark:text-pink-400 text-sm">
-                                                {quote?.unit_price ? `₱${Number(quote.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "Custom"}
-                                            </p>
-                                            <span className="text-[10px] text-slate-400">per {quote?.unit || "unit"}</span>
-                                        </div>
-
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Subtotal</span>
-                                            <p className="font-bold text-slate-900 dark:text-white text-sm">
-                                                ₱{Number(quote?.subtotal || (quote?.unit_price && quote?.quantity ? Number(quote.unit_price) * Number(quote.quantity) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </p>
-                                            <span className="text-[10px] text-slate-400">Base Cost</span>
-                                        </div>
+                                        )}
                                     </div>
 
-                                    {/* Itemized Financial Breakdown Cards */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Trade Discount</span>
-                                            <p className="font-bold text-emerald-600 dark:text-emerald-400 text-sm">
-                                                {Number(quote?.discount || 0) > 0 ? `-₱${Number(quote.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "₱0.00 (None)"}
-                                            </p>
-                                            <span className="text-[10px] text-slate-400">Price reduction</span>
-                                        </div>
+                                    <div className="overflow-x-auto rounded-2xl border border-white/80 dark:border-white/10 bg-[#ebf0f7] dark:bg-[#161826] shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_10px_rgba(166,175,195,0.25)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),_3px_3px_8px_rgba(0,0,0,0.5)]">
+                                        <table className="w-full text-left text-xs border-collapse">
+                                            <thead className="bg-[#e2e8f2] dark:bg-[#12141f] text-slate-600 dark:text-slate-400 text-[10px] uppercase font-bold tracking-wider border-b border-slate-300/80 dark:border-white/10">
+                                                <tr>
+                                                    <th className="py-3 px-4 min-w-[200px]">Item &amp; Description</th>
+                                                    <th className="py-3 px-4 text-center min-w-[110px]">Quantity</th>
+                                                    <th className="py-3 px-4 text-right min-w-[120px]">Unit Price</th>
+                                                    <th className="py-3 px-4 text-right min-w-[100px]">Discount</th>
+                                                    <th className="py-3 px-4 text-right min-w-[100px]">Tax</th>
+                                                    <th className="py-3 px-4 text-right min-w-[130px] font-bold">Total Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-slate-200/70 dark:divide-white/[0.06] bg-white/60 dark:bg-[#151724]/60">
+                                                {/* Primary Quoted Item */}
+                                                <tr className="hover:bg-white dark:hover:bg-white/[0.03] transition-colors">
+                                                    <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white">
+                                                        <div>{quote?.item_name || quote?.products || supplier.products || "Requested Items"}</div>
+                                                        {quote?.products && quote?.products !== quote?.item_name && (
+                                                            <div className="text-[11px] text-slate-500 font-normal mt-0.5">{quote.products}</div>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-center font-medium text-slate-800 dark:text-slate-200">
+                                                        {quote?.quantity ? `${quote.quantity.toLocaleString()} ${quote.unit || "units"}` : "Standard"}
+                                                        <span className="block text-[10px] text-emerald-600 dark:text-emerald-400 font-bold capitalize">
+                                                            {quote?.availability || "In Stock"}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                        {quote?.unit_price ? `₱${Number(quote.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                                        {Number(quote?.discount || 0) > 0 ? `-₱${Number(quote.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                                                        {Number(quote?.tax_amount || 0) > 0 ? `₱${Number(quote.tax_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : (quote?.tax_type || "Exempt")}
+                                                    </td>
+                                                    <td className="py-3.5 px-4 text-right font-mono font-black text-pink-600 dark:text-pink-400">
+                                                        ₱{Number(quote?.subtotal || (quote?.unit_price && quote?.quantity ? Number(quote.unit_price) * Number(quote.quantity) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </td>
+                                                </tr>
 
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">Shipping / Freight</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                                                {Number(quote?.shipping_fee || 0) > 0 ? `₱${Number(quote.shipping_fee).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "₱0.00 (Free / Inc.)"}
-                                            </p>
-                                            <span className="text-[10px] text-slate-400">Logistics fee</span>
-                                        </div>
+                                                {/* Optional Multi-Item Catalog additions */}
+                                                {quote?.other_products_offer && Array.isArray(quote.other_products_offer) && quote.other_products_offer.map((item: any, iIdx: number) => {
+                                                    const price = Number(item.unit_price || 0);
+                                                    const disc = Number(item.discount || 0);
+                                                    const ship = Number(item.shipping_fee || 0);
+                                                    const taxRate = item.tax_rate != null ? Number(item.tax_rate) : (item.tax_classification === "vatable" || item.tax_classification === "VAT (12%)" ? 12 : 0);
+                                                    const tax = item.tax_amount != null ? Number(item.tax_amount) : (Math.max(0, price - disc) * (taxRate / 100));
+                                                    const tot = Number(item.total_amount != null ? item.total_amount : (Math.max(0, price - disc) + ship + tax));
 
-                                        <div className="p-3 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider block">
-                                                Tax ({quote?.tax_type || `${quote?.tax_rate || 0}%`})
-                                            </span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                                                ₱{Number(quote?.tax_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </p>
-                                            <span className="text-[10px] text-slate-400 font-mono">{quote?.tax_type || "Standard Tax"}</span>
-                                        </div>
+                                                    return (
+                                                        <tr key={item.id || iIdx} className="hover:bg-white dark:hover:bg-white/[0.03] transition-colors">
+                                                            <td className="py-3.5 px-4 font-semibold text-slate-900 dark:text-white">
+                                                                <div>{item.item_name || `Additional Item #${iIdx + 1}`}</div>
+                                                                {item.notes && <div className="text-[10px] text-slate-400 font-normal italic">{item.notes}</div>}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-center font-medium text-slate-800 dark:text-slate-200 capitalize">
+                                                                {item.unit || "unit"}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 dark:text-white">
+                                                                ₱{price.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-mono text-emerald-600 dark:text-emerald-400">
+                                                                {disc > 0 ? `-₱${disc.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300">
+                                                                {tax > 0 ? `₱${tax.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Exempt"}
+                                                            </td>
+                                                            <td className="py-3.5 px-4 text-right font-mono font-black text-pink-600 dark:text-pink-400">
+                                                                ₱{tot.toLocaleString("en-PH", { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
 
-                                        <div className="p-3 rounded-2xl bg-pink-100/80 dark:bg-pink-950/60 border border-pink-500/40 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(219,39,119,0.25)] space-y-0.5">
-                                            <span className="text-[10px] text-pink-700 dark:text-pink-300 uppercase font-black tracking-wider block">Total Quoted Value</span>
-                                            <p className="font-black text-slate-900 dark:text-white text-base">
-                                                {quote?.total_amount ? `₱${Number(quote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : (quote?.unit_price && quote?.quantity ? `₱${(Number(quote.unit_price) * Number(quote.quantity)).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—")}
-                                            </p>
-                                            <span className="text-[10px] text-pink-600 dark:text-pink-400 font-black uppercase">Grand Total Contract</span>
+                                        {/* Financial Summary Ledger */}
+                                        <div className="p-4 sm:p-5 bg-[#e8ecf4]/80 dark:bg-[#131522]/90 border-t border-slate-300/80 dark:border-white/10 flex justify-end">
+                                            <div className="w-full sm:w-80 space-y-2 text-xs">
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                                                    <span>Subtotal Base Cost</span>
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                                        ₱{Number(quote?.subtotal || (quote?.unit_price && quote?.quantity ? Number(quote.unit_price) * Number(quote.quantity) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+
+                                                {Number(quote?.discount || 0) > 0 && (
+                                                    <div className="flex justify-between text-emerald-600 dark:text-emerald-400">
+                                                        <span>Trade Discount</span>
+                                                        <span className="font-mono font-bold">
+                                                            -₱{Number(quote.discount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                                                    <span>Shipping / Freight</span>
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                                        {Number(quote?.shipping_fee || 0) > 0 ? `₱${Number(quote.shipping_fee).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "Free / Included"}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                                                    <span>Estimated Tax ({quote?.tax_type || `${quote?.tax_rate || 0}%`})</span>
+                                                    <span className="font-mono font-bold text-slate-900 dark:text-white">
+                                                        ₱{Number(quote?.tax_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+
+                                                <div className="pt-2.5 border-t border-slate-300 dark:border-white/10 flex justify-between items-baseline font-black text-sm text-slate-900 dark:text-white">
+                                                    <span className="uppercase text-[11px] tracking-wider text-pink-600 dark:text-pink-400">
+                                                        Total Quoted Value
+                                                    </span>
+                                                    <span className="text-base text-pink-600 dark:text-pink-400 font-mono font-black">
+                                                        ₱{Number(quote?.total_amount || (quote?.unit_price && quote?.quantity ? Number(quote.unit_price) * Number(quote.quantity) : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
-
-                                    {/* Products & Catalog Line */}
-                                    {quote?.products && (
-                                        <div className="p-3 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/60 dark:border-white/5 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.25)] space-y-0.5">
-                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Catalog / Products Offered</span>
-                                            <p className="font-medium text-slate-800 dark:text-slate-200 leading-relaxed">{quote.products}</p>
-                                        </div>
-                                    )}
                                 </div>
 
-                                {/* Other Products Offered (Optional Multi-Item Catalog) */}
-                                {quote?.other_products_offer && Array.isArray(quote.other_products_offer) && quote.other_products_offer.length > 0 && (
-                                    <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-3.5">
-                                        <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-2.5">
-                                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                                                <Boxes className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                                <span>Other Products Offered &amp; Additional Catalog Items</span>
-                                            </h4>
-                                            <span className="text-[10px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 px-2 py-0.5 rounded-full border border-pink-200 dark:border-pink-800/60">
-                                                {quote.other_products_offer.length} Item{quote.other_products_offer.length > 1 ? "s" : ""}
-                                            </span>
-                                        </div>
-
-                                        <div className="overflow-x-auto rounded-2xl border border-slate-300/70 dark:border-white/10 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.2)]">
-                                            <table className="w-full text-left border-collapse text-[11px]">
-                                                <thead>
-                                                    <tr className="bg-[#e2e8f2] dark:bg-[#111320] text-slate-500 dark:text-slate-400 border-b border-slate-300/80 dark:border-white/10">
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Item Description</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Unit</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Unit Price</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Tax Class</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Shipping Fee</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px]">Discount</th>
-                                                        <th className="py-2.5 px-3 font-bold uppercase tracking-wider text-[10px] text-right">Total Amount</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-200/80 dark:divide-white/5 bg-[#f0f4fa]/70 dark:bg-[#151724]/70">
-                                                    {quote.other_products_offer.map((item: any, iIdx: number) => {
-                                                        const price = Number(item.unit_price || 0);
-                                                        const sub = price;
-                                                        const disc = Number(item.discount || 0);
-                                                        const ship = Number(item.shipping_fee || 0);
-                                                        const taxRate = item.tax_rate != null ? Number(item.tax_rate) : (item.tax_classification === "vatable" || item.tax_classification === "VAT (12%)" ? 12 : 0);
-                                                        const tax = item.tax_amount != null ? Number(item.tax_amount) : (Math.max(0, sub - disc) * (taxRate / 100));
-                                                        const tot = Number(item.total_amount != null ? item.total_amount : (Math.max(0, sub - disc) + ship + tax));
-
-                                                        return (
-                                                            <tr key={item.id || iIdx} className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors">
-                                                                <td className="py-2.5 px-3 font-semibold text-slate-900 dark:text-white">
-                                                                    <div>{item.item_name || `Additional Item #${iIdx + 1}`}</div>
-                                                                    {item.notes && <div className="text-[10px] text-slate-400 font-normal italic">{item.notes}</div>}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 text-slate-700 dark:text-slate-300 font-medium whitespace-nowrap capitalize">
-                                                                    {item.unit || "unit"}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap">
-                                                                    ₱{price.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 whitespace-nowrap">
-                                                                    <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
-                                                                        {taxRate > 0 ? `${taxRate}% VAT` : "0% / Exempt"}
-                                                                    </span>
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap">
-                                                                    {ship > 0 ? `₱${ship.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "Free"}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-mono text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                                                                    {disc > 0 ? `-₱${disc.toLocaleString("en-PH", { minimumFractionDigits: 2 })}` : "—"}
-                                                                </td>
-                                                                <td className="py-2.5 px-3 font-mono font-black text-pink-600 dark:text-pink-400 text-right whitespace-nowrap">
-                                                                    ₱{tot.toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Commercial Terms & Value-Add Inclusions */}
-                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">
-                                    <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2 border-b border-slate-300/70 dark:border-white/10 pb-2.5">
+                                {/* 3. Commercial Terms & Fulfilment Commitments (Clean Definition Grid) */}
+                                <div className="space-y-3">
+                                    <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                                         <CreditCard className="w-4 h-4 text-pink-600 dark:text-pink-400" />
                                         <span>Commercial &amp; Fulfillment Commitments</span>
                                     </h4>
 
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-[11px]">
-                                        <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Payment Terms</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.paymentTerms || quote?.payment_terms || "Standard terms"}>
-                                                {parsedTerms.paymentTerms || quote?.payment_terms || "Standard terms"}
-                                            </p>
-                                        </div>
-                                        <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Delivery Terms</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.deliveryTerms || quote?.delivery_terms || "FOB Destination"}>
-                                                {parsedTerms.deliveryTerms || quote?.delivery_terms || "FOB Destination"}
-                                            </p>
-                                        </div>
-                                        <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Warranty / Guarantee</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200 line-clamp-2" title={parsedTerms.warrantyTerms || quote?.warranty_terms || "Standard replacement"}>
-                                                {parsedTerms.warrantyTerms || quote?.warranty_terms || "Standard replacement"}
-                                            </p>
-                                        </div>
-                                        <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-0.5">
-                                            <span className="text-[10px] text-slate-400 font-bold uppercase block">Lead Time / Validity</span>
-                                            <p className="font-bold text-slate-800 dark:text-slate-200">
-                                                {quote?.lead_time_days ? `${quote.lead_time_days} days` : "2-3 days"} • {parsedTerms.priceValidity || quote?.price_validity || "30 days"}
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    {/* Buyer Delivery Destination */}
-                                    <div className="p-2.5 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] flex items-center justify-between text-[11px] gap-2">
-                                        <span className="text-[10px] text-slate-400 font-bold uppercase shrink-0">Buyer Delivery Destination:</span>
-                                        <span className="font-bold text-slate-800 dark:text-slate-200 truncate text-right" title={quote?.delivery_location || "352 Escolta St, Binondo, Manila, 1006 Metro Manila(Airship Express)"}>
-                                            {quote?.delivery_location || "352 Escolta St, Binondo, Manila, 1006 Metro Manila(Airship Express)"}
-                                        </span>
-                                    </div>
-
-                                    {/* Value Add Inclusions */}
-                                    {servicesList.length > 0 && (
-                                        <div className="space-y-1.5 pt-1">
-                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                                                <Award className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                                                Value-Add Inclusions &amp; Services Offered by Vendor:
-                                            </span>
-                                            <div className="flex flex-wrap gap-1.5">
-                                                {servicesList.map((svc, idx) => (
-                                                    <span
-                                                        key={`view-svc-${idx}`}
-                                                        className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-800 dark:text-pink-200 border border-pink-200 dark:border-pink-800/60 flex items-center gap-1"
-                                                    >
-                                                        <Check className="w-3 h-3 text-pink-600 dark:text-pink-400" />
-                                                        <span>{svc}</span>
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Governing Terms and Conditions and Vendor Submitted Terms & Special Clauses */}
-                                    {(rawClauses || parsedTerms.paymentTerms || parsedTerms.deliveryTerms || parsedTerms.warrantyTerms || parsedTerms.priceValidity || parsedTerms.cleanNotes) && (
-                                        <div className="p-3.5 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-2px_-2px_5px_rgba(255,255,255,0.02)] space-y-3">
-                                            <div className="flex items-center gap-2 border-b border-slate-300/70 dark:border-white/10 pb-2">
-                                                <Scale className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
-                                                <span className="text-[11px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
-                                                    Governing Terms and Conditions and Vendor Submitted Terms &amp; Special Clauses:
+                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_10px_rgba(166,175,195,0.25)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),_3px_3px_8px_rgba(0,0,0,0.5)] space-y-4">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Payment Terms
                                                 </span>
+                                                <p className="font-semibold text-slate-900 dark:text-white mt-1 text-xs">
+                                                    {parsedTerms.paymentTerms || quote?.payment_terms || "Standard terms"}
+                                                </p>
                                             </div>
 
-                                            {/* Governing Commercial Terms Breakdown */}
-                                            {(parsedTerms.paymentTerms || parsedTerms.deliveryTerms || parsedTerms.warrantyTerms || parsedTerms.priceValidity) && (
-                                                <div className="space-y-2 p-3 rounded-xl bg-white/70 dark:bg-white/5 border border-slate-200/80 dark:border-white/5 text-[11px]">
-                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                                                        Governing Commercial Commitments:
-                                                    </span>
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-700 dark:text-slate-200">
-                                                        {parsedTerms.paymentTerms && (
-                                                            <div className="space-y-0.5">
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Payment Terms:</span>
-                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.paymentTerms}</p>
-                                                            </div>
-                                                        )}
-                                                        {parsedTerms.deliveryTerms && (
-                                                            <div className="space-y-0.5">
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Delivery &amp; Incoterms:</span>
-                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.deliveryTerms}</p>
-                                                            </div>
-                                                        )}
-                                                        {parsedTerms.warrantyTerms && (
-                                                            <div className="space-y-0.5">
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Warranty / Guarantee:</span>
-                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.warrantyTerms}</p>
-                                                            </div>
-                                                        )}
-                                                        {parsedTerms.priceValidity && (
-                                                            <div className="space-y-0.5">
-                                                                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase block">Quotation Validity:</span>
-                                                                <p className="font-medium text-slate-800 dark:text-slate-100">{parsedTerms.priceValidity}</p>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            )}
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Delivery Terms
+                                                </span>
+                                                <p className="font-semibold text-slate-900 dark:text-white mt-1 text-xs">
+                                                    {parsedTerms.deliveryTerms || quote?.delivery_terms || "FOB Destination"}
+                                                </p>
+                                            </div>
 
-                                            {/* Vendor Submitted Special Clauses (Full text, 1 to 10+) */}
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Warranty / Guarantee
+                                                </span>
+                                                <p className="font-semibold text-slate-900 dark:text-white mt-1 text-xs">
+                                                    {parsedTerms.warrantyTerms || quote?.warranty_terms || "Standard replacement"}
+                                                </p>
+                                            </div>
+
+                                            <div>
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                    Lead Time &amp; Validity
+                                                </span>
+                                                <p className="font-semibold text-slate-900 dark:text-white mt-1 text-xs">
+                                                    {quote?.lead_time_days ? `${quote.lead_time_days} days` : "2-3 days"} • {parsedTerms.priceValidity || quote?.price_validity || "30 days"}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Delivery Destination Row */}
+                                        <div className="pt-3 border-t border-slate-300/60 dark:border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1.5">
+                                                <Truck className="w-3.5 h-3.5 text-pink-500" />
+                                                Buyer Delivery Destination:
+                                            </span>
+                                            <span className="font-medium text-slate-800 dark:text-slate-200 text-left sm:text-right">
+                                                {quote?.delivery_location || "352 Escolta St, Binondo, Manila, 1006 Metro Manila (Airship Express)"}
+                                            </span>
+                                        </div>
+
+                                        {/* Value Add Inclusions */}
+                                        {servicesList.length > 0 && (
+                                            <div className="pt-3 border-t border-slate-300/60 dark:border-white/10 space-y-2">
+                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                                                    <Award className="w-3.5 h-3.5 text-pink-500" />
+                                                    Value-Add Inclusions &amp; Services Offered
+                                                </span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {servicesList.map((svc, idx) => (
+                                                        <span
+                                                            key={`view-svc-${idx}`}
+                                                            className="px-3 py-1 rounded-full text-xs font-semibold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60 inline-flex items-center gap-1.5"
+                                                        >
+                                                            <Check className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                                                            <span>{svc}</span>
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* 4. Governing Terms & Special Clauses */}
+                                {(rawClauses || parsedTerms.cleanNotes) && (
+                                    <div className="space-y-3">
+                                        <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+                                            <Scale className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                                            <span>Governing Terms &amp; Special Clauses</span>
+                                        </h4>
+
+                                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_10px_rgba(166,175,195,0.25)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.03),_3px_3px_8px_rgba(0,0,0,0.5)] space-y-3">
                                             {rawClauses && (
                                                 <div className="space-y-1.5">
-                                                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">
-                                                        Vendor Submitted Special Clauses &amp; Articles:
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                        Vendor Submitted Articles &amp; Clauses
                                                     </span>
-                                                    <div className="p-3 rounded-xl bg-white/70 dark:bg-white/5 border border-slate-200/80 dark:border-white/5 max-h-72 overflow-y-auto">
-                                                        <p className="text-[11px] text-slate-800 dark:text-slate-100 font-mono whitespace-pre-line leading-relaxed">
+                                                    <div className="p-3.5 rounded-xl bg-[#ebf0f7] dark:bg-[#11131c] border border-white/60 dark:border-white/5 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] max-h-52 overflow-y-auto">
+                                                        <p className="text-xs text-slate-800 dark:text-slate-200 font-mono whitespace-pre-line leading-relaxed">
                                                             {rawClauses}
                                                         </p>
                                                     </div>
                                                 </div>
                                             )}
 
-                                            {/* Additional General Notes if any */}
                                             {parsedTerms.cleanNotes && (
-                                                <div className="p-2.5 rounded-xl bg-white/50 dark:bg-white/5 text-[11px] space-y-0.5">
-                                                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Additional Vendor Remarks:</span>
-                                                    <p className="text-slate-700 dark:text-slate-300 font-medium">{parsedTerms.cleanNotes}</p>
+                                                <div className="space-y-1 pt-1">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                                                        Additional Vendor Remarks
+                                                    </span>
+                                                    <p className="text-xs text-slate-700 dark:text-slate-300 font-medium leading-relaxed">
+                                                        {parsedTerms.cleanNotes}
+                                                    </p>
                                                 </div>
                                             )}
                                         </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
 
-                                {/* Uploaded Evidence Documents & Quotation Files */}
-                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">
-                                    <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-2.5">
-                                        <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                                {/* 5. Uploaded Evidence Documents & Quotation Files */}
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
                                             <FileCheck2 className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                            <span>Uploaded Evidence &amp; Quotation Documents ({documents.length})</span>
+                                            <span>Attached Documents &amp; Evidence ({documents.length})</span>
                                         </h4>
                                     </div>
 
                                     {documents.length === 0 ? (
-                                        <div className="p-5 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-dashed border-slate-300 dark:border-white/10 text-center text-slate-400 dark:text-slate-500 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.25)] space-y-1">
-                                            <File className="w-6 h-6 mx-auto opacity-60" />
-                                            <p className="text-xs font-semibold">No supporting files attached with this quotation.</p>
+                                        <div className="p-6 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-dashed border-slate-300 dark:border-white/10 text-center text-slate-400 space-y-1">
+                                            <File className="w-6 h-6 mx-auto opacity-50" />
+                                            <p className="text-xs font-medium">No supporting files attached with this quotation.</p>
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             {documents.map((doc) => (
                                                 <div
                                                     key={doc.id}
-                                                    className="p-3.5 rounded-2xl bg-[#e8ecf4] dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.5)] flex items-center justify-between gap-3"
+                                                    className="p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(166,175,195,0.25)] dark:shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),_2px_2px_6px_rgba(0,0,0,0.45)] flex items-center justify-between gap-3 hover:border-pink-500/40 transition-colors"
                                                 >
                                                     <div className="flex items-center gap-3 min-w-0">
-                                                        <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0 font-bold shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)]">
+                                                        <div className="w-9 h-9 rounded-xl bg-pink-100 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 flex items-center justify-center shrink-0">
                                                             <FileText className="w-4 h-4" />
                                                         </div>
                                                         <div className="min-w-0">
-                                                            <p className="font-bold text-xs text-slate-900 dark:text-white truncate" title={doc.fileName}>
+                                                            <p className="font-semibold text-xs text-slate-900 dark:text-white truncate" title={doc.fileName}>
                                                                 {doc.fileName}
                                                             </p>
                                                             <p className="text-[10px] text-slate-400">
@@ -676,7 +648,7 @@ export function VendorQuotationViewModal({
                                                         <button
                                                             type="button"
                                                             onClick={() => setPreviewDoc(doc)}
-                                                            className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#141624] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-300/70 dark:border-white/10 text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)]"
+                                                            className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/10 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)]"
                                                             title="Preview File"
                                                         >
                                                             <Eye className="w-3.5 h-3.5" />
@@ -689,7 +661,7 @@ export function VendorQuotationViewModal({
                                                                 download={doc.fileName}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="p-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#141624] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-300/70 dark:border-white/10 text-xs transition-all flex items-center justify-center cursor-pointer shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)]"
+                                                                className="p-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/10 text-xs transition-all flex items-center justify-center cursor-pointer shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)]"
                                                                 title="Download File"
                                                             >
                                                                 <Download className="w-3.5 h-3.5" />

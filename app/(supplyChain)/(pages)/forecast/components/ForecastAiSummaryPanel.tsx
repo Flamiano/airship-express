@@ -25,17 +25,16 @@ interface SummarySection {
 interface ForecastAiSummaryPanelProps {
     forecastData: any;
     activeTab?: string;
-    onSelectTab?: (tabKey: "dashboard" | "table" | "consumption" | "movement" | "history") => void;
+    onSelectTab?: (tabKey: "dashboard" | "table" | "consumption" | "movement") => void;
     onOpenChartModal?: (domain: string) => void;
 }
 
 const TAB_OPTIONS = [
-    { key: "all", label: "All Forecast Domains", icon: "fa-table-cells" },
-    { key: "dashboard", label: "Demand Visualizer", icon: "fa-chart-line" },
-    { key: "table", label: "Item Predictions & Risks", icon: "fa-table-list" },
-    { key: "consumption", label: "Consumption Trends", icon: "fa-dolly" },
-    { key: "movement", label: "Movement Velocity", icon: "fa-arrows-up-down" },
-    { key: "history", label: "Validation & Accuracy", icon: "fa-bullseye" },
+    { key: "all", label: "All Sections", icon: "fa-table-cells" },
+    { key: "dashboard", label: "Overview Chart", icon: "fa-chart-line" },
+    { key: "table", label: "Item Predictions", icon: "fa-table-list" },
+    { key: "consumption", label: "Usage Trends", icon: "fa-dolly" },
+    { key: "movement", label: "Stock Movement", icon: "fa-arrows-up-down" },
 ];
 
 export default function ForecastAiSummaryPanel({
@@ -193,13 +192,13 @@ export default function ForecastAiSummaryPanel({
                         </div>
                         <div>
                             <h2 className="text-base sm:text-lg font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                                Forecast AI Intelligence & Multi-Tab Summary
+                                Smart Forecast Summary
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
-                                    Gemini Grounded
+                                    AI Powered
                                 </span>
                             </h2>
                             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Automatically audit and summarize each forecast tab (Demand Visualizer, Stockout Risks, Consumption Trends, and Movement Velocity) and display findings through structured comparison tables.
+                                Automatically summarize key findings across all tabs, including low stock risks, usage patterns, and suggested reorders.
                             </p>
                         </div>
                     </div>
@@ -213,7 +212,7 @@ export default function ForecastAiSummaryPanel({
                             disabled={analyzing}
                         >
                             <i className="fas fa-wand-magic-sparkles text-xs mr-2" />
-                            <span>Summarize Everything with AI</span>
+                            <span>{analyzing ? "Analyzing..." : "Generate Summary"}</span>
                         </AppButton>
 
                         <button
@@ -242,9 +241,9 @@ export default function ForecastAiSummaryPanel({
                     <i className="fas fa-triangle-exclamation text-amber-500 mt-0.5 shrink-0 text-sm" />
                     <div className="text-xs leading-relaxed">
                         <span className="font-bold uppercase tracking-wider block text-amber-700 dark:text-amber-300">
-                            Data Is Not Enough For Prediction — 0% AI Confidence
+                            More Usage Data Needed for Predictions
                         </span>
-                        Historical inventory movements span only <b>{forecastData.summary.history_span_days || 0} days</b>, which does not satisfy the mandatory 3-year (1,095-day) threshold. Predictive extrapolation is suppressed. The audit matrix below reflects actual recorded issuances and current warehouse stock counts.
+                        Your system currently has <b>{forecastData.summary.history_span_days || 0} days</b> of recorded stock movement. Reliable forecasts require at least 3 years (1,095 days) of history. The table below shows actual recorded stock usage and current on-hand quantities.
                     </div>
                 </div>
             )}
@@ -257,13 +256,13 @@ export default function ForecastAiSummaryPanel({
                     </div>
                     <div>
                         <h2 className="text-sm sm:text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
-                            Forecast AI Summary Matrix
+                            Smart Forecast Summary
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
-                                Tabular AI Intelligence
+                                AI Summary
                             </span>
                         </h2>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                            Comprehensive tabular synthesis analyzing live time-series demand models, safety stocks, and stockout risks.
+                            Quick overview of expected demand, safety buffer levels, and reorder alerts.
                         </p>
                     </div>
                 </div>
@@ -289,7 +288,7 @@ export default function ForecastAiSummaryPanel({
                         disabled={analyzing}
                     >
                         <i className={`fas fa-wand-magic-sparkles text-xs mr-1.5 ${analyzing ? "fa-spin" : ""}`} />
-                        <span>{analyzing ? "Analyzing..." : "Summarize Everything with AI"}</span>
+                        <span>{analyzing ? "Analyzing..." : "Generate Summary"}</span>
                     </AppButton>
 
                     {/* Minimize Button */}
@@ -317,8 +316,8 @@ export default function ForecastAiSummaryPanel({
                                 onClick={() => setSelectedTabFilter(tab.key)}
                                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                                     isSelected
-                                        ? "bg-pink-600 text-white shadow-[0_3px_10px_rgba(236,72,153,0.35)]"
-                                        : "bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-white/[0.05] shadow-[2px_2px_5px_rgba(166,175,195,0.25)] hover:text-pink-600"
+                                        ? "bg-pink-500 text-white font-bold"
+                                        : "bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] hover:text-pink-600"
                                 }`}
                             >
                                 <i className={`fas ${tab.icon} text-[10px]`} />

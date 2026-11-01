@@ -157,7 +157,7 @@ export default function ItemForecastModal({
                 }}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.4),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85)] max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-150"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border-2 border-white/90 dark:border-white/10 shadow-none max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-150"
                     data-lenis-prevent
                 >
                     {/* Header */}
@@ -348,20 +348,20 @@ export default function ItemForecastModal({
                             </div>
                         )}
 
-                        {/* Machine Learning Training Metrics Card (If ML Regressor Was Used) */}
+                        {/* Forecast Training Details */}
                         {item.ml_metadata && (
-                            <div className="p-4 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-purple-50/50 dark:from-indigo-950/20 dark:to-purple-950/20 border border-indigo-200/80 dark:border-indigo-800/50 shadow-[inset_1.5px_1.5px_3px_rgba(99,102,241,0.15)] space-y-3">
+                            <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        <span className="w-5 h-5 rounded-md bg-indigo-500 text-white flex items-center justify-center text-[10px]">
+                                        <span className="w-5 h-5 rounded-md bg-pink-500 text-white flex items-center justify-center text-[10px]">
                                             <i className="fas fa-brain" />
                                         </span>
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-900 dark:text-indigo-200">
-                                            Machine Learning Training Telemetry
+                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                            Forecast Model Details
                                         </h4>
                                     </div>
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-700">
-                                        Gradient Descent (MSE + Ridge L2)
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 font-bold border border-pink-200 dark:border-pink-800">
+                                        Pattern Learning
                                     </span>
                                 </div>
 

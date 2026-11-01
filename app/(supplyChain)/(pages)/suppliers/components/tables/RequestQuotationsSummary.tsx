@@ -426,18 +426,6 @@ export function RequestQuotationsSummary({
 
     const [modalQuoteItem, setModalQuoteItem] = useState<{ supplier: PotentialSupplierItem; quote: SupplierQuotationItem } | null>(null);
 
-    // Always provide 5 fixed podium slots in visual arrangement: [4th, 2nd, 1st, 3rd, 5th]
-    const podiumSlots = useMemo(() => {
-        const slotOrder = [4, 2, 1, 3, 5];
-        return slotOrder.map((rankNum) => {
-            const item = rankedQuotes.find((r) => r.rank === rankNum) || null;
-            return {
-                targetRank: rankNum,
-                data: item,
-            };
-        });
-    }, [rankedQuotes]);
-
     // Synchronize active winning recommendation with global floating AI robot
     useEffect(() => {
         if (winningQuote && !hasAnyAcceptedQuote) {
@@ -641,11 +629,22 @@ export function RequestQuotationsSummary({
                                             })),
                                         });
                                     }}
-                                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 hover:from-pink-600 hover:to-rose-600 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(236,72,153,0.35)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                    className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(236,72,153,0.35)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
                                     title="Open interactive AI recommendation & comparison in AI Chatbot"
                                 >
                                     <Sparkles className="w-3.5 h-3.5 text-amber-300" />
                                     <span>Ask AI Advisor in Chat</span>
+                                </button>
+
+                                {/* Compare All Bids Button */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowDeepDiveModal(true)}
+                                    className="px-3 py-2 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                    title="Open full comparison scorecard of all vendor quotations"
+                                >
+                                    <SlidersHorizontal className="w-3.5 h-3.5 text-pink-500" />
+                                    <span>Compare All Bids ({validQuotes.length})</span>
                                 </button>
 
                                 {/* View Proposal Button */}
@@ -741,237 +740,10 @@ export function RequestQuotationsSummary({
                             </div>
                         )}
                     </div>
-
-                    {/* Side-by-Side Quotation Comparison • Top 5 Leaderboard Podium (Hidden once a bid is awarded) */}
-                    {!isBidAwarded && (
-                        <div className="space-y-4">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <Trophy className="w-4 h-4 text-amber-500" />
-                                    <h5 className="text-xs sm:text-sm font-black uppercase tracking-wider text-slate-800 dark:text-slate-100">
-                                        Top 5 Vendor Quotation Podium
-                                    </h5>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/40">
-                                        Top {Math.min(5, validQuotes.length)} of {validQuotes.length}
-                                    </span>
-                                </div>
-                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Click any podium pillar to inspect full vendor quotation breakdown, terms &amp; proposal details in modal
-                                </p>
-                            </div>
-
-                            <button
-                                type="button"
-                                onClick={() => setShowDeepDiveModal(true)}
-                                className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#191b2b] text-xs font-extrabold text-pink-600 dark:text-pink-400 hover:text-pink-500 border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] flex items-center gap-1.5 cursor-pointer transition-all"
-                            >
-                                <SlidersHorizontal className="w-3.5 h-3.5" />
-                                <span>Deep-Dive Evaluation</span>
-                            </button>
-                        </div>
-
-                        {/* Interactive Leaderboard Podium Base (Always 5 Slots) */}
-                        <div className="p-3 sm:p-5 md:p-6 rounded-3xl bg-[#ebf0f7] dark:bg-[#131522] border border-pink-200/80 dark:border-pink-950/80 shadow-[inset_1.5px_1.5px_4px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_4px_rgba(255,255,255,0.85)] dark:shadow-[inset_1.5px_1.5px_4px_rgba(0,0,0,0.6)]">
-                            <div className="flex items-end justify-center gap-2 sm:gap-3 md:gap-5 pt-8 pb-3 overflow-x-auto no-scrollbar min-w-[320px]">
-                                {podiumSlots.map((slot) => {
-                                    const rankNum = slot.targetRank;
-                                    const item = slot.data;
-
-                                    // Solid pink podium styling (NO GRADIENTS)
-                                    let pillarHeight = "h-24 sm:h-32";
-                                    let medalIcon = <Award className="w-4 h-4 text-pink-600 dark:text-pink-400" />;
-                                    let medalBg = "bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800";
-                                    let pillarBg = "bg-pink-500 dark:bg-pink-600 border-2 border-pink-400 dark:border-pink-500 shadow-md";
-                                    let pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                    let rankNumberColor = "text-white/70 dark:text-white/70 font-black";
-                                    let rankLabel = `#${rankNum}`;
-                                    let rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
-
-                                    if (rankNum === 1) {
-                                        pillarHeight = "h-44 sm:h-56";
-                                        medalIcon = <Trophy className="w-5 h-5 text-amber-950 dark:text-amber-950" />;
-                                        medalBg = "bg-amber-400 text-amber-950 border-2 border-amber-300 dark:border-amber-400 shadow-[0_2px_8px_rgba(245,158,11,0.35)]";
-                                        pillarBg = "bg-pink-600 dark:bg-pink-600 border-2 border-pink-400 dark:border-pink-400 shadow-[0_4px_16px_rgba(236,72,153,0.35)]";
-                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                        rankNumberColor = "text-white/80 dark:text-white/80 font-black";
-                                        rankLabel = "🥇 1st Place";
-                                        rankBadgeBg = "bg-pink-700 text-white font-black border border-pink-500 shadow-xs";
-                                    } else if (rankNum === 2) {
-                                        pillarHeight = "h-34 sm:h-44";
-                                        medalIcon = <Award className="w-4 h-4 text-slate-800 dark:text-slate-100" />;
-                                        medalBg = "bg-slate-300 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border-2 border-slate-400/80 dark:border-slate-500 shadow-xs";
-                                        pillarBg = "bg-pink-500 dark:bg-pink-500 border-2 border-pink-300 dark:border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.25)]";
-                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
-                                        rankLabel = "🥈 2nd Place";
-                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400 shadow-xs";
-                                    } else if (rankNum === 3) {
-                                        pillarHeight = "h-28 sm:h-36";
-                                        medalIcon = <Award className="w-4 h-4 text-white" />;
-                                        medalBg = "bg-amber-700 dark:bg-amber-700 text-white border-2 border-amber-600 shadow-xs";
-                                        pillarBg = "bg-pink-500 dark:bg-pink-500 border-2 border-pink-300 dark:border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.2)]";
-                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
-                                        rankLabel = "🥉 3rd Place";
-                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400 shadow-xs";
-                                    } else if (rankNum === 4) {
-                                        pillarHeight = "h-22 sm:h-28";
-                                        pillarBg = "bg-pink-500/95 dark:bg-pink-600/95 border-2 border-pink-300 dark:border-pink-400";
-                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
-                                        rankLabel = "4th Place";
-                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
-                                    } else if (rankNum === 5) {
-                                        pillarHeight = "h-18 sm:h-24";
-                                        pillarBg = "bg-pink-500/95 dark:bg-pink-600/95 border-2 border-pink-300 dark:border-pink-400";
-                                        pillarCapBg = "bg-pink-300 dark:bg-pink-400";
-                                        rankNumberColor = "text-white/70 dark:text-white/70 font-black";
-                                        rankLabel = "5th Place";
-                                        rankBadgeBg = "bg-pink-600 text-white font-bold border border-pink-400";
-                                    }
-
-                                    // Active Vendor Slot
-                                    if (item) {
-                                        const isAccepted = (item.quote.status || "").toLowerCase().includes("accept");
-                                        const totalAmt = Number(item.quote.total_amount || 0);
-
-                                        return (
-                                            <div
-                                                key={`podium-slot-${rankNum}-${item.quote.id}`}
-                                                onClick={() => setModalQuoteItem({ supplier: item.matchedSupplier, quote: item.quote })}
-                                                className="group relative flex flex-col items-center flex-1 min-w-[110px] sm:min-w-[125px] max-w-[155px] cursor-pointer select-none transition-all duration-200 hover:-translate-y-1.5 z-10"
-                                                title={`Click to open full quotation proposal modal for ${item.quote.supplier_name}`}
-                                            >
-                                                {/* Top Vendor Card Floating Above Pillar */}
-                                                <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
-                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${rankBadgeBg}`}>
-                                                        {rankLabel}
-                                                    </span>
-
-                                                    {/* Medal Avatar Badge */}
-                                                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center ${medalBg} transition-transform group-hover:scale-110`}>
-                                                        {medalIcon}
-                                                    </div>
-
-                                                    {/* Supplier Name */}
-                                                    <p className="font-black text-xs sm:text-[13px] text-slate-900 dark:text-white truncate max-w-full" title={item.quote.supplier_name}>
-                                                        {item.quote.supplier_name}
-                                                    </p>
-
-                                                    {/* Score & Bid */}
-                                                    <div className="flex items-center gap-1">
-                                                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${
-                                                            item.rank === 1
-                                                                ? "bg-amber-500 text-white"
-                                                                : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700"
-                                                        }`}>
-                                                            {item.score}/100
-                                                        </span>
-                                                        {isAccepted && (
-                                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300/60 dark:border-emerald-800">
-                                                                Won
-                                                            </span>
-                                                        )}
-                                                    </div>
-
-                                                    <div className="bg-white dark:bg-[#1b1e2c] border border-slate-200 dark:border-slate-700/80 px-2 py-0.5 rounded-lg shadow-xs mt-0.5">
-                                                        <p className="font-mono text-xs font-black text-pink-600 dark:text-pink-400">
-                                                            ₱{totalAmt.toLocaleString()}
-                                                        </p>
-                                                    </div>
-                                                    <span className="text-[9.5px] font-medium text-slate-500 dark:text-slate-400">
-                                                        {item.quote.lead_time_days}d lead
-                                                    </span>
-                                                </div>
-
-                                                {/* Stepped Podium Pillar (SOLID PINK - NO GRADIENTS) */}
-                                                <div
-                                                    className={`w-full rounded-2xl transition-all duration-200 flex flex-col justify-between items-center pb-3 relative overflow-hidden ${pillarHeight} ${pillarBg} hover:scale-[1.02] shadow-sm`}
-                                                >
-                                                    {/* Solid Pillar Top Cap Line */}
-                                                    <div className={`w-full h-1.5 shrink-0 ${pillarCapBg}`} />
-
-                                                    {/* Embossed Podium Rank Number */}
-                                                    <div className={`text-2xl sm:text-3xl font-black select-none ${rankNumberColor}`}>
-                                                        #{item.rank}
-                                                    </div>
-
-                                                    <div className="px-2.5 py-0.5 rounded-full bg-white text-[10px] font-black text-pink-700 group-hover:bg-pink-50 transition-colors flex items-center gap-1 shadow-sm">
-                                                        <span>View</span>
-                                                        <ExternalLink className="w-2.5 h-2.5" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        );
-                                    }
-
-                                    // Empty Slot in Podium
-                                    return (
-                                        <div
-                                            key={`podium-slot-empty-${rankNum}`}
-                                            className="group relative flex flex-col items-center flex-1 min-w-[110px] sm:min-w-[125px] max-w-[155px] select-none opacity-60 z-0"
-                                        >
-                                            {/* Empty Card Floating Above Pillar */}
-                                            <div className="flex flex-col items-center text-center space-y-1 mb-2.5 w-full px-1">
-                                                <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 px-2 py-0.5 rounded-full bg-slate-200/50 dark:bg-slate-800/40 border border-slate-300/40 dark:border-slate-800">
-                                                    {rankLabel}
-                                                </span>
-
-                                                {/* Empty Avatar Badge */}
-                                                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700 bg-slate-100/70 dark:bg-slate-800/50 text-slate-400 dark:text-slate-500">
-                                                    <Package className="w-4 h-4 opacity-50" />
-                                                </div>
-
-                                                {/* Empty Supplier Name */}
-                                                <p className="font-semibold text-xs text-slate-400 dark:text-slate-500 italic truncate max-w-full">
-                                                    Empty Slot
-                                                </p>
-
-                                                <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                                                    No Proposal
-                                                </span>
-
-                                                <div className="bg-slate-100 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 px-2 py-0.5 rounded-lg mt-0.5">
-                                                    <p className="font-mono text-xs text-slate-400 dark:text-slate-500">
-                                                        —
-                                                    </p>
-                                                </div>
-                                                <span className="text-[9.5px] text-slate-400 dark:text-slate-600">
-                                                    Awaiting Bid
-                                                </span>
-                                            </div>
-
-                                            {/* Empty Stepped Podium Pillar (SOLID PINK THEMED - NO GRADIENTS) */}
-                                            <div
-                                                className={`w-full rounded-2xl border-2 border-dashed border-pink-300 dark:border-pink-800/80 bg-pink-100/40 dark:bg-pink-950/30 flex flex-col justify-between items-center pb-3 relative overflow-hidden ${pillarHeight}`}
-                                            >
-                                                {/* Solid Pillar Top Cap Line */}
-                                                <div className="w-full h-1.5 shrink-0 bg-pink-200 dark:bg-pink-900/60" />
-
-                                                {/* Embossed Podium Rank Number */}
-                                                <div className="text-2xl sm:text-3xl font-black text-pink-300/80 dark:text-pink-700/60 select-none">
-                                                    #{rankNum}
-                                                </div>
-
-                                                <div className="px-2 py-0.5 rounded-full bg-white/90 dark:bg-[#1a1c28] text-[10px] font-bold text-pink-600 dark:text-pink-400 select-none border border-pink-200 dark:border-pink-900/60">
-                                                    Vacant
-                                                </div>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-
-                            {/* Podium Shelf Horizon Line (SOLID PINK - NO GRADIENT) */}
-                            <div className="h-2 w-full rounded-full bg-pink-500 dark:bg-pink-500 -mt-1 shadow-sm" />
-                        </div>
-                    </div>
-                )}
                 </div>
             )}
 
-            {/* Vendor Quotation & Proposal Details Modal when clicking any podium pillar */}
+            {/* Vendor Quotation & Proposal Details Modal */}
             {modalQuoteItem && (
                 <VendorQuotationViewModal
                     supplier={modalQuoteItem.supplier}

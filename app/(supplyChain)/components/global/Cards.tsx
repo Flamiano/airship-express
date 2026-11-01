@@ -19,6 +19,9 @@ interface CardsProps {
     backIcon?: string;
     frontTextColor?: string;
     descriptionTextColor?: string;
+    onActionClick?: () => void;
+    actionLabel?: string;
+    className?: string;
 }
 
 export default function Cards({
@@ -36,7 +39,10 @@ export default function Cards({
     badge,
     backIcon = "fas fa-circle-info",
     frontTextColor = "text-slate-500 dark:text-slate-400",
-    descriptionTextColor = "text-slate-500 dark:text-slate-400"
+    descriptionTextColor = "text-slate-500 dark:text-slate-400",
+    onActionClick,
+    actionLabel,
+    className = ""
 }: CardsProps) {
     const [flipped, setFlipped] = useState(false);
     const [showTooltip, setShowTooltip] = useState(false);
@@ -99,7 +105,9 @@ export default function Cards({
 
     const handleTooltipClick = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (tooltipLink) {
+        if (onActionClick) {
+            onActionClick();
+        } else if (tooltipLink) {
             window.location.href = tooltipLink;
         }
     };
@@ -117,9 +125,11 @@ export default function Cards({
         setFlipped((prev) => !prev);
     };
 
+    const hasAction = Boolean(onActionClick || tooltipLink);
+
     return (
         <div
-            className="relative cursor-pointer perspective h-40 group select-none transition-transform duration-300 hover:-translate-y-1 active:scale-[0.98]"
+            className={`relative cursor-pointer perspective h-40 group select-none transition-transform duration-300 hover:-translate-y-1 active:scale-[0.98] ${className}`}
             data-interactive="true"
             data-lenis-prevent="true"
             onMouseEnter={handleMouseEnter}
@@ -137,12 +147,12 @@ export default function Cards({
                             border border-slate-700/60 dark:border-[#67224c]
                             backdrop-blur-md whitespace-nowrap pointer-events-auto 
                             transition-all duration-200 flex items-center gap-1.5 
-                            ${tooltipLink ? 'cursor-pointer hover:scale-[1.02] active:scale-95 group/tip' : 'cursor-default select-none'}`}
+                            ${hasAction ? 'cursor-pointer hover:scale-[1.02] active:scale-95 group/tip' : 'cursor-default select-none'}`}
                     onMouseEnter={handleTooltipMouseEnter}
                     onMouseLeave={handleTooltipMouseLeave}
                     onClick={handleTooltipClick}
                 >
-                    {tooltipLink ? (
+                    {hasAction ? (
                         <>
                             <i className="fas fa-arrow-up-right-from-square text-[9px] text-pink-400 shrink-0"></i>
                             <span className="underline underline-offset-4 decoration-pink-400/80 group-hover/tip:decoration-pink-300 font-semibold text-pink-100 group-hover/tip:text-white transition-colors">
@@ -216,7 +226,19 @@ export default function Cards({
                             <span className="truncate">{backHeader}</span>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                            {tooltipLink && (
+                            {onActionClick ? (
+                                <button
+                                    type="button"
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-pink-600 hover:bg-pink-500 text-white transition-all cursor-pointer"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onActionClick();
+                                    }}
+                                >
+                                    <span>{actionLabel || 'Filter'}</span>
+                                    <i className="fas fa-filter text-[8px]" />
+                                </button>
+                            ) : tooltipLink ? (
                                 <Link
                                     href={tooltipLink}
                                     className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-semibold bg-pink-600 hover:bg-pink-500 text-white transition-all cursor-pointer"
@@ -225,7 +247,7 @@ export default function Cards({
                                     <span>Action</span>
                                     <i className="fas fa-arrow-up-right-from-square text-[8px]" />
                                 </Link>
-                            )}
+                            ) : null}
                             <span
                                 className="text-[9px] text-white/50 hover:text-white dark:text-slate-400 dark:hover:text-white px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/15 transition-colors cursor-pointer select-none"
                                 onClick={(e) => {

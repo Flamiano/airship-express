@@ -262,30 +262,6 @@ function generateForecastTableRows(d: {
             ],
             recommendation: "Evaluate consolidation or write-down reviews for SKUs showing 60+ days of dormancy.",
         },
-        {
-            tabKey: "history",
-            tabName: "Algorithmic Validation & Accuracy",
-            icon: "fa-bullseye",
-            metricsDisplay: isInvalidHistory
-                ? "0% Confidence • Requires 3+ Yrs Data"
-                : `${s.average_accuracy !== null ? `${s.average_accuracy}%` : "94%"} Accuracy • MAE ${s.average_mae || "1.2"}`,
-            healthStatus: isInvalidHistory ? "Prediction Invalid" : "Validated",
-            statusTone: isInvalidHistory ? "rose" : "purple",
-            findings: isInvalidHistory
-                ? [
-                    `Algorithmic confidence clamped to 0% due to insufficient historical time horizon (< 3 years)`,
-                    `Time-series algorithms require multi-year seasonality data to decouple annual cycles from noise`,
-                    `Holdout validation testing suppressed across all ${s.total_items || 0} catalog items`,
-                ]
-                : [
-                    `Out-of-sample holdout testing verified against historical actuals`,
-                    `Model selection optimized dynamically per SKU characteristics`,
-                    `Mean Absolute Error (MAE) running within expected confidence bands`,
-                ],
-            recommendation: isInvalidHistory
-                ? "Collect longitudinal stock-out audit logs to establish a 3-year foundation for reliable AI forecasts."
-                : "Continue automated weekly retraining on freshly finalized stock movement logs.",
-        },
     ];
 }
 

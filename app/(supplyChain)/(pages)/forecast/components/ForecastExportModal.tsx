@@ -63,7 +63,7 @@ export default function ForecastExportModal({
                 }}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.4),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85)] max-w-xl w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border-2 border-white/90 dark:border-white/10 shadow-none max-w-xl w-full flex flex-col overflow-hidden animate-in zoom-in-95 duration-150"
                     data-lenis-prevent
                 >
                     {/* Header */}
@@ -116,8 +116,8 @@ export default function ForecastExportModal({
                                     onClick={() => setSelectedFormat('pdf')}
                                     className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'pdf'
-                                            ? 'bg-pink-500 text-white border-pink-400 shadow-[0_4px_14px_rgba(236,72,153,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
-                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
+                                            ? 'bg-pink-500 text-white border-pink-400 font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
@@ -135,8 +135,8 @@ export default function ForecastExportModal({
                                     onClick={() => setSelectedFormat('word')}
                                     className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'word'
-                                            ? 'bg-blue-600 text-white border-blue-400 shadow-[0_4px_14px_rgba(37,99,235,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
-                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
+                                            ? 'bg-blue-600 text-white border-blue-400 font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${
@@ -154,8 +154,8 @@ export default function ForecastExportModal({
                                     onClick={() => setSelectedFormat('excel')}
                                     className={`p-3.5 rounded-2xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1.5 active:scale-95 ${
                                         selectedFormat === 'excel'
-                                            ? 'bg-emerald-600 text-white border-emerald-400 shadow-[0_4px_14px_rgba(16,185,129,0.4),inset_0_1px_1px_rgba(255,255,255,0.5)] font-bold'
-                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[3px_3px_8px_rgba(166,175,195,0.3),-3px_-3px_8px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.5)] text-slate-700 dark:text-slate-300'
+                                            ? 'bg-emerald-600 text-white border-emerald-400 font-bold'
+                                            : 'bg-[#ebf0f7] dark:bg-[#12131b] border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.2)] text-slate-700 dark:text-slate-300'
                                     }`}
                                 >
                                     <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base ${

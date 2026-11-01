@@ -1,13 +1,12 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Portal from "../../../components/client/Portal";
 import { AppButton } from "../../../components/ui/AppButton";
 import { StatusBadge, type BadgeTone } from "../../../components/ui/StatusBadge";
-import { toast } from "sonner";
 import Link from "next/link";
 
-export type ForecastChartDomain = "dashboard" | "consumption" | "movement" | "table" | "history";
+export type ForecastChartDomain = "dashboard" | "consumption" | "movement" | "table";
 
 interface ForecastChartDetailsModalProps {
     isOpen: boolean;
@@ -47,11 +46,6 @@ export default function ForecastChartDetailsModal({
     const [typeFilter, setTypeFilter] = useState<string>("all");
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(10);
-    const [isRealtimeActive, setIsRealtimeActive] = useState(true);
-    const [lastSyncTime, setLastSyncTime] = useState<Date>(new Date());
-    const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
-    const [realtimeLogs, setRealtimeLogs] = useState<string[]>([]);
-    const [showRealtimeLogs, setShowRealtimeLogs] = useState(false);
 
     // Sync active domain when modal is opened or initialDomain changes
     useEffect(() => {
@@ -60,18 +54,8 @@ export default function ForecastChartDetailsModal({
             setCurrentPage(1);
             setSearchQuery("");
             setTypeFilter("all");
-            setLastSyncTime(new Date());
-            
-            // Seed initial live stream telemetry logs
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString();
-            setRealtimeLogs([
-                `[${timeStr}] Telemetry stream online: Connected to Warehouse Ledger Socket (ws-01)`,
-                `[${timeStr}] Croston SBA & AutoTheta parameters synced with ${periodDays}-day window`,
-                `[${timeStr}] 90% Confidence bound interval verified against supplier lead times`,
-            ]);
         }
-    }, [isOpen, initialDomain, periodDays]);
+    }, [isOpen, initialDomain]);
 
     // Handle ESC key to close modal
     useEffect(() => {
@@ -83,48 +67,6 @@ export default function ForecastChartDetailsModal({
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [isOpen, onClose]);
-
-    // Realtime live ticker: simulates live telemetry heartbeat
-    useEffect(() => {
-        if (!isOpen || !isRealtimeActive) return;
-
-        const interval = setInterval(() => {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString();
-            const telemetryEvents = [
-                `[${timeStr}] Realtime ping: Demand distribution variance stable (σ=1.14)`,
-                `[${timeStr}] Stock movement update: Issued materials reconciled with daily run-rate`,
-                `[${timeStr}] Auto-evaluated confidence bands across ${horizonDays}-day horizon`,
-                `[${timeStr}] Safety stock threshold audit: Minimum coverage maintained`,
-            ];
-            const randomEvent = telemetryEvents[Math.floor(Math.random() * telemetryEvents.length)];
-            setLastSyncTime(now);
-            setRealtimeLogs((prev) => [randomEvent, ...prev.slice(0, 7)]);
-        }, 8000);
-
-        return () => clearInterval(interval);
-    }, [isOpen, isRealtimeActive, horizonDays]);
-
-    // Manual refresh telemetry feed
-    const handleManualRefresh = async () => {
-        setIsRefreshingFeed(true);
-        try {
-            if (onRefreshData) {
-                await onRefreshData();
-            }
-            const now = new Date();
-            setLastSyncTime(now);
-            setRealtimeLogs((prev) => [
-                `[${now.toLocaleTimeString()}] Manual stream resync: Fresh inventory & PO transactions ingested`,
-                ...prev.slice(0, 7),
-            ]);
-            toast.success("Realtime forecast telemetry re-synchronized with latest stock movements!");
-        } catch {
-            toast.error("Telemetry refresh failed. Using cached stream data.");
-        } finally {
-            setIsRefreshingFeed(false);
-        }
-    };
 
     // Extract tabular points based on active domain
     const allTablePoints = useMemo<TableDataPoint[]>(() => {
@@ -242,7 +184,7 @@ export default function ForecastChartDetailsModal({
         }
 
         // 4. Item Predictions & Risks (items array fallback)
-        if (activeDomain === "table" || activeDomain === "history") {
+        if (activeDomain === "table") {
             const items = forecastData.items || [];
             items.forEach((item: any, idx: number) => {
                 const risk = item.risk_level || "Optimal";
@@ -324,7 +266,7 @@ export default function ForecastChartDetailsModal({
                 return {
                     title: "Historical Consumption & Usage Velocity Trends",
                     icon: "fa-dolly",
-                    tag: "Material Outbound Telemetry",
+                    tag: "Material Outbound Usage",
                     howItSolves: [
                         {
                             headline: "Reveals True Warehouse Consumption Velocity",
@@ -343,7 +285,7 @@ export default function ForecastChartDetailsModal({
                         { label: "Tracking Window", value: `${periodDays} Days` },
                         { label: "Granularity", value: "Daily / Weekly / Monthly" },
                         { label: "Consumption Pattern", value: "Non-Linear Distribution" },
-                        { label: "Run-Rate Sensor", value: "Realtime Outbound Sync" },
+                        { label: "Run-Rate Tracking", value: "Active Outbound Sync" },
                     ],
                 };
             case "movement":
@@ -373,7 +315,6 @@ export default function ForecastChartDetailsModal({
                     ],
                 };
             case "table":
-            case "history":
             default:
                 return {
                     title: "Inventory Stockout & Replenishment Risk Matrix",
@@ -409,13 +350,13 @@ export default function ForecastChartDetailsModal({
         <Portal>
             <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-900/60 dark:bg-black/80 backdrop-blur-md animate-fadeIn">
                 <div
-                    className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-[#ebf0f7] dark:bg-[#161722] border border-white/80 dark:border-white/[0.08] shadow-[10px_10px_30px_rgba(166,175,195,0.4),-10px_-10px_30px_rgba(255,255,255,0.9)] dark:shadow-[10px_10px_40px_rgba(0,0,0,0.8)] overflow-hidden"
+                    className="relative w-full max-w-5xl max-h-[92vh] flex flex-col rounded-3xl bg-[#ebf0f7] dark:bg-[#161722] border-2 border-white/90 dark:border-white/10 shadow-none overflow-hidden"
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Top Header */}
-                    <div className="p-4 sm:p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-pink-50/50 via-transparent to-blue-50/30 dark:from-pink-950/20 dark:to-transparent shrink-0">
+                    <div className="p-4 sm:p-5 border-b border-slate-200/60 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-3 bg-[#ebf0f7]/80 dark:bg-[#14151e]/80 shrink-0">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shadow-[0_4px_12px_rgba(236,72,153,0.35)] shrink-0">
+                            <div className="w-10 h-10 rounded-2xl bg-pink-500 text-white flex items-center justify-center shrink-0">
                                 <i className={`fas ${domainDetails.icon} text-base`} />
                             </div>
                             <div>
@@ -428,35 +369,13 @@ export default function ForecastChartDetailsModal({
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Algorithmic model breakdown, live telemetry feed, and paginated underlying data points
+                                    Detailed chart data, daily numbers, and live stock movement
                                 </p>
                             </div>
                         </div>
 
                         {/* Top Controls: Realtime badge & Close */}
                         <div className="flex items-center gap-2">
-                            {/* Realtime Live Pulse Badge */}
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3)] text-xs font-bold">
-                                <span className="relative flex h-2.5 w-2.5">
-                                    {isRealtimeActive && (
-                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                                    )}
-                                    <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isRealtimeActive ? "bg-emerald-500" : "bg-slate-400"}`} />
-                                </span>
-                                <span className={isRealtimeActive ? "text-emerald-700 dark:text-emerald-400 text-[11px]" : "text-slate-400 text-[11px]"}>
-                                    {isRealtimeActive ? "REALTIME SYNC" : "STREAM PAUSED"}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={handleManualRefresh}
-                                    disabled={isRefreshingFeed}
-                                    className="ml-1 p-1 rounded-lg text-slate-500 hover:text-pink-600 transition-colors cursor-pointer disabled:opacity-50"
-                                    title="Manually re-sync telemetry feed"
-                                >
-                                    <i className={`fas fa-rotate text-xs ${isRefreshingFeed ? "animate-spin text-pink-500" : ""}`} />
-                                </button>
-                            </div>
-
                             {/* Close Modal Button */}
                             <button
                                 type="button"
@@ -486,7 +405,7 @@ export default function ForecastChartDetailsModal({
                                 }}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
                                     activeDomain === tab.key
-                                        ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-[0_2px_8px_rgba(236,72,153,0.35)]"
+                                        ? "bg-pink-500 text-white"
                                         : "bg-[#ebf0f7] dark:bg-[#191a26] text-slate-600 dark:text-slate-300 border border-white/80 dark:border-white/[0.04] hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
@@ -554,54 +473,7 @@ export default function ForecastChartDetailsModal({
                             </div>
                         </div>
 
-                        {/* Section 2: Realtime Live Telemetry Log & Stream Status */}
-                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#13141f] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)] space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <i className="fas fa-satellite-dish text-pink-500 text-xs" />
-                                    <span className="text-xs font-bold text-slate-900 dark:text-white">
-                                        Live Telemetry Stream
-                                    </span>
-                                    <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                                        (Last sync: {lastSyncTime.toLocaleTimeString()})
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowRealtimeLogs(!showRealtimeLogs)}
-                                        className="text-[11px] font-bold text-pink-600 dark:text-pink-400 hover:underline cursor-pointer"
-                                    >
-                                        {showRealtimeLogs ? "Hide Stream Logs" : `View Stream Logs (${realtimeLogs.length})`}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setIsRealtimeActive(!isRealtimeActive)}
-                                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold transition-all cursor-pointer ${
-                                            isRealtimeActive
-                                                ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
-                                                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                                        }`}
-                                    >
-                                        {isRealtimeActive ? "Pause Stream" : "Resume Stream"}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Dropdown / Collapsible Live Event Feed */}
-                            {showRealtimeLogs && (
-                                <div className="p-3 rounded-xl bg-[#0e1017] text-emerald-400 font-mono text-[11px] space-y-1 max-h-36 overflow-y-auto border border-emerald-500/20 shadow-inner">
-                                    {realtimeLogs.map((log, lIdx) => (
-                                        <div key={lIdx} className="flex items-start gap-1.5 leading-snug">
-                                            <span className="text-pink-400 shrink-0">&gt;</span>
-                                            <span className="text-slate-300">{log}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Section 3: Paginated Data Breakdown */}
+                        {/* Section 2: Paginated Data Breakdown */}
                         <div className="space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
@@ -790,10 +662,7 @@ export default function ForecastChartDetailsModal({
                     </div>
 
                     {/* Modal Footer */}
-                    <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-between shrink-0 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                            Active Algorithm: <b>Croston SBA + Holt-Winters AutoTheta WASM</b>
-                        </span>
+                    <div className="p-4 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center justify-end shrink-0 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40">
                         <div className="flex items-center gap-2">
                             <AppButton
                                 type="button"

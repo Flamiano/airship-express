@@ -564,12 +564,12 @@ export default function ItemMovementSection({
                                 <i className="fas fa-chart-line" />
                             </div>
                             <div>
-                                <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                <h5 className="text-sm sm:text-base font-black text-slate-900 dark:text-white flex items-center gap-2">
                                     Combined Inventory Movement Velocity & Turnover Line Chart
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800">
                                         Dual-Series Trajectory
                                     </span>
-                                </h3>
+                                </h5>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                     Comparative rank-by-rank line trajectory contrasting Fast-Moving inventory vs Slowest-Moving & Dormant items
                                 </p>

@@ -604,10 +604,10 @@ export function IssueRequestsTab({
                 </div>
             </div>
 
-            {/* 3. Approved Department Requisitions List */}
-            <div className="space-y-3">
+                        {/* 3. Approved Department Requisitions Table */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]">
                 {filteredRequests.length === 0 ? (
-                    <div className="p-12 text-center rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)]">
+                    <div className="p-12 text-center">
                         <Share2 className="w-10 h-10 mx-auto text-slate-300 dark:text-slate-600 mb-3" />
                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">No Department Requests Found</h4>
                         <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
@@ -615,432 +615,453 @@ export function IssueRequestsTab({
                         </p>
                     </div>
                 ) : (
-                    paginatedRequests.map((req) => {
-                        const isCompleted = checkIsCompleted(req);
-                        const isPartial = checkIsPartiallyReleased(req);
-                        const isExpanded = expandedRequestId === req.id;
-                        const itemsList = Array.isArray(req.items) ? req.items : (typeof req.items === "string" ? JSON.parse(req.items || "[]") : []);
+                    <div className="overflow-x-auto">
+                        <table className="table-pro w-full text-left text-xs border-collapse">
+                            <thead>
+                                <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                                    <th className="pb-3">Request #</th>
+                                    <th className="pb-3">Department &amp; Requester</th>
+                                    <th className="pb-3">Requested Items</th>
+                                    <th className="pb-3">Stock Readiness</th>
+                                    <th className="pb-3">Status</th>
+                                    <th className="pb-3 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                {paginatedRequests.map((req) => {
+                                    const isCompleted = checkIsCompleted(req);
+                                    const isPartial = checkIsPartiallyReleased(req);
+                                    const isExpanded = expandedRequestId === req.id;
+                                    const itemsList = Array.isArray(req.items) ? req.items : (typeof req.items === "string" ? JSON.parse(req.items || "[]") : []);
 
-                        // Approver info for the card
-                        const { approvalDate, approverName } = getRequestApprovalInfo(req);
-                        const formattedApprovalDate = approvalDate > 0 
-                            ? new Date(approvalDate).toLocaleDateString() 
-                            : (req.created_at ? new Date(req.created_at).toLocaleDateString() : "Recently");
+                                    // Approver info for the card
+                                    const { approvalDate, approverName } = getRequestApprovalInfo(req);
+                                    const formattedApprovalDate = approvalDate > 0 
+                                        ? new Date(approvalDate).toLocaleDateString() 
+                                        : (req.created_at ? new Date(req.created_at).toLocaleDateString() : "Recently");
 
-                        // Identify approved items vs items pending / routed to procurement
-                        const approvedItems = itemsList.filter((item: any) => {
-                            return (
-                                item.is_approved === true ||
-                                item.is_approve === true ||
-                                item.status === "Approved" ||
-                                String(item.status || "").toLowerCase() === "approved" ||
-                                Number(item.approved_quantity) > 0 ||
-                                (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Pending" && item.status !== "Rejected")
-                            ) && item.status !== "Pending" && item.status !== "Rejected";
-                        });
+                                    // Identify approved items vs items pending / routed to procurement
+                                    const approvedItems = itemsList.filter((item: any) => {
+                                        return (
+                                            item.is_approved === true ||
+                                            item.is_approve === true ||
+                                            item.status === "Approved" ||
+                                            String(item.status || "").toLowerCase() === "approved" ||
+                                            Number(item.approved_quantity) > 0 ||
+                                            (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Pending" && item.status !== "Rejected")
+                                        ) && item.status !== "Pending" && item.status !== "Rejected";
+                                    });
 
-                        const approvedItemsCount = approvedItems.length;
+                                    const approvedItemsCount = approvedItems.length;
 
-                        // Target items for warehouse issuing stock assessment:
-                        // If specific items are approved, assess readiness on those approved items.
-                        // Otherwise assess all non-rejected items.
-                        const targetList = approvedItems.length > 0 
-                            ? approvedItems 
-                            : itemsList.filter((it: any) => it.status !== "Rejected");
-                        const activeList = targetList.length > 0 ? targetList : itemsList;
+                                    // Target items for warehouse issuing stock assessment:
+                                    // If specific items are approved, assess readiness on those approved items.
+                                    // Otherwise assess all non-rejected items.
+                                    const targetList = approvedItems.length > 0 
+                                        ? approvedItems 
+                                        : itemsList.filter((it: any) => it.status !== "Rejected");
+                                    const activeList = targetList.length > 0 ? targetList : itemsList;
 
-                        // Check stock feasibility across items
-                        let totalReqQty = 0;
-                        let totalIssuedQty = 0;
-                        let totalDeficitQty = 0;
-                        let totalAvailQty = 0;
-                        let totalAvailForDeficit = 0;
-                        let releasedItemsCount = 0;
+                                    // Check stock feasibility across items
+                                    let totalReqQty = 0;
+                                    let totalIssuedQty = 0;
+                                    let totalDeficitQty = 0;
+                                    let totalAvailQty = 0;
+                                    let totalAvailForDeficit = 0;
+                                    let releasedItemsCount = 0;
 
-                        itemsList.forEach((item: any) => {
-                            const stockInfo = getItemAvailableStock(item, inventoryItems);
-                            const inStock = stockInfo.inStock;
-                            const reqQty = Number(item.quantity || item.quantity_requested) || 1;
-                            const itemIssued = Number(item.issued_quantity) || 0;
-                            const itemDeficit = stockInfo.remainingDeficit;
+                                    itemsList.forEach((item: any) => {
+                                        const stockInfo = getItemAvailableStock(item, inventoryItems);
+                                        const inStock = stockInfo.inStock;
+                                        const reqQty = Number(item.quantity || item.quantity_requested) || 1;
+                                        const itemIssued = Number(item.issued_quantity) || 0;
+                                        const itemDeficit = stockInfo.remainingDeficit;
 
-                            totalReqQty += reqQty;
-                            totalIssuedQty += itemIssued;
-                            totalDeficitQty += itemDeficit;
+                                        totalReqQty += reqQty;
+                                        totalIssuedQty += itemIssued;
+                                        totalDeficitQty += itemDeficit;
 
-                            const availQty = stockInfo.availableToIssue;
-                            totalAvailQty += availQty;
+                                        const availQty = stockInfo.availableToIssue;
+                                        totalAvailQty += availQty;
 
-                            if (item.is_released || item.status === "Released" || item.status === "Delivered" || (itemIssued >= reqQty && reqQty > 0)) {
-                                releasedItemsCount++;
-                            }
+                                        if (item.is_released || item.status === "Released" || item.status === "Delivered" || (itemIssued >= reqQty && reqQty > 0)) {
+                                            releasedItemsCount++;
+                                        }
 
-                            if (itemDeficit > 0) {
-                                totalAvailForDeficit += Math.min(inStock, itemDeficit);
-                            }
-                        });
+                                        if (itemDeficit > 0) {
+                                            totalAvailForDeficit += Math.min(inStock, itemDeficit);
+                                        }
+                                    });
 
-                        // Calculate stock readiness specifically for targetList (approved items ready to issue)
-                        let targetFullCount = 0;
-                        let targetPartialCount = 0;
-                        let targetNoStockCount = 0;
-                        let targetTotalAvail = 0;
-                        let targetTotalReq = 0;
+                                    // Calculate stock readiness specifically for targetList (approved items ready to issue)
+                                    let targetFullCount = 0;
+                                    let targetPartialCount = 0;
+                                    let targetNoStockCount = 0;
+                                    let targetTotalAvail = 0;
+                                    let targetTotalReq = 0;
 
-                        activeList.forEach((item: any) => {
-                            const stockInfo = getItemAvailableStock(item, inventoryItems);
-                            const reqQty = Number(item.quantity || item.quantity_requested) || 1;
-                            const avail = stockInfo.availableToIssue;
-                            targetTotalAvail += avail;
-                            targetTotalReq += reqQty;
+                                    activeList.forEach((item: any) => {
+                                        const stockInfo = getItemAvailableStock(item, inventoryItems);
+                                        const reqQty = Number(item.quantity || item.quantity_requested) || 1;
+                                        const avail = stockInfo.availableToIssue;
+                                        targetTotalAvail += avail;
+                                        targetTotalReq += reqQty;
 
-                            if (avail >= reqQty && reqQty > 0) {
-                                targetFullCount++;
-                            } else if (avail > 0) {
-                                targetPartialCount++;
-                            } else {
-                                targetNoStockCount++;
-                            }
-                        });
+                                        if (avail >= reqQty && reqQty > 0) {
+                                            targetFullCount++;
+                                        } else if (avail > 0) {
+                                            targetPartialCount++;
+                                        } else {
+                                            targetNoStockCount++;
+                                        }
+                                    });
 
-                        const isAllAvailable = activeList.length > 0 && targetFullCount === activeList.length;
-                        const isPartialAvailable = targetFullCount > 0 || targetPartialCount > 0;
-                        const hasStockForRemaining = totalAvailForDeficit > 0;
-                        const isSingleItem = activeList.length <= 1;
+                                    const isAllAvailable = activeList.length > 0 && targetFullCount === activeList.length;
+                                    const isPartialAvailable = targetFullCount > 0 || targetPartialCount > 0;
+                                    const hasStockForRemaining = totalAvailForDeficit > 0;
+                                    const isSingleItem = activeList.length <= 1;
 
-                        return (
-                            <div
-                                key={req.id}
-                                className="rounded-3xl bg-[#f0f3f8] dark:bg-[#1d1e28] border border-white/70 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04)] overflow-hidden transition-all"
-                            >
-                                <div className="p-4 sm:p-5 flex items-center justify-between gap-4 flex-wrap">
-                                    <div className="flex items-start gap-3.5 min-w-[240px]">
-                                        <div
-                                            className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 mt-0.5 ${
-                                                isCompleted
-                                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
-                                                    : isPartial
-                                                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
-                                                    : "bg-[#f0f4f9] dark:bg-[#14151c] text-slate-600 dark:text-slate-300"
-                                            }`}
-                                        >
-                                            {isCompleted ? <CheckCircle2 className="w-5 h-5" /> : isPartial ? <AlertTriangle className="w-5 h-5" /> : <Send className="w-5 h-5" />}
-                                        </div>
+                                    return (
+                                        <React.Fragment key={req.id}>
+                                            <tr className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10 transition-colors">
+                                                <td data-label="Request #" className="py-3">
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div
+                                                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                                                isCompleted
+                                                                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400"
+                                                                    : isPartial
+                                                                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400"
+                                                                    : "bg-[#f0f4f9] dark:bg-[#14151c] text-slate-600 dark:text-slate-300"
+                                                            }`}
+                                                        >
+                                                            {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : isPartial ? <AlertTriangle className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-black text-slate-900 dark:text-white font-mono text-xs">
+                                                                #{req.request_number || `REQ-${req.id}`}
+                                                            </span>
+                                                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+                                                                <span>Needed: {new Date(req.needed_by_date || req.created_at || Date.now()).toLocaleDateString()}</span>
+                                                                {req.priority && (
+                                                                    <span className="font-bold text-pink-600 dark:text-pink-400">
+                                                                        • {req.priority}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </td>
 
-                                        <div>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="text-sm font-black text-slate-900 dark:text-white font-mono">
-                                                    #{req.request_number || `REQ-${req.id}`}
-                                                </span>
+                                                <td data-label="Department" className="py-3">
+                                                    <div className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                                        <Building2 className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                                                        <span>{req.department || "General Operations"}</span>
+                                                    </div>
+                                                    <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                                                        <span>By: {req.requested_by || "Requester"}</span>
+                                                        <span>• Approver: {approverName}</span>
+                                                    </div>
+                                                </td>
 
-                                                <span
-                                                    className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                                                        isCompleted
-                                                            ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40"
-                                                            : isPartial
-                                                            ? hasStockForRemaining
-                                                                ? "bg-amber-500 text-white shadow-xs"
-                                                                : "bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300/50"
-                                                            : approvedItemsCount === itemsList.length && itemsList.length > 0
-                                                            ? "bg-pink-500 text-white"
-                                                            : approvedItemsCount > 0
-                                                            ? "bg-purple-600 text-white"
-                                                            : "bg-pink-500 text-white"
-                                                    }`}
-                                                >
-                                                    {isCompleted
-                                                        ? "Released & Fulfilled"
-                                                        : isPartial
-                                                        ? hasStockForRemaining
-                                                            ? isSingleItem
-                                                                ? `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Restocked (${totalAvailForDeficit} Ready)`
-                                                                : `Partially Released (${releasedItemsCount}/${itemsList.length} Items Given) • Restocked Ready`
-                                                            : isSingleItem
-                                                                ? `Partially Released (${totalIssuedQty}/${totalReqQty} Given) • Awaiting Stock (${totalDeficitQty} Deficit)`
-                                                                : `Partially Released (${releasedItemsCount}/${itemsList.length} Items Given) • Awaiting Stock`
-                                                        : approvedItemsCount === itemsList.length && itemsList.length > 0
-                                                        ? "Approved • Ready to Issue"
-                                                        : approvedItemsCount > 0
-                                                        ? `Partially Approved (${approvedItemsCount}/${itemsList.length} Items) • Ready to Issue`
-                                                        : "Approved • Routed to Warehousing"}
-                                                </span>
+                                                <td data-label="Items" className="py-3">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-bold text-slate-700 dark:text-slate-300">
+                                                            {activeList.length} {activeList.length === 1 ? "item" : "items"}
+                                                            {approvedItemsCount > 0 && approvedItemsCount < itemsList.length ? ` (${itemsList.length} req)` : ""}
+                                                        </span>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setExpandedRequestId(isExpanded ? null : req.id)}
+                                                            className="px-2 py-0.5 rounded-lg bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e2e8f0] text-slate-600 dark:text-slate-300 text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-slate-200/60 dark:border-white/[0.05]"
+                                                        >
+                                                            <span>{isExpanded ? "Hide" : "Details"}</span>
+                                                            {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                                        </button>
+                                                    </div>
+                                                </td>
 
-                                                {!isCompleted && !isPartial && (
+                                                <td data-label="Stock Readiness" className="py-3">
+                                                    {isCompleted ? (
+                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800/40 inline-flex items-center gap-1">
+                                                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                            <span>All Fulfilled</span>
+                                                        </span>
+                                                    ) : isPartial ? (
+                                                        <span
+                                                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                                                hasStockForRemaining
+                                                                    ? "bg-amber-500 text-white shadow-xs"
+                                                                    : "bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-300/50"
+                                                            }`}
+                                                        >
+                                                            {hasStockForRemaining
+                                                                ? `Restocked (${totalAvailForDeficit} Ready)`
+                                                                : `Awaiting (${totalDeficitQty} Deficit)`}
+                                                        </span>
+                                                    ) : (
+                                                        <span
+                                                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                                                isAllAvailable
+                                                                    ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 border border-pink-200 dark:border-pink-800/40"
+                                                                    : isPartialAvailable
+                                                                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 border border-amber-200 dark:border-amber-800/40"
+                                                                    : "bg-red-50 dark:bg-red-950/40 text-red-600 border border-red-200 dark:border-red-800/40"
+                                                            }`}
+                                                        >
+                                                            {isAllAvailable ? (
+                                                                `In Stock (${targetFullCount}/${activeList.length})`
+                                                            ) : isPartialAvailable ? (
+                                                                `Partial (${targetFullCount}/${activeList.length})`
+                                                            ) : (
+                                                                `0/${activeList.length} In Stock`
+                                                            )}
+                                                        </span>
+                                                    )}
+                                                </td>
+
+                                                <td data-label="Status" className="py-3">
                                                     <span
-                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                                                            isAllAvailable
-                                                                ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 border border-pink-200 dark:border-pink-800/40"
-                                                                : isPartialAvailable
-                                                                ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 border border-amber-200 dark:border-amber-800/40"
-                                                                : "bg-red-50 dark:bg-red-950/40 text-red-600 border border-red-200 dark:border-red-800/40"
+                                                        className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                                                            isCompleted
+                                                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40"
+                                                                : isPartial
+                                                                ? "bg-amber-500 text-white"
+                                                                : "bg-pink-500 text-white"
                                                         }`}
                                                     >
-                                                        {isAllAvailable ? (
-                                                            `Full Stock Available (${targetFullCount}/${activeList.length})`
-                                                        ) : isPartialAvailable ? (
-                                                            isSingleItem
-                                                                ? `Partial Stock: ${targetTotalAvail}/${targetTotalReq} Available • ${Math.max(0, targetTotalReq - targetTotalAvail)} in Procurement`
-                                                                : `Partial Stock (${targetFullCount}/${activeList.length} Items Available • ${targetPartialCount + targetNoStockCount} in Procurement)`
+                                                        {isCompleted
+                                                            ? "Released"
+                                                            : isPartial
+                                                            ? "Partially Released"
+                                                            : approvedItemsCount > 0
+                                                            ? "Approved"
+                                                            : "Ready to Issue"}
+                                                    </span>
+                                                </td>
+
+                                                <td data-label="Actions" className="py-3 text-right">
+                                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                const enrichedReq = isCompleted
+                                                                    ? {
+                                                                        ...req,
+                                                                        status: "Delivered",
+                                                                        is_released: true,
+                                                                        is_issued: true,
+                                                                        items: itemsList.map((it: any) => ({
+                                                                            ...it,
+                                                                            is_released: true,
+                                                                            is_issued: true,
+                                                                            status: "Delivered",
+                                                                        })),
+                                                                    }
+                                                                    : req;
+                                                                setSelectedRequestForView(enrichedReq);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e1e7f0] dark:hover:bg-[#1c1d27] text-pink-600 dark:text-pink-400 text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1 border border-pink-200/60 dark:border-pink-900/40 active:scale-95"
+                                                            title="View Full Requisition Details"
+                                                        >
+                                                            <Eye className="w-3 h-3" />
+                                                            <span>View</span>
+                                                        </button>
+
+                                                        {isCompleted ? (
+                                                            <span
+                                                                className="px-2.5 py-1 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-[11px] font-bold border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1"
+                                                                title="Supplies have already been completely issued to department"
+                                                            >
+                                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                                <span>Released</span>
+                                                            </span>
+                                                        ) : isPartial ? (
+                                                            hasStockForRemaining ? (
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleOpenIssueModal(req)}
+                                                                    className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                                                                    title={`Issue restocked supplies (${totalAvailForDeficit} ready)`}
+                                                                >
+                                                                    <ArrowUpFromLine className="w-3 h-3" />
+                                                                    <span>Issue Remaining ({totalAvailForDeficit}/{totalDeficitQty})</span>
+                                                                </button>
+                                                            ) : (
+                                                                <span
+                                                                    className="px-2.5 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-[11px] font-bold border border-amber-200 dark:border-amber-800/40 flex items-center gap-1"
+                                                                    title={`Remaining unfulfilled deficit: ${totalDeficitQty}. Waiting for warehouse inventory restock from procurement.`}
+                                                                >
+                                                                    <AlertTriangle className="w-3 h-3 text-amber-500" />
+                                                                    <span>Awaiting Stock ({totalDeficitQty})</span>
+                                                                </span>
+                                                            )
                                                         ) : (
-                                                            `0/${activeList.length} in Stock • Sent to Procurement`
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenIssueModal(req)}
+                                                                className="px-3 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-[11px] font-bold shadow-xs active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                                                            >
+                                                                <ArrowUpFromLine className="w-3 h-3" />
+                                                                <span>Issue Supplies</span>
+                                                            </button>
                                                         )}
-                                                    </span>
-                                                )}
-                                            </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
 
-                                            <div className="text-xs font-bold text-slate-700 dark:text-slate-200 mt-1 flex items-center gap-2 flex-wrap">
-                                                <Building2 className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                                                <span>Department: {req.department || "General Operations"}</span>
-                                                <span className="text-slate-300 dark:text-slate-700">•</span>
-                                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                                                <span className="text-slate-500 font-normal">Requested by: {req.requested_by || "Requester"}</span>
-                                                <span className="text-slate-300 dark:text-slate-700">•</span>
-                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40 text-[11px] font-bold">
-                                                    <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                                                    Approved by: {approverName}
-                                                </span>
-                                            </div>
+                                            {/* Collapsible Line Items Sub-Row */}
+                                            {isExpanded && (
+                                                <tr>
+                                                    <td colSpan={6} className="p-0 border-b border-slate-200 dark:border-slate-800">
+                                                        <div className="p-4 bg-[#f8fafc]/70 dark:bg-[#141624]/50 border-t border-slate-200/50 dark:border-slate-800/50">
+                                                            <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2 flex items-center gap-1.5">
+                                                                <Boxes className="w-3.5 h-3.5 text-pink-500" />
+                                                                <span>Requisition Items &amp; Warehouse Stock Feasibility:</span>
+                                                            </h5>
+                                                            <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#1d1e28]/60">
+                                                                <table className="table-pro w-full text-left text-xs border-collapse">
+                                                                    <thead>
+                                                                        <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40">
+                                                                            <th className="py-2 px-3">Item Name</th>
+                                                                            <th className="py-2 px-3">Storage Bin / Location</th>
+                                                                            <th className="py-2 px-3 text-right">Available / Requested</th>
+                                                                            <th className="py-2 px-3 text-right">Warehouse Total Stock</th>
+                                                                            <th className="py-2 px-3 text-right">Availability Status</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                                                                        {itemsList.map((item: any, idx: number) => {
+                                                                            const itemName = item.item_name || item.name;
+                                                                            const reqQty = Number(item.quantity || item.quantity_requested) || 1;
+                                                                            const itemIssued = Number(item.issued_quantity) || 0;
+                                                                            const itemDeficit = item.deficit_quantity !== undefined 
+                                                                                ? Number(item.deficit_quantity) 
+                                                                                : Math.max(0, reqQty - itemIssued);
+                                                                            const isItemFullyIssued = isCompleted || (itemIssued >= reqQty && reqQty > 0) || item.status === 'Delivered' || item.status === 'Released' || String(req.status || '').toLowerCase() === 'delivered';
+                                                                            const isItemPartialIssued = !isItemFullyIssued && itemIssued > 0;
+                                                                            const isApprovedItem = item.is_approved === true || item.is_approve === true || String(item.status || "").toLowerCase() === "approved" || (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Rejected");
+                                                                            const stockInfo = getItemAvailableStock(item, inventoryItems);
+                                                                            const inStock = stockInfo.inStock;
+                                                                            const availForThis = stockInfo.availableToIssue;
+                                                                            const matchedInv = stockInfo.matchedItem;
 
-                                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-3 flex-wrap">
-                                                <span>Approved: {formattedApprovalDate}</span>
-                                                <span>• Needed By: {new Date(req.needed_by_date || req.created_at || Date.now()).toLocaleDateString()}</span>
-                                                <span>• {activeList.length} {activeList.length === 1 ? "item" : "items"} ready to issue{approvedItemsCount > 0 && approvedItemsCount < itemsList.length ? ` (${itemsList.length} requested)` : ""}</span>
-                                                {req.priority && (
-                                                    <span className="font-bold text-pink-600 dark:text-pink-400">
-                                                        Priority: {req.priority}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </div>
+                                                                            return (
+                                                                                <tr key={idx} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
+                                                                                    <td data-label="Item Name" className="py-2 px-3 font-bold text-slate-800 dark:text-slate-200">
+                                                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                            <span>{itemName || "General Supplies"}</span>
+                                                                                            {isItemFullyIssued ? (
+                                                                                                <span className="text-[9px] px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-extrabold uppercase tracking-wide flex items-center gap-1 border border-emerald-300/80 dark:border-emerald-800 shadow-xs">
+                                                                                                    <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                                                                                    Fully Issued
+                                                                                                </span>
+                                                                                            ) : isItemPartialIssued ? (
+                                                                                                <span className="text-[9px] px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-extrabold uppercase tracking-wide flex items-center gap-1 border border-amber-300/80 dark:border-amber-800 shadow-xs">
+                                                                                                    <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
+                                                                                                    Partially Issued ({itemIssued}/{reqQty})
+                                                                                                </span>
+                                                                                            ) : isApprovedItem ? (
+                                                                                                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-extrabold uppercase tracking-wide">
+                                                                                                    Approved
+                                                                                                </span>
+                                                                                            ) : item.status === "Rejected" ? (
+                                                                                                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 font-extrabold uppercase tracking-wide">
+                                                                                                    Rejected
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold uppercase tracking-wide">
+                                                                                                    Pending
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {item.is_new_item && (
+                                                                                                <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700 dark:bg-purple-900/50 dark:text-purple-300 font-extrabold">
+                                                                                                    New Item
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </td>
 
-                                    {/* Action Buttons */}
-                                    <div className="flex items-center gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const enrichedReq = isCompleted
-                                                    ? {
-                                                        ...req,
-                                                        status: "Delivered",
-                                                        is_released: true,
-                                                        is_issued: true,
-                                                        items: itemsList.map((it: any) => ({
-                                                            ...it,
-                                                            is_released: true,
-                                                            is_issued: true,
-                                                            status: "Delivered",
-                                                        })),
-                                                    }
-                                                    : req;
-                                                setSelectedRequestForView(enrichedReq);
-                                            }}
-                                            className="px-3 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#14151c] hover:bg-[#e1e7f0] dark:hover:bg-[#1c1d27] text-pink-600 dark:text-pink-400 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25),inset_-1px_-1px_2px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-pink-200/60 dark:border-pink-900/40 active:scale-95"
-                                            title="View Full Requisition Details"
-                                        >
-                                            <Eye className="w-3.5 h-3.5" />
-                                            <span>View Request</span>
-                                        </button>
+                                                                                    <td data-label="Location" className="py-2 px-3 text-slate-500 font-mono text-[11px]">
+                                                                                        {matchedInv?.storage_location || "Unassigned"}
+                                                                                    </td>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => setExpandedRequestId(isExpanded ? null : req.id)}
-                                            className="px-3 py-2 rounded-2xl bg-[#f0f4f9] dark:bg-[#14151c] hover:bg-[#e4ebf5] text-slate-600 dark:text-slate-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
-                                        >
-                                            <span>{isExpanded ? "Hide Items" : "View Items"}</span>
-                                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                                        </button>
+                                                                                    <td data-label="Requested" className="py-2 px-3 text-right">
+                                                                                        <div className="font-bold text-slate-800 dark:text-slate-200">
+                                                                                            {availForThis} / {reqQty} {item.unit || matchedInv?.unit || "units"}
+                                                                                        </div>
+                                                                                        {itemDeficit > 0 && availForThis > 0 && !isItemFullyIssued ? (
+                                                                                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                                                                                                ({itemDeficit} Deficit • {availForThis} restocked in warehouse)
+                                                                                            </div>
+                                                                                        ) : itemDeficit > 0 && !isItemFullyIssued && (
+                                                                                            <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                                                                                                ({itemDeficit} lacking in Procurement)
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </td>
 
-                                        {isCompleted ? (
-                                            <button
-                                                type="button"
-                                                disabled
-                                                className="px-3.5 py-2 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 text-xs font-bold border border-emerald-200 dark:border-emerald-800/40 flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-xs"
-                                                title="Supplies have already been completely issued to department"
-                                            >
-                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                                                <span>Supplies Released</span>
-                                            </button>
-                                        ) : isPartial ? (
-                                            hasStockForRemaining ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleOpenIssueModal(req)}
-                                                    className="px-4 py-2 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-md shadow-pink-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                                                    title={`Issue restocked supplies (${totalAvailForDeficit} ready)`}
-                                                >
-                                                    <ArrowUpFromLine className="w-3.5 h-3.5" />
-                                                    <span>Issue Remaining ({totalAvailForDeficit}/{totalDeficitQty})</span>
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    type="button"
-                                                    disabled
-                                                    className="px-3.5 py-2 rounded-2xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 text-xs font-bold border border-amber-200 dark:border-amber-800/40 flex items-center gap-1.5 cursor-not-allowed opacity-90 shadow-xs"
-                                                    title={`Remaining unfulfilled deficit: ${totalDeficitQty}. Waiting for warehouse inventory restock from procurement.`}
-                                                >
-                                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
-                                                    <span>Awaiting Stock ({totalDeficitQty} Deficit)</span>
-                                                </button>
-                                            )
-                                        ) : (
-                                            <button
-                                                type="button"
-                                                onClick={() => handleOpenIssueModal(req)}
-                                                className="px-4 py-2 rounded-2xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-black shadow-md shadow-pink-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-                                            >
-                                                <ArrowUpFromLine className="w-3.5 h-3.5" />
-                                                <span>Issue Supplies</span>
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
+                                                                                    <td data-label="Warehouse Stock" className="py-2 px-3 text-right font-black text-slate-700 dark:text-slate-300 font-mono">
+                                                                                        {inStock} {matchedInv?.unit || "units"}
+                                                                                    </td>
 
-                                {/* Expanded Items details */}
-                                {isExpanded && (
-                                    <div className="px-5 pb-5 pt-2 border-t border-slate-100 dark:border-white/[0.04] bg-[#f8fafc]/50 dark:bg-[#141624]/30">
-                                        <h5 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2.5">
-                                            Requisition Items &amp; Warehouse Stock Feasibility:
-                                        </h5>
-                                        <div className="overflow-x-auto">
-                                            <table className="table-pro w-full text-left text-xs border-collapse">
-                                                <thead>
-                                                    <tr className="text-[10px] uppercase font-bold text-slate-400 border-b border-slate-200 dark:border-slate-800">
-                                                        <th className="pb-2">Item Name</th>
-                                                        <th className="pb-2">Storage Bin / Location</th>
-                                                        <th className="pb-2 text-right">Available / Requested</th>
-                                                        <th className="pb-2 text-right">Warehouse Total Stock</th>
-                                                        <th className="pb-2 text-right">Availability Status</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                                                    {itemsList.map((item: any, idx: number) => {
-                                                        const itemName = item.item_name || item.name;
-                                                        const reqQty = Number(item.quantity || item.quantity_requested) || 1;
-                                                        const itemIssued = Number(item.issued_quantity) || 0;
-                                                        const itemDeficit = item.deficit_quantity !== undefined 
-                                                            ? Number(item.deficit_quantity) 
-                                                            : Math.max(0, reqQty - itemIssued);
-                                                        const isItemFullyIssued = isCompleted || (itemIssued >= reqQty && reqQty > 0) || item.status === 'Delivered' || item.status === 'Released' || String(req.status || '').toLowerCase() === 'delivered';
-                                                        const isItemPartialIssued = !isItemFullyIssued && itemIssued > 0;
-                                                        const isApprovedItem = item.is_approved === true || item.is_approve === true || String(item.status || "").toLowerCase() === "approved" || (String(req.status || "").toLowerCase().includes("approved") && item.status !== "Rejected");
-                                                        const stockInfo = getItemAvailableStock(item, inventoryItems);
-                                                        const inStock = stockInfo.inStock;
-                                                        const availForThis = stockInfo.availableToIssue;
-                                                        const matchedInv = stockInfo.matchedItem;
-
-                                                        return (
-                                                            <tr key={idx} className="hover:bg-pink-50/20 dark:hover:bg-pink-950/10">
-                                                                <td data-label="Item Name" className="py-2.5 font-bold text-slate-800 dark:text-slate-200">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span>{itemName || "General Supplies"}</span>
-                                                                        {isItemFullyIssued ? (
-                                                                            <span className="text-[9px] px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-extrabold uppercase tracking-wide flex items-center gap-1 border border-emerald-300/80 dark:border-emerald-800 shadow-xs">
-                                                                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
-                                                                                Fully Issued
-                                                                            </span>
-                                                                        ) : isItemPartialIssued ? (
-                                                                            <span className="text-[9px] px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-extrabold uppercase tracking-wide flex items-center gap-1 border border-amber-300/80 dark:border-amber-800 shadow-xs">
-                                                                                <AlertTriangle className="w-2.5 h-2.5 text-amber-600" />
-                                                                                Partially Issued ({itemIssued}/{reqQty})
-                                                                            </span>
-                                                                        ) : isApprovedItem ? (
-                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 font-extrabold uppercase tracking-wide">
-                                                                                Approved
-                                                                            </span>
-                                                                        ) : item.status === "Rejected" ? (
-                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-950/60 text-red-700 dark:text-red-300 font-extrabold uppercase tracking-wide">
-                                                                                Rejected
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-extrabold uppercase tracking-wide">
-                                                                                Pending
-                                                                            </span>
-                                                                        )}
-                                                                        {item.is_new_item && (
-                                                                            <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-extrabold uppercase tracking-wide">New Item</span>
-                                                                        )}
-                                                                    </div>
-                                                                </td>
-                                                                <td data-label="Storage Bin" className="py-2.5 text-slate-500 font-mono text-[11px]">
-                                                                    {matchedInv?.storage_location || "Central Warehouse Zone A"}
-                                                                </td>
-                                                                <td data-label="Available / Requested" className="py-2.5 text-right font-black">
-                                                                    <div className="font-mono text-xs">
-                                                                        {isItemFullyIssued ? (
-                                                                            <span className="text-emerald-600 dark:text-emerald-400 font-extrabold text-sm">{itemIssued}/{reqQty}</span>
-                                                                        ) : isItemPartialIssued ? (
-                                                                            <span className="text-amber-600 dark:text-amber-400 font-extrabold text-sm">{itemIssued}/{reqQty} Given</span>
-                                                                        ) : (
-                                                                            <span className="text-pink-600 dark:text-pink-400 font-extrabold text-sm">{Math.min(inStock, reqQty)}/{reqQty}</span>
-                                                                        )}
-                                                                        <span className="text-slate-400 font-normal ml-1 text-[11px]">{item.unit || "units"}</span>
-                                                                    </div>
-                                                                    {isItemPartialIssued ? (
-                                                                        <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                                                                            ({itemDeficit} Deficit • {availForThis} restocked in warehouse)
-                                                                        </div>
-                                                                    ) : itemDeficit > 0 && !isItemFullyIssued && (
-                                                                        <div className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
-                                                                            ({itemDeficit} lacking in Procurement)
-                                                                        </div>
-                                                                    )}
-                                                                </td>
-                                                                <td data-label="Warehouse Stock" className="py-2.5 text-right font-black text-slate-700 dark:text-slate-300 font-mono">
-                                                                    {inStock} {matchedInv?.unit || "units"}
-                                                                </td>
-                                                                <td data-label="Availability Status" className="py-2.5 text-right">
-                                                                    {isItemFullyIssued ? (
-                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800/40 inline-flex items-center gap-1">
-                                                                            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                                                                            Fully Handed Over
-                                                                        </span>
-                                                                    ) : isItemPartialIssued ? (
-                                                                        <span
-                                                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                                availForThis > 0
-                                                                                    ? "bg-amber-500 text-white shadow-xs"
-                                                                                    : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 border border-amber-200 dark:border-amber-800/40"
-                                                                            }`}
-                                                                        >
-                                                                            {availForThis > 0 
-                                                                                ? `${availForThis} Restocked • Ready to Issue` 
-                                                                                : `Awaiting Restock (${itemDeficit} Deficit)`}
-                                                                        </span>
-                                                                    ) : (
-                                                                        <span
-                                                                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                                                                availForThis >= reqQty
-                                                                                    ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 border border-pink-200 dark:border-pink-800/40"
-                                                                                    : availForThis > 0
-                                                                                    ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 border border-amber-200 dark:border-amber-800/40"
-                                                                                    : "bg-red-50 dark:bg-red-950/40 text-red-600 border border-red-200 dark:border-red-800/40"
-                                                                            }`}
-                                                                        >
-                                                                            {availForThis >= reqQty 
-                                                                                ? "Sufficient Stock" 
-                                                                                : availForThis > 0 
-                                                                                ? `${availForThis}/${reqQty} Ready • ${reqQty - availForThis} to Procurement` 
-                                                                                : "0 in Stock • Routed to Procurement Stage 1"}
-                                                                        </span>
-                                                                    )}
-                                                                </td>
-                                                            </tr>
-                                                        );
-                                                    })}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        );
-                    })
+                                                                                    <td data-label="Availability Status" className="py-2 px-3 text-right">
+                                                                                        {isItemFullyIssued ? (
+                                                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200 dark:border-emerald-800/40 inline-flex items-center gap-1">
+                                                                                                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                                                                                                Fully Handed Over
+                                                                                            </span>
+                                                                                        ) : isItemPartialIssued ? (
+                                                                                            <span
+                                                                                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                                                    availForThis > 0
+                                                                                                        ? "bg-amber-500 text-white shadow-xs"
+                                                                                                        : "bg-amber-50 dark:bg-amber-950/40 text-amber-700 border border-amber-200 dark:border-amber-800/40"
+                                                                                                }`}
+                                                                                            >
+                                                                                                {availForThis > 0 
+                                                                                                    ? `${availForThis} Restocked • Ready` 
+                                                                                                    : `Awaiting (${itemDeficit} Deficit)`}
+                                                                                            </span>
+                                                                                        ) : (
+                                                                                            <span
+                                                                                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                                                    availForThis >= reqQty
+                                                                                                        ? "bg-pink-50 dark:bg-pink-950/40 text-pink-600 border border-pink-200 dark:border-pink-800/40"
+                                                                                                        : availForThis > 0
+                                                                                                        ? "bg-amber-50 dark:bg-amber-950/40 text-amber-600 border border-amber-200 dark:border-amber-800/40"
+                                                                                                        : "bg-red-50 dark:bg-red-950/40 text-red-600 border border-red-200 dark:border-red-800/40"
+                                                                                                }`}
+                                                                                            >
+                                                                                                {availForThis >= reqQty 
+                                                                                                    ? "Sufficient Stock" 
+                                                                                                    : availForThis > 0 
+                                                                                                    ? `${availForThis}/${reqQty} Ready` 
+                                                                                                    : "0 in Stock"}
+                                                                                            </span>
+                                                                                        )}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
                 )}
 
                 {/* Pagination Controls */}
                 {filteredRequests.length > 0 && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 px-1">
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 px-1 border-t border-slate-200/50 dark:border-white/[0.05] mt-4">
                         <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                             Showing <span className="font-bold text-slate-800 dark:text-slate-200">{(currentPage - 1) * pageSize + 1}</span> to{" "}
                             <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(currentPage * pageSize, filteredRequests.length)}</span> of{" "}
@@ -1054,6 +1075,7 @@ export function IssueRequestsTab({
                     </div>
                 )}
             </div>
+
 
             {/* 4. Modal: Issue Supplies Form */}
             {isIssueModalOpen && selectedRequest && (

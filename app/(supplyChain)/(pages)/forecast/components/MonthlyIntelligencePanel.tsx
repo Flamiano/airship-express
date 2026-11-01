@@ -426,7 +426,7 @@ export default function MonthlyIntelligencePanel() {
                                                 }}
                                                 className={`w-full text-left p-2.5 rounded-xl flex items-center justify-between gap-3 transition-all cursor-pointer ${
                                                     isSelected
-                                                        ? "bg-gradient-to-r from-pink-500/15 via-purple-500/10 to-transparent dark:from-pink-500/25 border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold shadow-sm"
+                                                        ? "bg-pink-500/15 dark:bg-pink-500/25 border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold"
                                                         : "hover:bg-slate-200/60 dark:hover:bg-[#20222f] text-slate-700 dark:text-slate-300 border border-transparent"
                                                 }`}
                                             >
@@ -568,7 +568,7 @@ export default function MonthlyIntelligencePanel() {
                                                 }}
                                                 className={`w-full text-left px-2.5 py-2 rounded-xl flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                                     isSelected
-                                                        ? "bg-gradient-to-r from-pink-500/15 to-transparent border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold"
+                                                        ? "bg-pink-500/15 border border-pink-500/30 text-pink-600 dark:text-pink-300 font-bold"
                                                         : "hover:bg-slate-200/60 dark:hover:bg-[#20222f] text-slate-700 dark:text-slate-300 border border-transparent text-xs"
                                                 }`}
                                             >
@@ -817,7 +817,7 @@ export default function MonthlyIntelligencePanel() {
                             onClick={() => setActiveTab("ai-report")}
                             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                 activeTab === "ai-report"
-                                    ? "bg-gradient-to-b from-pink-500 to-pink-600 text-white shadow-xs"
+                                    ? "bg-pink-500 text-white"
                                     : "bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]"
                             }`}
                         >
@@ -830,7 +830,7 @@ export default function MonthlyIntelligencePanel() {
                             onClick={() => setActiveTab("equipment-velocity")}
                             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                 activeTab === "equipment-velocity"
-                                    ? "bg-gradient-to-b from-pink-500 to-pink-600 text-white shadow-xs"
+                                    ? "bg-pink-500 text-white"
                                     : "bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]"
                             }`}
                         >
@@ -843,7 +843,7 @@ export default function MonthlyIntelligencePanel() {
                             onClick={() => setActiveTab("metrics-grid")}
                             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                 activeTab === "metrics-grid"
-                                    ? "bg-gradient-to-b from-pink-500 to-pink-600 text-white shadow-xs"
+                                    ? "bg-pink-500 text-white"
                                     : "bg-[#ebf0f7] dark:bg-[#14151c] text-slate-600 dark:text-slate-400 border border-slate-200/60 dark:border-slate-800 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)]"
                             }`}
                         >

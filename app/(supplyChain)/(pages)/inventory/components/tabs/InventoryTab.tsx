@@ -15,6 +15,7 @@ import { StatusBadge } from '../../../../components/ui/StatusBadge';
 import { ShoppingCart, MoreHorizontal, Pencil, Trash2, MessageSquare, Compass } from 'lucide-react';
 import Portal from '../../../../components/client/Portal';
 import { SupplierMessageModal } from '../../../suppliers/components/modals/SupplierMessageModal';
+import { StatsCards } from '../common/StatsCards';
 
 interface InventoryTabProps {
     items: InventoryItem[];
@@ -27,6 +28,14 @@ interface InventoryTabProps {
     selectedIds: Set<string>;
     itemsPerPage: number;
     isLoading?: boolean;
+    stats?: {
+        totalItems?: number;
+        lowStock?: number;
+        outOfStock?: number;
+        categoryCounts?: Record<string, number>;
+        lowStockItems?: any[];
+    } | null;
+    isLoadingStats?: boolean;
     userRole?: string;
     suppliers?: any[];
     onSearchChange: (value: string) => void;
@@ -57,6 +66,8 @@ export const InventoryTab = memo(function InventoryTab({
     selectedIds,
     itemsPerPage,
     isLoading = false,
+    stats,
+    isLoadingStats = false,
     userRole = '',
     suppliers = [],
     onSearchChange,
@@ -167,7 +178,26 @@ export const InventoryTab = memo(function InventoryTab({
     const endIndex = Math.min(currentPage * itemsPerPage, totalItems);
 
     return (
-        <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08]  dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] overflow-hidden transition-colors flex flex-col">
+        <div className="space-y-6">
+            <StatsCards
+                totalItems={stats?.totalItems ?? totalItems}
+                lowStockItems={stats?.lowStock ?? items.filter(i => i.status === 'low-stock').length}
+                outOfStockItems={stats?.outOfStock ?? items.filter(i => i.status === 'out-of-stock').length}
+                availableItems={stats?.totalItems !== undefined
+                    ? Math.max(0, (stats.totalItems || 0) - (stats.lowStock || 0) - (stats.outOfStock || 0))
+                    : undefined}
+                isLoading={isLoadingStats}
+                onStatusClick={(status) => {
+                    if (statusFilter === status) {
+                        onStatusChange('all');
+                    } else {
+                        onStatusChange(status);
+                    }
+                }}
+                activeStatus={statusFilter}
+            />
+
+            <div className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] overflow-hidden transition-colors flex flex-col">
             {/* filter bar */}
             <div className="flex-shrink-0 p-4 sm:p-5 border-b border-slate-200/60 dark:border-white/[0.06] flex flex-wrap items-center gap-3 bg-[#ebf0f7]/70 dark:bg-[#14151e]/60 backdrop-blur-md">
                 {/* search bar */}
@@ -892,6 +922,7 @@ export const InventoryTab = memo(function InventoryTab({
                     </div>
                 </Portal>
             )}
+            </div>
         </div>
     );
 });

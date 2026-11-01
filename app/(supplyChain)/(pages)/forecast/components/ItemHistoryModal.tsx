@@ -70,7 +70,7 @@ export default function ItemHistoryModal({
                 }}
             >
                 <div
-                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.4),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.85)] max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-150"
+                    className="bg-[#f0f3f8] dark:bg-[#161722] rounded-3xl border-2 border-white/90 dark:border-white/10 shadow-none max-w-2xl w-full flex flex-col max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-150"
                     data-lenis-prevent
                 >
                     {/* Header */}
@@ -81,7 +81,7 @@ export default function ItemHistoryModal({
                             </div>
                             <div>
                                 <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                                    Historical Consumption Trail
+                                    Item Usage History
                                 </h2>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                                     {item.item_name} ({item.item_code}) • Past {historicalPeriodDays} Days

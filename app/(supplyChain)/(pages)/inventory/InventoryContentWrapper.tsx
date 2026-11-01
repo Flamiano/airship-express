@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useConfirm } from '../../components/ui/ConfirmModal';
 import { useInventory } from './hooks/useInventory';
 import { useSearchParams } from 'next/navigation';
-import { DashboardTab } from './components/tabs/DashboardTab';
 import { InventoryTab } from './components/tabs/InventoryTab';
 import { RequestsTab } from './components/tabs/RequestsTab';
 import { StockMovementsTab } from './components/tabs/StockMovementsTab';
@@ -71,9 +70,9 @@ export const inventoryCache = new InventoryCacheManager();
 export default function InventoryClient() {
     const searchParams = useSearchParams();
     const { role: userRole, userId: currentUserId, isPrivileged, isLoaded } = useUserRole();
-    const validTabs = useMemo(() => ['dashboard', 'inventory', 'requests', 'movements'], []);
+    const validTabs = useMemo(() => ['inventory', 'requests', 'movements'], []);
     const urlTab = searchParams.get('tab');
-    const initialTab = urlTab && validTabs.includes(urlTab) ? urlTab : 'dashboard';
+    const initialTab = urlTab && validTabs.includes(urlTab) ? urlTab : 'inventory';
     const [activeTab, setActiveTab] = useState<string>(initialTab);
 
     // Sync active tab when URL changes
@@ -84,9 +83,17 @@ export default function InventoryClient() {
         }
     }, [searchParams, validTabs, activeTab]);
 
-    // Redirect legacy parcels tab to Warehousing
+    // Redirect legacy dashboard or parcels tab
     useEffect(() => {
-        if (searchParams.get('tab') === 'parcels') {
+        const currentUrlTab = searchParams.get('tab');
+        if (currentUrlTab === 'dashboard') {
+            setActiveTab('inventory');
+            try {
+                const url = new URL(window.location.href);
+                url.searchParams.set('tab', 'inventory');
+                window.history.replaceState(null, '', url.pathname + url.search);
+            } catch (e) {}
+        } else if (currentUrlTab === 'parcels') {
             window.location.replace('/warehousing?tab=parcels');
         }
     }, [searchParams]);
@@ -109,8 +116,8 @@ export default function InventoryClient() {
     const [selectedRequestForPO, setSelectedRequestForPO] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [loadingInventory, setLoadingInventory] = useState(false);
-    const [dashboardItems, setDashboardItems] = useState<InventoryItem[]>([]);
-    const [dashboardStats, setDashboardStats] = useState<any>(null);
+    const [inventoryStats, setInventoryStats] = useState<any>(null);
+    const [loadingStats, setLoadingStats] = useState<boolean>(true);
     const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
     const [totalInventoryItems, setTotalInventoryItems] = useState(0);
     const [inventoryTotalPages, setInventoryTotalPages] = useState(1);
@@ -264,41 +271,40 @@ export default function InventoryClient() {
         }
     }, [movementsPage, debouncedMovementsSearch, movementsTypeFilter, movementsDateRangeFilter, movementsUserDeptFilter]);
 
-    const fetchDashboardData = useCallback(async (forceRefresh = false) => {
-        const cacheKey = `inventory_dashboard_data_${currentUserId || 'all'}`;
+    const fetchStatsData = useCallback(async (forceRefresh = false) => {
+        const cacheKey = `inventory_stats_data_${currentUserId || 'all'}`;
         if (!forceRefresh) {
             const cached = inventoryCache.get<any>(cacheKey);
             if (cached.data) {
-                setDashboardStats(cached.data.stats || null);
-                setDashboardItems(cached.data.items || []);
-                setSuppliers(cached.data.suppliers || []);
+                setInventoryStats(cached.data.stats || null);
+                if (cached.data.suppliers && suppliers.length === 0) {
+                    setSuppliers(cached.data.suppliers);
+                }
+                setLoadingStats(false);
                 if (!cached.isStale) return; // instant 0ms response
             }
         }
         try {
-            const [statsRes, itemsRes, suppliersRes] = await Promise.all([
+            const [statsRes, suppliersRes] = await Promise.all([
                 fetchDashboardStats(),
-                fetchInventoryItems({ page: 1, limit: 100 }),
-                fetchSuppliers(),
+                suppliers.length === 0 ? fetchSuppliers() : Promise.resolve(null),
             ]);
             if (statsRes.success && statsRes.data) {
-                setDashboardStats(statsRes.data);
+                setInventoryStats(statsRes.data);
             }
-            if (itemsRes.success && itemsRes.data?.items) {
-                setDashboardItems(itemsRes.data.items);
-            }
-            if (suppliersRes.success && suppliersRes.data) {
+            if (suppliersRes?.success && suppliersRes.data) {
                 setSuppliers(suppliersRes.data);
             }
             inventoryCache.set(cacheKey, {
                 stats: statsRes.data,
-                items: itemsRes.data?.items || [],
-                suppliers: suppliersRes.data || [],
+                suppliers: suppliersRes?.data || suppliers,
             });
         } catch (error) {
-            console.error('Error fetching dashboard data:', error);
+            console.error('Error fetching inventory stats:', error);
+        } finally {
+            setLoadingStats(false);
         }
-    }, [currentUserId]);
+    }, [currentUserId, suppliers]);
 
     const fetchInventoryData = useCallback(async (showLoading = true, forceRefresh = false) => {
         const cacheKey = JSON.stringify({
@@ -350,15 +356,10 @@ export default function InventoryClient() {
 
     // Active tab data loading effects
     useEffect(() => {
-        if (!isLoaded || activeTab !== 'dashboard') return;
-        setLoading(true);
-        fetchDashboardData().finally(() => setLoading(false));
-    }, [activeTab, isLoaded, fetchDashboardData]);
-
-    useEffect(() => {
         if (!isLoaded || activeTab !== 'inventory') return;
+        fetchStatsData();
         fetchInventoryData(true).finally(() => setLoading(false));
-    }, [activeTab, isLoaded, inventoryPage, debouncedSearchTerm, categoryFilter, statusFilter, fetchInventoryData]);
+    }, [activeTab, isLoaded, inventoryPage, debouncedSearchTerm, categoryFilter, statusFilter, fetchInventoryData, fetchStatsData]);
 
     useEffect(() => {
         if (!isLoaded || activeTab !== 'requests') return;
@@ -411,7 +412,7 @@ export default function InventoryClient() {
                     toast.info(`New requisition request${dept}: ${name}`, { duration: 4000 });
                 }
                 fetchRequestsData(false, true);
-                fetchDashboardData(true);
+                fetchStatsData(true);
             })
             .on('postgres_changes', {
                 event: '*',
@@ -426,7 +427,7 @@ export default function InventoryClient() {
                     }
                 }
                 fetchRequestsData(false, true);
-                fetchDashboardData(true);
+                fetchStatsData(true);
             })
             .on('postgres_changes', {
                 event: '*',
@@ -435,7 +436,7 @@ export default function InventoryClient() {
             }, (payload) => {
                 inventoryCache.invalidateAll();
                 fetchInventoryData(false, true);
-                fetchDashboardData(true);
+                fetchStatsData(true);
                 // Also refresh requests so stock feasibility updates live
                 fetchRequestsData(false, true);
             })
@@ -446,7 +447,7 @@ export default function InventoryClient() {
             }, (payload) => {
                 inventoryCache.invalidateAll();
                 fetchInventoryData(false, true);
-                fetchDashboardData(true);
+                fetchStatsData(true);
                 fetchRequestsData(false, true);
             })
             .subscribe();
@@ -454,12 +455,15 @@ export default function InventoryClient() {
         return () => {
             channel.unsubscribe();
         };
-    }, [fetchRequestsData, fetchInventoryData, fetchDashboardData]);
+    }, [fetchRequestsData, fetchInventoryData, fetchStatsData]);
 
     // Instant 0ms tab switching without triggering Next.js router full page re-evaluations
     const handleTabChange = useCallback((tab: string) => {
         setActiveTab(tab);
-        if (tab === 'requests') {
+        if (tab === 'inventory') {
+            fetchStatsData();
+            fetchInventoryData(false, true);
+        } else if (tab === 'requests') {
             fetchRequestsData(false, true);
         } else if (tab === 'movements') {
             fetchMovementsData(false, true);
@@ -471,7 +475,7 @@ export default function InventoryClient() {
         } catch (e) {
             // ignore
         }
-    }, [fetchRequestsData, fetchMovementsData]);
+    }, [fetchRequestsData, fetchMovementsData, fetchStatsData, fetchInventoryData]);
 
     const handleInventoryPageChange = useCallback((page: number) => {
         if (page >= 1 && page <= inventoryTotalPages && page !== inventoryPage) {
@@ -503,11 +507,11 @@ export default function InventoryClient() {
         setShowAddModal(false);
         inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(true),
+            fetchStatsData(true),
             fetchInventoryData(true, true),
             fetchMovementsData(false, true)
         ]);
-    }, [addItem, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [addItem, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const handleUpdateItem = useCallback(async (data: any) => {
         await updateItem(data);
@@ -515,11 +519,11 @@ export default function InventoryClient() {
         setEditingItem(null);
         inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(true),
+            fetchStatsData(true),
             fetchInventoryData(true, true),
             fetchMovementsData(false, true)
         ]);
-    }, [updateItem, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [updateItem, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const handleDeleteItem = useCallback(async (id: string, name: string) => {
         const confirmed = await confirm({
@@ -532,12 +536,12 @@ export default function InventoryClient() {
             await deleteItem(id, name);
             inventoryCache.invalidateAll();
             await Promise.all([
-                fetchDashboardData(true),
+                fetchStatsData(true),
                 fetchInventoryData(true, true),
                 fetchMovementsData(false, true)
             ]);
         }
-    }, [confirm, deleteItem, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [confirm, deleteItem, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const handleDeleteMultiple = useCallback(async () => {
         if (selectedIds.size === 0) {
@@ -555,34 +559,34 @@ export default function InventoryClient() {
             setSelectedIds(new Set());
             inventoryCache.invalidateAll();
             await Promise.all([
-                fetchDashboardData(true),
+                fetchStatsData(true),
                 fetchInventoryData(true, true),
                 fetchMovementsData(false, true)
             ]);
         }
-    }, [selectedIds, confirm, deleteMultipleItems, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [selectedIds, confirm, deleteMultipleItems, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const handleStockIn = useCallback(async (itemName: string, quantity: number, supplier?: string, reference?: string, remarks?: string) => {
         await stockIn(itemName, quantity, supplier, reference, remarks);
         setShowStockInModal(false);
         inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(true),
+            fetchStatsData(true),
             fetchInventoryData(true, true),
             fetchMovementsData(false, true),
         ]);
-    }, [stockIn, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [stockIn, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const handleStockOut = useCallback(async (itemName: string, quantity: number, department?: string, purpose?: string, remarks?: string) => {
         await stockOut(itemName, quantity, department, purpose, remarks);
         setShowStockOutModal(false);
         inventoryCache.invalidateAll();
         await Promise.all([
-            fetchDashboardData(true),
+            fetchStatsData(true),
             fetchInventoryData(true, true),
             fetchMovementsData(false, true),
         ]);
-    }, [stockOut, fetchDashboardData, fetchInventoryData, fetchMovementsData]);
+    }, [stockOut, fetchStatsData, fetchInventoryData, fetchMovementsData]);
 
     const openEditModal = useCallback((item: InventoryItem) => {
         setEditingItem(item);
@@ -744,7 +748,7 @@ export default function InventoryClient() {
             setSelectedRequestForPO(null);
             inventoryCache.invalidateAll();
             await Promise.all([
-                fetchDashboardData(true),
+                fetchStatsData(true),
                 fetchInventoryData(false, true),
                 fetchRequestsData(false, true),
                 fetchMovementsData(false, true)
@@ -754,7 +758,7 @@ export default function InventoryClient() {
             toast.error(error?.message || 'Failed to create Purchase Order');
             throw error;
         }
-    }, [fetchDashboardData, fetchInventoryData, fetchRequestsData, fetchMovementsData]);
+    }, [fetchStatsData, fetchInventoryData, fetchRequestsData, fetchMovementsData]);
 
     const handleCategoryClick = useCallback((category: string) => {
         handleTabChange('inventory');
@@ -830,13 +834,15 @@ export default function InventoryClient() {
     }, [suppliers.length]);
 
     const criticalItems = useMemo(() => {
-        const list = inventoryItems.length > 0 ? inventoryItems : dashboardItems;
-        return list.filter(item => {
+        if (inventoryStats?.lowStockItems && inventoryStats.lowStockItems.length > 0) {
+            return inventoryStats.lowStockItems;
+        }
+        return inventoryItems.filter(item => {
             const curr = Number(item.current_stock || 0);
             const min = Number(item.minimum_stock || 0);
             return curr <= 0 || (min > 0 && curr <= min);
         });
-    }, [inventoryItems, dashboardItems]);
+    }, [inventoryItems, inventoryStats]);
 
     return (
         <div className="p-6 space-y-6 animate-in fade-in duration-300 bgCard">
@@ -932,7 +938,6 @@ export default function InventoryClient() {
 
                 <div className="flex items-center gap-1.5 bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 p-1.5 rounded-full border border-slate-200/50 dark:border-slate-800/60 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] max-w-fit overflow-x-auto no-scrollbar">
                     {[
-                        { id: 'dashboard', label: 'Dashboard', icon: 'fa-chart-pie', restricted: isLoaded && !isPrivileged },
                         { id: 'inventory', label: 'Inventory', icon: 'fa-boxes-stacked', restricted: isLoaded && !isPrivileged },
                         { id: 'requests', label: 'Requests', icon: 'fa-dolly-flatbed', badgeCount: requestsStats?.pending || 0, restricted: isLoaded && !isPrivileged },
                         { id: 'movements', label: 'Stock Movements', icon: 'fa-arrow-right-arrow-left', restricted: isLoaded && !isPrivileged },
@@ -964,24 +969,6 @@ export default function InventoryClient() {
 
             {/* Keep-Alive Tab Container: Instant 0ms Tab Switching without unmounting */}
             <div className="relative min-h-[400px]">
-                <div className={activeTab === 'dashboard' ? 'block animate-in fade-in duration-150' : 'hidden'} role="tabpanel" aria-hidden={activeTab !== 'dashboard'}>
-                    {isLoaded && !isPrivileged ? (
-                        <UnauthorizedEmptyState
-                            title="Inventory Dashboard Restricted"
-                            description="You do not have permission to view the inventory analytics dashboard. This section is restricted to Admin, Purchase Officer, and Executive personnel only."
-                            currentRole={userRole}
-                        />
-                    ) : (
-                        <DashboardTab
-                            inventoryItems={dashboardItems}
-                            stats={dashboardStats}
-                            isLoading={loading}
-                            onStockIn={openStockInModal}
-                            onCategoryClick={handleCategoryClick}
-                            onStatusClick={handleStatusClick}
-                        />
-                    )}
-                </div>
                 <div className={activeTab === 'inventory' ? 'block animate-in fade-in duration-150' : 'hidden'} role="tabpanel" aria-hidden={activeTab !== 'inventory'}>
                     {isLoaded && !isPrivileged ? (
                         <UnauthorizedEmptyState
@@ -1001,6 +988,8 @@ export default function InventoryClient() {
                             selectedIds={selectedIds}
                             itemsPerPage={itemsPerPage}
                             isLoading={loading || loadingInventory}
+                            stats={inventoryStats}
+                            isLoadingStats={loadingStats}
                             userRole={userRole}
                             suppliers={suppliers}
                             onSearchChange={setSearchTerm}
@@ -1066,7 +1055,7 @@ export default function InventoryClient() {
                                 inventoryCache.invalidateAll();
                                 fetchRequestsData(false, true);
                                 fetchInventoryData(false, true);
-                                fetchDashboardData(true);
+                                fetchStatsData(true);
                                 fetchMovementsData(false, true);
                             }}
                         />
@@ -1185,7 +1174,7 @@ export default function InventoryClient() {
                 setSelectedItemForStock('');
                 setSelectedItemObjectForStock(null);
             }} onStockIn={handleStockIn} onSuccess={() => {
-                fetchDashboardData(true);
+                fetchStatsData(true);
                 fetchInventoryData(false, true);
                 fetchRequestsData(false, true);
                 fetchMovementsData(false, true);
@@ -1212,7 +1201,7 @@ export default function InventoryClient() {
                 requestId={viewingPRId}
                 userRole={userRole}
                 onSuccess={() => {
-                    fetchDashboardData(true);
+                    fetchStatsData(true);
                     fetchInventoryData(false, true);
                     fetchRequestsData(false, true);
                 }}
@@ -1230,7 +1219,7 @@ export default function InventoryClient() {
                 onSuccess={() => {
                     fetchRequestsData(false, true);
                     fetchInventoryData(false, true);
-                    fetchDashboardData(true);
+                    fetchStatsData(true);
                 }}
             />
         </div>

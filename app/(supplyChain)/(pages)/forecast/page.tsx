@@ -1,7 +1,8 @@
 // app/(supplyChain)/(pages)/forecast/page.tsx
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import Chart from "chart.js/auto";
 import { SessionGuard } from "../../components/server/SessionGuard";
 import Cards from "../../components/global/Cards";
@@ -9,7 +10,6 @@ import { CardsSkeleton } from "../../components/ui/SkeletonLoader";
 import { AppButton } from "../../components/ui/AppButton";
 import { StatusBadge, type BadgeTone } from "../../components/ui/StatusBadge";
 import { toast } from "sonner";
-import Link from "next/link";
 import ForecastExportModal from "./components/ForecastExportModal";
 import ItemForecastModal from "./components/ItemForecastModal";
 import ItemHistoryModal from "./components/ItemHistoryModal";
@@ -142,19 +142,23 @@ interface ForecastApiResponse {
     error?: string;
 }
 
-interface SessionForecastRun {
-    id: string;
-    timestamp: string;
-    horizonDays: number;
-    periodDays: number;
-    itemsForecasted: number;
-    predictedDemand: number;
-    potentialShortages: number;
-    modelSummary: string;
-    accuracyLabel: string;
-}
+export type ForecastTabId = "dashboard" | "table" | "consumption" | "movement";
 
-export default function ForecastPage() {
+const parseTabParam = (param: string | null): ForecastTabId => {
+    if (!param) return "dashboard";
+    const normalized = param.toLowerCase().trim();
+    if (normalized === "dashboard" || normalized === "chart" || normalized === "visualizer" || normalized === "overview") return "dashboard";
+    if (normalized === "table" || normalized === "items" || normalized === "predictions" || normalized === "stock") return "table";
+    if (normalized === "consumption" || normalized === "usage" || normalized === "history-consumption") return "consumption";
+    if (normalized === "movement" || normalized === "velocity" || normalized === "items-movement") return "movement";
+    return "dashboard";
+};
+
+function ForecastContent() {
+    const searchParams = useSearchParams();
+    const pathname = usePathname();
+    const router = useRouter();
+
     // 1. Controls State
     const [periodDays, setPeriodDays] = useState<number>(30);
     const [horizonDays, setHorizonDays] = useState<number>(7);
@@ -166,17 +170,36 @@ export default function ForecastPage() {
     const [forecastData, setForecastData] = useState<ForecastApiResponse | null>(null);
     const [loading, setLoading] = useState<boolean>(true);
     const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-    const [activeTab, setActiveTab] = useState<"dashboard" | "table" | "consumption" | "movement" | "history">("dashboard");
+    const [activeTab, setActiveTab] = useState<ForecastTabId>(() =>
+        parseTabParam(searchParams.get("tab"))
+    );
     const [consumptionView, setConsumptionView] = useState<"daily" | "weekly" | "monthly">("daily");
     const [selectedChartItem, setSelectedChartItem] = useState<string>("all");
     const [customDateRange, setCustomDateRange] = useState<{ from: string; to: string } | null>(null);
+
+    // Sync tab when searchParams change in the URL
+    useEffect(() => {
+        const tabFromUrl = parseTabParam(searchParams.get("tab"));
+        setActiveTab(tabFromUrl);
+    }, [searchParams]);
+
+    // Handle tab change and synchronize URL
+    const handleTabChange = useCallback((newTab: ForecastTabId) => {
+        setActiveTab(newTab);
+        try {
+            const currentParams = new URLSearchParams(searchParams.toString());
+            currentParams.set("tab", newTab);
+            window.history.replaceState(null, "", `${pathname}?${currentParams.toString()}`);
+        } catch {
+            // fallback
+        }
+    }, [pathname, searchParams]);
 
     // 3. Modals State
     const [isExportModalOpen, setIsExportModalOpen] = useState<boolean>(false);
     const [detailModalItem, setDetailModalItem] = useState<ForecastItem | null>(null);
     const [historyModalItem, setHistoryModalItem] = useState<ForecastItem | null>(null);
     const [chartModalDomain, setChartModalDomain] = useState<ForecastChartDomain | null>(null);
-    const [sessionHistory, setSessionHistory] = useState<SessionForecastRun[]>([]);
 
     // 4. Chart References
     const demandChartRef = useRef<HTMLCanvasElement | null>(null);
@@ -211,20 +234,6 @@ export default function ForecastPage() {
             }
 
             setForecastData(data);
-
-            // Record in session history
-            const newRun: SessionForecastRun = {
-                id: `RUN-${Date.now().toString().slice(-6)}`,
-                timestamp: new Date().toLocaleTimeString(),
-                horizonDays: data.horizon_days,
-                periodDays: data.historical_period_days,
-                itemsForecasted: data.summary.items_forecasted,
-                predictedDemand: data.summary.total_predicted_demand,
-                potentialShortages: data.summary.potential_shortages,
-                modelSummary: data.summary.items_forecasted > 0 ? "Croston SBA / AutoTheta WASM" : "Zero-Demand Baseline",
-                accuracyLabel: data.summary.accuracy_label
-            };
-            setSessionHistory((prev) => [newRun, ...prev.slice(0, 9)]);
 
             if (isManualRefresh) {
                 toast.success("Demand forecast refreshed with current inventory & movement logs!");
@@ -626,14 +635,14 @@ export default function ForecastPage() {
                     <div>
                         <div className="flex items-center gap-3">
                             <div className="w-12 h-12 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 shrink-0">
-                                <i className="fas fa-brain text-xl" />
+                                <i className="fas fa-boxes-stacked text-xl" />
                             </div>
                             <div>
                                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-                                    AI-Powered Demand Forecasting & Inventory Intelligence
+                                    Inventory Demand Forecast
                                 </h1>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Time-series predictions via WASM mathematical models, actual stock issuance history & PO pipeline integration
+                                    Predict future stock demand based on previous usage and incoming orders
                                 </p>
                             </div>
                         </div>
@@ -652,11 +661,11 @@ export default function ForecastPage() {
                                     }, 2000);
                                 }
                             }}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-pink-600 hover:bg-pink-700 shadow-[0_3px_10px_rgba(236,72,153,0.35)] transition-all cursor-pointer active:scale-95"
-                            title="Jump to Forecast AI Summary Matrix"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-pink-500 hover:bg-pink-600 transition-all cursor-pointer active:scale-95"
+                            title="Jump to AI Forecast Summary"
                         >
                             <i className="fas fa-wand-magic-sparkles text-xs" />
-                            <span>AI Forecast Summary</span>
+                            <span>AI Summary</span>
                         </button>
 
                         <AppButton
@@ -678,7 +687,7 @@ export default function ForecastPage() {
                             disabled={isRefreshing}
                         >
                             <i className={`fas fa-rotate text-xs mr-1.5 ${isRefreshing ? "fa-spin" : ""}`} />
-                            Generate Forecast
+                            Refresh Forecast
                         </AppButton>
                     </div>
                 </div>
@@ -690,11 +699,11 @@ export default function ForecastPage() {
                             <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
                                 <i className="fas fa-sliders" />
                             </span>
-                            Forecast Horizon & Data Scope Controls
+                            Forecast Settings &amp; Filters
                         </span>
                         <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
-                            <i className="fas fa-database text-xs text-slate-400" />
-                            Audited Against Immutable Stock Movements
+                            <i className="fas fa-shield-check text-xs text-slate-400" />
+                            Calculated from recorded inventory usage
                         </div>
                     </div>
 
@@ -702,47 +711,47 @@ export default function ForecastPage() {
                         {/* Control 1: Historical Period */}
                         <div>
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                                Historical Window
+                                Past Usage Days
                             </label>
                             <select
                                 value={periodDays}
                                 onChange={(e) => setPeriodDays(Number(e.target.value))}
                                 className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
                             >
-                                <option value={30}>Past 30 Days (Short-term)</option>
+                                <option value={30}>Past 30 Days (1 Month)</option>
                                 <option value={90}>Past 90 Days (Quarterly)</option>
-                                <option value={180}>Past 6 Months (Multi-Season)</option>
-                                <option value={210}>Past 7 Months (Extended)</option>
+                                <option value={180}>Past 6 Months</option>
+                                <option value={210}>Past 7 Months</option>
                             </select>
                         </div>
 
                         {/* Control 2: Forecast Horizon */}
                         <div>
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                                Forecast Horizon
+                                Forecast Next
                             </label>
                             <select
                                 value={horizonDays}
                                 onChange={(e) => setHorizonDays(Number(e.target.value))}
                                 className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
                             >
-                                <option value={7}>Next 7 Days (Tactical)</option>
-                                <option value={14}>Next 14 Days (Bi-Weekly)</option>
-                                <option value={30}>Next 30 Days (Monthly Operational)</option>
+                                <option value={7}>Next 7 Days (1 Week)</option>
+                                <option value={14}>Next 14 Days (2 Weeks)</option>
+                                <option value={30}>Next 30 Days (1 Month)</option>
                             </select>
                         </div>
 
                         {/* Control 3: Category Filter */}
                         <div>
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                                Category
+                                Item Category
                             </label>
                             <select
                                 value={categoryFilter}
                                 onChange={(e) => setCategoryFilter(e.target.value)}
                                 className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
                             >
-                                <option value="all">All Item Categories</option>
+                                <option value="all">All Categories</option>
                                 {availableCategories.map((c) => (
                                     <option key={c} value={c}>
                                         {c}
@@ -754,24 +763,24 @@ export default function ForecastPage() {
                         {/* Control 4: Risk Filter */}
                         <div>
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                                Stock Risk Filter
+                                Stock Status
                             </label>
                             <select
                                 value={riskFilter}
                                 onChange={(e) => setRiskFilter(e.target.value)}
                                 className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer transition-all"
                             >
-                                <option value="all">All Items</option>
-                                <option value="critical">Critical Deficit (Projected &lt; 0)</option>
-                                <option value="low_stock">Low Stock Risk (≤ Safety Buffer)</option>
-                                <option value="normal">Normal / Adequate Stock</option>
+                                <option value="all">All Stock Statuses</option>
+                                <option value="critical">Critical Risk (Will Run Out)</option>
+                                <option value="low_stock">Low Stock (Below Buffer)</option>
+                                <option value="normal">Normal (Healthy Stock)</option>
                             </select>
                         </div>
 
                         {/* Control 5: Search Filter */}
                         <div>
                             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                                Search Supply
+                                Search Items
                             </label>
                             <div className="relative group">
                                 <i className="fas fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 dark:text-slate-500 group-focus-within:text-pink-500 transition-colors pointer-events-none" />
@@ -779,7 +788,7 @@ export default function ForecastPage() {
                                     type="text"
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    placeholder="Search name or SKU..."
+                                    placeholder="Search by name or code..."
                                     className="w-full text-xs font-semibold pl-9 pr-3.5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 transition-all"
                                 />
                             </div>
@@ -792,55 +801,55 @@ export default function ForecastPage() {
                     <CardsSkeleton />
                 ) : (
                     <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {/* Card 1: Items Forecasted */}
+                        {/* Card 1: Items Tracked */}
                         <Cards
                             frontIcon="fas fa-boxes-stacked"
-                            header="Items Forecasted"
+                            header="Items Tracked"
                             data={summary?.has_three_years_history === false ? "0" : String(summary?.items_forecasted || 0)}
                             description={
                                 summary?.has_three_years_history === false
-                                    ? `Prediction disabled: Dataset spans only ${summary?.history_span_days || 0} days (< 1,095 days required)`
+                                    ? `System records span ${summary?.history_span_days || 0} days (requires 3+ years for forecasting)`
                                     : summary?.has_sufficient_data
-                                    ? `Evaluated out of ${summary?.total_items || 0} inventory items with active consumption logs`
-                                    : "No historical consumption logs detected in selected window"
+                                    ? `${summary?.items_forecasted || 0} of ${summary?.total_items || 0} items have usage records`
+                                    : "No usage history found in selected period"
                             }
-                            badge={summary?.has_three_years_history === false ? "Data < 3 Years" : `${summary?.items_forecasted || 0}/${summary?.total_items || 0} Tracked`}
+                            badge={summary?.has_three_years_history === false ? "Needs 3+ Yrs Data" : `${summary?.items_forecasted || 0}/${summary?.total_items || 0} Items`}
                             arrow="fas fa-layer-group"
                             backBg="bg-blue-900"
-                            backHeader="Usable Data Criteria"
-                            backDescription="Requires at least 3 continuous years (1,095 days) of warehouse stock movements to evaluate valid time-series demand models."
+                            backHeader="Data Requirement"
+                            backDescription="At least 3 years of recorded stock history is needed to create reliable forecasts."
                         />
 
-                        {/* Card 2: Predicted Demand */}
+                        {/* Card 2: Expected Demand */}
                         <Cards
                             frontIcon="fas fa-chart-line-up"
-                            header="Predicted Demand"
-                            data={summary?.has_three_years_history === false ? "No Prediction" : String(summary?.total_predicted_demand || 0)}
+                            header="Expected Demand"
+                            data={summary?.has_three_years_history === false ? "0 units" : String(summary?.total_predicted_demand || 0)}
                             description={
                                 summary?.has_three_years_history === false
-                                    ? `Insufficient historical data (< 3 years) — 0% AI Confidence to forecast`
+                                    ? "Forecasts are paused until 3 years of usage data is recorded"
                                     : unitsSummaryStr
-                                    ? `Total volume across horizon: ${unitsSummaryStr}`
-                                    : `Cumulative forecasted demand over next ${horizonDays} days`
+                                    ? `Total estimated demand: ${unitsSummaryStr}`
+                                    : `Total predicted items needed over next ${horizonDays} days`
                             }
-                            badge={summary?.has_three_years_history === false ? "0% Confidence" : `${horizonDays}-Day Horizon`}
+                            badge={summary?.has_three_years_history === false ? "No Forecast" : `${horizonDays}-Day Period`}
                             arrow="fas fa-arrow-trend-up"
                             backBg="bg-pink-900"
-                            backHeader="Demand Computation"
-                            backDescription="When data is under 3 years old, time-series predictions are invalidated with 0% confidence to prevent deceptive forecasts."
+                            backHeader="Demand Calculation"
+                            backDescription="Estimates future stock needed based on how quickly items were used in the past."
                         />
 
-                        {/* Card 3: Potential Shortages */}
+                        {/* Card 3: Low Stock Alerts */}
                         <Cards
                             frontIcon="fas fa-triangle-exclamation text-rose-500"
-                            header="Potential Shortages"
+                            header="Low Stock Alerts"
                             data={String(summary?.potential_shortages || 0)}
-                            description={`${summary?.critical_count || 0} critical stockouts (< 0), ${summary?.low_stock_count || 0} below min threshold`}
-                            badge={summary?.potential_shortages ? "Action Required" : "Stock Healthy"}
+                            description={`${summary?.critical_count || 0} items at risk of running out, ${summary?.low_stock_count || 0} near buffer`}
+                            badge={summary?.potential_shortages ? "Action Needed" : "Stock Healthy"}
                             arrow="fas fa-exclamation"
                             backBg="bg-rose-950"
-                            backHeader="Shortage Calculation"
-                            backDescription="Projected Stock = Available Stock + Eligible Incoming POs - Forecast Demand. Items projected to breach 0 or minimum buffer trigger an alert."
+                            backHeader="Low Stock Warning"
+                            backDescription="Items that will drop below minimum stock levels before incoming orders arrive."
                         />
 
                         {/* Card 4: Forecast Accuracy */}
@@ -848,12 +857,12 @@ export default function ForecastPage() {
                             frontIcon="fas fa-bullseye text-emerald-500"
                             header="Forecast Accuracy"
                             data={summary?.has_three_years_history === false ? "0%" : (summary?.average_accuracy !== null ? `${summary?.average_accuracy}%` : "Evaluating")}
-                            description={summary?.accuracy_label || "Evaluated via rolling holdout window"}
-                            badge={summary?.has_three_years_history === false ? "0% Confidence" : (summary?.average_mae !== null ? `MAE: ${summary?.average_mae}` : "Holdout Metric")}
+                            description={summary?.has_three_years_history === false ? "Requires 3-year baseline data" : (summary?.accuracy_label || "Tested against past usage")}
+                            badge={summary?.has_three_years_history === false ? "Needs Data" : (summary?.average_mae !== null ? `Error: ±${summary?.average_mae}` : "Accuracy Score")}
                             arrow="fas fa-check-double"
                             backBg="bg-emerald-950"
-                            backHeader="Validation Methodology"
-                            backDescription="Calculated via out-of-sample holdout validation on the historical series. Requires 3-year baseline to yield non-zero confidence."
+                            backHeader="Accuracy Testing"
+                            backDescription="Measures how closely predictions matched actual historical stock usage."
                         />
                     </div>
                 )}
@@ -863,38 +872,38 @@ export default function ForecastPage() {
                     <ForecastAiSummaryPanel
                         forecastData={forecastData}
                         activeTab={activeTab}
-                        onSelectTab={(tab) => setActiveTab(tab)}
+                        onSelectTab={(tab) => handleTabChange(tab as ForecastTabId)}
                         onOpenChartModal={(domain) => setChartModalDomain(domain as ForecastChartDomain)}
                     />
                 )}
 
-                {/* 5. Navigation Tabs & AI Matrix Shortcut */}
+                {/* 5. Navigation Tabs */}
                 <div className="w-full flex flex-wrap items-center justify-between gap-3 py-1">
                     <div className="flex items-center gap-1.5 bg-[#ebf0f7]/95 dark:bg-[#14151c]/95 p-1.5 rounded-full border border-slate-200/50 dark:border-slate-800/60 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.4),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65),inset_-1px_-1px_4px_rgba(255,255,255,0.05)] max-w-full overflow-x-auto no-scrollbar">
                         <button
                             type="button"
-                            onClick={() => setActiveTab("dashboard")}
+                            onClick={() => handleTabChange("dashboard")}
                             className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
                                 activeTab === "dashboard"
-                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
-                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                                    ? "bg-pink-500 text-white font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533]"
                             }`}
                         >
                             <i className="fas fa-chart-line text-xs" />
-                            <span>Demand Forecast Visualizer</span>
+                            <span>Overview Chart</span>
                         </button>
 
                         <button
                             type="button"
-                            onClick={() => setActiveTab("table")}
+                            onClick={() => handleTabChange("table")}
                             className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
                                 activeTab === "table"
-                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
-                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                                    ? "bg-pink-500 text-white font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533]"
                             }`}
                         >
                             <i className="fas fa-table-list text-xs" />
-                            <span>Predicted Demand Table</span>
+                            <span>Item Predictions</span>
                             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold font-mono ${
                                 activeTab === "table" ? "bg-white text-pink-600 shadow-xs" : "bg-pink-500 text-white"
                             }`}>
@@ -904,46 +913,33 @@ export default function ForecastPage() {
 
                         <button
                             type="button"
-                            onClick={() => setActiveTab("consumption")}
+                            onClick={() => handleTabChange("consumption")}
                             className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
                                 activeTab === "consumption"
-                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
-                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                                    ? "bg-pink-500 text-white font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533]"
                             }`}
                         >
                             <i className="fas fa-dolly text-xs" />
-                            <span>Historical Consumption Analysis</span>
+                            <span>Usage History</span>
                         </button>
 
                         <button
                             type="button"
-                            onClick={() => setActiveTab("movement")}
+                            onClick={() => handleTabChange("movement")}
                             className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
                                 activeTab === "movement"
-                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
-                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
+                                    ? "bg-pink-500 text-white font-bold"
+                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533]"
                             }`}
                         >
                             <i className="fas fa-arrows-up-down text-xs" />
-                            <span>Item Movement Velocity</span>
+                            <span>Stock Movement</span>
                             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold font-mono ${
                                 activeTab === "movement" ? "bg-white text-pink-600 shadow-xs" : "bg-pink-500 text-white"
                             }`}>
                                 {(forecastData?.item_movement_analytics?.active_moving_items_count ?? 0) + (forecastData?.item_movement_analytics?.zero_issuance_items_count ?? 0)}
                             </span>
-                        </button>
-
-                        <button
-                            type="button"
-                            onClick={() => setActiveTab("history")}
-                            className={`px-4 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 flex items-center gap-2 cursor-pointer active:scale-95 shrink-0 select-none ${
-                                activeTab === "history"
-                                    ? "bg-pink-500 text-white border border-pink-400/80 dark:border-pink-500/80 shadow-[0_4px_14px_rgba(236,72,153,0.45),inset_0_1px_1.5px_rgba(255,255,255,0.5),inset_0_-2px_4px_rgba(0,0,0,0.25)] font-bold"
-                                    : "bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/70 dark:border-[#2a2b38] hover:bg-[#e8edf5] dark:hover:bg-[#232533] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9),inset_0_1px_1px_rgba(255,255,255,0.8)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.04),inset_0_1px_1px_rgba(255,255,255,0.06)]"
-                            }`}
-                        >
-                            <i className="fas fa-clock-rotate-left text-xs" />
-                            <span>Forecast Run History</span>
                         </button>
                     </div>
 
@@ -959,27 +955,27 @@ export default function ForecastPage() {
                                 }, 2000);
                             }
                         }}
-                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] hover:text-pink-700 transition-colors cursor-pointer"
-                        title="Jump to Forecast AI Summary Matrix"
+                        className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-pink-600 dark:text-pink-400 bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] hover:text-pink-700 transition-colors cursor-pointer"
+                        title="Jump to Smart Forecast Summary"
                     >
                         <i className="fas fa-wand-magic-sparkles text-xs" />
-                        <span>AI Forecast Matrix</span>
+                        <span>AI Summary</span>
                     </button>
                 </div>
 
                 {/* TAB 1: Demand Forecast Time-Series Chart */}
                 {activeTab === "dashboard" && (
-                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                             <div>
                                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                     <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
                                         <i className="fas fa-chart-spline" />
                                     </span>
-                                    Demand Forecast Time-Series (Historical Actuals vs Future Projection)
+                                    Demand Forecast Overview (Past Usage vs Predicted Demand)
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Visual transition point demarcates historical recorded stock issuances and forward algorithmic projection
+                                    Compare recorded past stock usage with expected future demand
                                 </p>
                             </div>
 
@@ -990,7 +986,7 @@ export default function ForecastPage() {
                                     onChange={(e) => setSelectedChartItem(e.target.value)}
                                     className="text-xs font-semibold px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.06] text-slate-800 dark:text-slate-100 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer"
                                 >
-                                    <option value="all">All Aggregate Demand</option>
+                                    <option value="all">All Items (Total Demand)</option>
                                     {forecastData?.items?.map((item) => (
                                         <option key={item.id} value={String(item.id)}>
                                             {item.item_name} ({item.item_code})
@@ -1002,21 +998,21 @@ export default function ForecastPage() {
 
                         {/* 3-Year Historical Safeguard Banner */}
                         {summary?.has_three_years_history === false && (
-                            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-start gap-3">
+                            <div className="p-4 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] flex items-start gap-3">
                                 <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
                                     <i className="fas fa-triangle-exclamation text-sm" />
                                 </div>
                                 <div className="space-y-1">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="text-xs font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                                            Data Is Not Enough For Prediction — 0% AI Confidence
+                                            More Usage Data Needed for Predictions
                                         </span>
                                         <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-amber-500/20 text-amber-800 dark:text-amber-200 border border-amber-500/30">
-                                            Recorded Span: {summary.history_span_days || 0} / 1,095 Days (Requires 3+ Years)
+                                            Current Records: {summary.history_span_days || 0} / 1,095 Days (Requires 3+ Years)
                                         </span>
                                     </div>
                                     <p className="text-xs leading-relaxed text-slate-700 dark:text-slate-300">
-                                        Time-series demand models require at least <b>3 years (1,095 days)</b> of continuous historical records to decouple seasonal shifts from noise. With <b>{summary.history_span_days || 0} days</b> recorded, <b>demand predictions are marked invalid with 0% AI confidence</b>. Actual historical warehouse issuances (blue line) are shown for auditing, with forward projections disabled.
+                                        Reliable forecasting requires at least <b>3 years (1,095 days)</b> of usage records. Because your system currently has <b>{summary.history_span_days || 0} days</b> recorded, future projections are kept at 0 to avoid inaccurate guesses. You can view your real past usage (blue line) below.
                                     </p>
                                 </div>
                             </div>
@@ -1029,9 +1025,9 @@ export default function ForecastPage() {
                         >
                             {/* Hover Inspector Hint */}
                             <div className="absolute top-3 right-3 z-10 opacity-70 group-hover:opacity-100 transition-opacity pointer-events-none">
-                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-white/80 dark:bg-black/60 backdrop-blur-xs border border-pink-500/30 shadow-xs flex items-center gap-1.5">
+                                <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-white/90 dark:bg-black/70 border border-pink-500/30 flex items-center gap-1.5">
                                     <i className="fas fa-expand text-[9px]" />
-                                    <span>Inspect Model &amp; Realtime Data</span>
+                                    <span>Inspect Details</span>
                                 </span>
                             </div>
                             {loading ? (
@@ -1040,7 +1036,7 @@ export default function ForecastPage() {
                                         <i className="fas fa-circle-notch text-base" />
                                     </div>
                                     <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                                        Calculating time-series demand models & confidence intervals...
+                                        Loading demand overview chart...
                                     </span>
                                 </div>
                             ) : (
@@ -1054,46 +1050,46 @@ export default function ForecastPage() {
                             <div className="flex items-center gap-4">
                                 <span className="flex items-center gap-1.5 font-medium">
                                     <span className="w-3 h-0.5 bg-blue-500 rounded-full" />
-                                    Actual Historical Consumption
+                                    Past Stock Usage
                                 </span>
                                 {summary?.has_three_years_history === false ? (
                                     <span className="flex items-center gap-1.5 font-medium text-slate-500 font-semibold">
                                         <span className="w-3 h-0.5 bg-slate-400 border-b border-dashed border-slate-400" />
-                                        No Prediction (0% Confidence — Data &lt; 3 Years)
+                                        No Prediction (Needs 3+ Years Data)
                                     </span>
                                 ) : (
                                     <>
                                         <span className="flex items-center gap-1.5 font-medium">
                                             <span className="w-3 h-0.5 bg-pink-500 border-b border-dashed border-pink-500" />
-                                            Algorithmically Projected Demand
+                                            Predicted Future Demand
                                         </span>
                                         <span className="flex items-center gap-1.5 font-medium">
                                             <span className="w-3 h-3 bg-pink-500/20 rounded-xs" />
-                                            Confidence Interval Band (85%-90%)
+                                            Expected Range (85%-90%)
                                         </span>
                                     </>
                                 )}
                             </div>
                             <span className="font-mono text-[10px]">
-                                {summary?.has_three_years_history === false ? "Status: Invalid Prediction (0% AI Confidence)" : "Tournament: Supervised ML (Gradient Descent), Croston SBA, AutoTheta, Holt-Winters"}
+                                {summary?.has_three_years_history === false ? "Status: Needs 3-Year Usage Records" : "Forecast Models: Pattern Analysis & Seasonality"}
                             </span>
                         </div>
                     </div>
                 )}
 
-                {/* TAB 2: Predicted Demand Table (Neumorphic Card & Table) */}
+                {/* TAB 2: Predicted Demand Table */}
                 {activeTab === "table" && (
-                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
                         <div className="flex items-center justify-between">
                             <div>
                                 <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                     <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
                                         <i className="fas fa-table-list" />
                                     </span>
-                                    Predicted Demand & Stock Projections Matrix
+                                    Item Predictions &amp; Stock Health
                                 </h3>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Projected Stock = Available Stock + Eligible Incoming POs - Forecast Demand
+                                    Projected Stock = In Stock + Incoming Orders - Expected Demand
                                 </p>
                             </div>
                             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.25)] text-slate-500">
@@ -1103,40 +1099,40 @@ export default function ForecastPage() {
 
                         {/* 3-Year Historical Safeguard Banner in Table */}
                         {summary?.has_three_years_history === false && (
-                            <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] flex items-center justify-between gap-3">
+                            <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/[0.08] border border-amber-500/30 text-amber-900 dark:text-amber-200 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2.5">
                                     <i className="fas fa-triangle-exclamation text-amber-500 shrink-0 text-sm" />
                                     <span className="text-xs font-bold">
-                                        Data is not enough for prediction: Historical dataset is under 3 years old ({summary.history_span_days || 0}/1,095 days). All predictions are marked 0% confidence and set to 0.
+                                        More usage data needed for future forecasts: System records span {summary.history_span_days || 0} / 1,095 days. Showing current stock counts and incoming orders.
                                     </span>
                                 </div>
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200 shrink-0">
-                                    0% AI Confidence
+                                    Needs 3+ Yrs
                                 </span>
                             </div>
                         )}
 
                         <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
-                            <table className="table-pro w-full text-left text-xs">
+                            <table className="table-pro w-full min-w-[1250px] text-left text-xs">
                                 <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
                                     <tr>
-                                        <th className="p-3.5 font-bold">Item Code</th>
-                                        <th className="p-3.5 font-bold">Item Name</th>
-                                        <th className="p-3.5 font-bold">Category</th>
-                                        <th className="p-3.5 text-right font-bold">Available</th>
-                                        <th className="p-3.5 text-right font-bold">Forecast Demand</th>
-                                        <th className="p-3.5 text-right font-bold">Expected Incoming</th>
-                                        <th className="p-3.5 text-right font-bold">Projected Stock</th>
-                                        <th className="p-3.5 text-right font-bold">Min Stock</th>
-                                        <th className="p-3.5 text-center font-bold">Risk Level</th>
-                                        <th className="p-3.5 font-bold">Recommended Action</th>
-                                        <th className="p-3.5 text-center font-bold">Actions</th>
+                                        <th className="px-5 py-4 font-bold min-w-[140px] whitespace-nowrap">Item Code</th>
+                                        <th className="px-5 py-4 font-bold min-w-[240px]">Item Name</th>
+                                        <th className="px-5 py-4 font-bold min-w-[140px] whitespace-nowrap">Category</th>
+                                        <th className="px-5 py-4 text-right font-bold min-w-[120px] whitespace-nowrap">In Stock</th>
+                                        <th className="px-5 py-4 text-right font-bold min-w-[150px] whitespace-nowrap">Expected Demand</th>
+                                        <th className="px-5 py-4 text-right font-bold min-w-[140px] whitespace-nowrap">Incoming Orders</th>
+                                        <th className="px-5 py-4 text-right font-bold min-w-[140px] whitespace-nowrap">Projected Stock</th>
+                                        <th className="px-5 py-4 text-right font-bold min-w-[120px] whitespace-nowrap">Min Stock</th>
+                                        <th className="px-5 py-4 text-center font-bold min-w-[130px] whitespace-nowrap">Status</th>
+                                        <th className="px-5 py-4 font-bold min-w-[260px]">Suggested Action</th>
+                                        <th className="px-5 py-4 text-center font-bold min-w-[190px] whitespace-nowrap">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
                                     {displayItems.length === 0 ? (
                                         <tr>
-                                            <td colSpan={11} className="p-10 text-center text-slate-400 block w-full md:table-cell">
+                                            <td colSpan={11} className="p-12 text-center text-slate-400 block w-full md:table-cell">
                                                 No inventory items match the current filter criteria.
                                             </td>
                                         </tr>
@@ -1154,35 +1150,35 @@ export default function ForecastPage() {
                                                     key={item.id}
                                                     className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors"
                                                 >
-                                                    <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white" data-label="Item Code">
+                                                    <td className="px-5 py-4 font-mono font-bold text-slate-900 dark:text-white whitespace-nowrap" data-label="Item Code">
                                                         {item.item_code}
                                                     </td>
-                                                    <td className="p-3.5 font-medium text-slate-800 dark:text-slate-200" data-label="Item Name">
+                                                    <td className="px-5 py-4 font-medium text-slate-800 dark:text-slate-200" data-label="Item Name">
                                                         {item.item_name}
                                                     </td>
-                                                    <td className="p-3.5 text-slate-500 font-medium" data-label="Category">
+                                                    <td className="px-5 py-4 text-slate-500 font-medium whitespace-nowrap" data-label="Category">
                                                         {item.category}
                                                     </td>
-                                                    <td className="p-3.5 text-right font-semibold" data-label="Available">
-                                                        {item.available_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                    <td className="px-5 py-4 text-right font-semibold whitespace-nowrap" data-label="Available">
+                                                        {item.available_stock} <span className="text-[10px] text-slate-400 font-normal">{item.unit}</span>
                                                     </td>
-                                                    <td className="p-3.5 text-right font-bold text-amber-600 dark:text-amber-400" data-label="Forecast Demand">
+                                                    <td className="px-5 py-4 text-right font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap" data-label="Expected Demand">
                                                         {item.is_prediction_valid === false || summary?.has_three_years_history === false ? (
                                                             <div>
-                                                                <span className="text-slate-500 dark:text-slate-400">0</span> <span className="text-[10px] text-slate-400">{item.unit}</span>
-                                                                <span className="block text-[9px] font-bold text-rose-500">0% Conf (&lt; 3 Yrs)</span>
+                                                                <span className="text-slate-500 dark:text-slate-400">0</span> <span className="text-[10px] text-slate-400 font-normal">{item.unit}</span>
+                                                                <span className="block text-[9px] font-bold text-amber-600 dark:text-amber-400">Needs 3+ Yrs</span>
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                {item.forecast_demand} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                                {item.forecast_demand} <span className="text-[10px] text-slate-400 font-normal">{item.unit}</span>
                                                             </>
                                                         )}
                                                     </td>
-                                                    <td className="p-3.5 text-right font-semibold text-sky-600 dark:text-sky-400" data-label="Expected Incoming">
+                                                    <td className="px-5 py-4 text-right font-semibold text-sky-600 dark:text-sky-400 whitespace-nowrap" data-label="Expected Incoming">
                                                         +{item.expected_incoming}
                                                     </td>
                                                     <td
-                                                        className={`p-3.5 text-right font-black ${
+                                                        className={`px-5 py-4 text-right font-black whitespace-nowrap ${
                                                             item.risk_level === "Critical"
                                                                 ? "text-rose-600 dark:text-rose-400"
                                                                 : item.risk_level === "Low Stock Risk"
@@ -1191,47 +1187,39 @@ export default function ForecastPage() {
                                                         }`}
                                                         data-label="Projected Stock"
                                                     >
-                                                        {item.projected_stock} <span className="text-[10px] text-slate-400">{item.unit}</span>
+                                                        {item.projected_stock} <span className="text-[10px] text-slate-400 font-normal">{item.unit}</span>
                                                     </td>
-                                                    <td className="p-3.5 text-right text-slate-500 font-medium" data-label="Min Stock">
+                                                    <td className="px-5 py-4 text-right text-slate-500 font-medium whitespace-nowrap" data-label="Min Stock">
                                                         {item.minimum_stock}
                                                     </td>
-                                                    <td className="p-3.5 text-center" data-label="Risk Level">
+                                                    <td className="px-5 py-4 text-center whitespace-nowrap" data-label="Risk Level">
                                                         <StatusBadge tone={riskTone} dot>
                                                             {item.risk_level}
                                                         </StatusBadge>
                                                     </td>
-                                                    <td className="p-3.5 text-[11px] text-slate-600 dark:text-slate-300 max-w-xs font-medium" data-label="Recommended Action">
+                                                    <td className="px-5 py-4 text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed" data-label="Recommended Action">
                                                         {item.recommended_action}
                                                     </td>
-                                                    <td className="p-3.5 text-center" data-label="Actions">
-                                                        <div className="flex items-center justify-center gap-1.5">
+                                                    <td className="px-5 py-4 text-center whitespace-nowrap" data-label="Actions">
+                                                        <div className="flex items-center justify-center gap-2">
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setDetailModalItem(item)}
-                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-pink-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(236,72,153,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-pink-400 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
-                                                                title="View Forecast"
+                                                                className="px-3 py-1.5 rounded-xl bg-pink-500 text-white text-xs font-bold shadow-[2px_2px_5px_rgba(236,72,153,0.35)] hover:bg-pink-600 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                                                                title="View Forecast Details"
                                                             >
-                                                                <i className="fas fa-chart-line text-[9px]" />
-                                                                <span className="inline sm:hidden">Forecast</span>
+                                                                <i className="fas fa-chart-line text-xs" />
+                                                                <span>Forecast</span>
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => setHistoryModalItem(item)}
-                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-[#f0f3f8] dark:bg-[#1d1e28] text-slate-700 dark:text-slate-200 border border-white/80 dark:border-[#2a2b38] text-[10px] font-bold shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.5)] hover:bg-slate-200 dark:hover:bg-[#252633] active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1"
-                                                                title="View History"
+                                                                className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#1b1c28] text-slate-700 dark:text-slate-200 border border-white/80 dark:border-white/[0.06] text-xs font-bold shadow-[2px_2px_5px_rgba(166,175,195,0.35),-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[2px_2px_5px_rgba(0,0,0,0.4)] hover:bg-slate-200 dark:hover:bg-[#232533] active:scale-95 transition-all cursor-pointer inline-flex items-center gap-1.5"
+                                                                title="View Stock History"
                                                             >
-                                                                <i className="fas fa-clock-rotate-left text-[9px]" />
-                                                                <span className="inline sm:hidden">History</span>
+                                                                <i className="fas fa-clock-rotate-left text-xs" />
+                                                                <span>History</span>
                                                             </button>
-                                                            <Link
-                                                                href={`/procurement?search=${encodeURIComponent(item.item_code)}`}
-                                                                className="px-2 py-1 sm:px-2.5 sm:py-1 rounded-full bg-sky-500 text-white text-[10px] font-bold shadow-[0_2px_6px_rgba(14,165,233,0.35),inset_0_1px_1px_rgba(255,255,255,0.5)] hover:bg-sky-400 active:scale-95 transition-all inline-flex items-center gap-1"
-                                                                title="Review in Procurement"
-                                                            >
-                                                                <i className="fas fa-cart-shopping text-[9px]" />
-                                                                <span className="inline sm:hidden">Procure</span>
-                                                            </Link>
                                                         </div>
                                                     </td>
                                                 </tr>
@@ -1244,21 +1232,21 @@ export default function ForecastPage() {
                     </div>
                 )}
 
-                {/* TAB 3: Historical Consumption Analysis */}
+                {/* TAB 3: Usage History */}
                 {activeTab === "consumption" && (
                     <div className="space-y-6">
                         {/* Periodic Issuance Trend */}
-                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-4">
+                        <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[6px_6px_16px_rgba(166,175,195,0.25),-6px_-6px_16px_rgba(255,255,255,0.85)] dark:shadow-[8px_8px_20px_rgba(0,0,0,0.5)] space-y-4">
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                                 <div>
                                     <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                         <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
                                             <i className="fas fa-chart-column" />
                                         </span>
-                                        Historical Actual Consumption Volumes
+                                        Warehouse Stock Usage Over Time
                                     </h3>
                                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                        Aggregated strictly from completed stock-out issuances (excludes supplier receipts & damaged adjustments)
+                                        Total items issued out of warehouse storage
                                     </p>
                                 </div>
                                 <div className="flex items-center gap-1 bg-[#ebf0f7] dark:bg-[#12131b] p-1 rounded-full border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
@@ -1419,76 +1407,6 @@ export default function ForecastPage() {
                     />
                 )}
 
-                {/* TAB 4: Forecast Run History (Neumorphic Audit Trail) */}
-                {activeTab === "history" && (
-                    <div className="p-5 sm:p-6 rounded-3xl bg-[#f0f3f8] dark:bg-[#161722] border border-white/90 dark:border-white/[0.08] shadow-[14px_14px_40px_rgba(166,175,195,0.35),-14px_-14px_40px_rgba(255,255,255,0.95)] dark:shadow-[14px_14px_40px_rgba(0,0,0,0.8),-4px_-4px_12px_rgba(255,255,255,0.03)] space-y-5">
-                        <div>
-                            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-lg bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] flex items-center justify-center text-pink-500 text-[11px]">
-                                    <i className="fas fa-clock-rotate-left" />
-                                </span>
-                                Forecast Generation Audit Trail
-                            </h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                Real-time session executions evaluated against immutable stock movement records
-                            </p>
-                        </div>
-
-                        {/* Persistence Architecture Status Banner (Debossed Inset Well) */}
-                        <div className="p-4 sm:p-5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.3),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)] text-xs text-amber-900 dark:text-amber-200 space-y-2">
-                            <div className="flex items-center gap-2 font-bold uppercase tracking-wider text-[11px]">
-                                <i className="fas fa-database text-amber-600 dark:text-amber-400" />
-                                Database Persistence Architecture Status
-                            </div>
-                            <p className="leading-relaxed">
-                                {forecastData?.persistence_info?.message}
-                            </p>
-                            {forecastData?.persistence_info?.required_schema && (
-                                <div className="mt-2 p-3 rounded-xl bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto shadow-inner">
-                                    {forecastData.persistence_info.required_schema}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Recent Session Runs */}
-                        <div className="space-y-3">
-                            <span className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400">
-                                Current Active Session Runs ({sessionHistory.length})
-                            </span>
-                            <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.15)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.3)]">
-                                <table className="table-pro w-full text-left text-xs">
-                                    <thead className="bg-[#ebf0f7] dark:bg-[#12131b] text-slate-600 dark:text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-200/80 dark:border-white/[0.06]">
-                                        <tr>
-                                            <th className="p-3.5 font-bold">Run ID</th>
-                                            <th className="p-3.5 font-bold">Time</th>
-                                            <th className="p-3.5 font-bold">Window</th>
-                                            <th className="p-3.5 font-bold">Horizon</th>
-                                            <th className="p-3.5 font-bold">Forecasted Items</th>
-                                            <th className="p-3.5 font-bold">Predicted Demand</th>
-                                            <th className="p-3.5 font-bold">Model Engine</th>
-                                            <th className="p-3.5 font-bold">Accuracy</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-slate-200/60 dark:divide-white/[0.05]">
-                                        {sessionHistory.map((run) => (
-                                            <tr key={run.id} className="hover:bg-white/60 dark:hover:bg-[#1c1d28]/60 transition-colors">
-                                                <td className="p-3.5 font-mono font-bold text-slate-900 dark:text-white" data-label="Run ID">{run.id}</td>
-                                                <td className="p-3.5 text-slate-500 font-medium" data-label="Time">{run.timestamp}</td>
-                                                <td className="p-3.5 font-medium" data-label="Window">{run.periodDays} Days</td>
-                                                <td className="p-3.5 font-bold text-pink-600 dark:text-pink-400" data-label="Horizon">{run.horizonDays} Days</td>
-                                                <td className="p-3.5 font-semibold" data-label="Forecasted Items">{run.itemsForecasted}</td>
-                                                <td className="p-3.5 font-bold" data-label="Predicted Demand">{run.predictedDemand} units</td>
-                                                <td className="p-3.5 text-slate-500 font-medium" data-label="Model Engine">{run.modelSummary}</td>
-                                                <td className="p-3.5 font-bold text-emerald-600 dark:text-emerald-400" data-label="Accuracy">{run.accuracyLabel}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
                 {/* Modals */}
                 <ForecastExportModal
                     isOpen={isExportModalOpen}
@@ -1526,5 +1444,19 @@ export default function ForecastPage() {
                 />
             </div>
         </SessionGuard>
+    );
+}
+
+export default function ForecastPage() {
+    return (
+        <Suspense
+            fallback={
+                <div className="min-h-screen bg-[#ebf0f7] dark:bg-[#14151c] p-6 max-w-7xl mx-auto space-y-4">
+                    <CardsSkeleton count={4} />
+                </div>
+            }
+        >
+            <ForecastContent />
+        </Suspense>
     );
 }

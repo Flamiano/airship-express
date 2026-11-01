@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { toast } from "sonner";
 import { AppButton } from "../../../../components/ui/AppButton";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
+import { CrudActionButton } from "../../../../components/ui/CrudActionButton";
 import { 
     Building2, 
     Search, 
@@ -45,7 +46,9 @@ import {
     MailCheck,
     RotateCcw,
     RotateCw,
-    Video
+    Video,
+    LayoutGrid,
+    Table
 } from "lucide-react";
 import { AIRSHIP_HQ, calculateDistanceKm, resolveDestinationCoords } from "../../../inventory/utils/geo-locations";
 import { supabase } from "../../../../lib/services/client/supabase";
@@ -239,6 +242,9 @@ export function PotentialSuppliersTab({
     // Manually Add Potential Supplier Modal State
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState<boolean>(false);
     const [addModalInitialReqId, setAddModalInitialReqId] = useState<string>("");
+
+    // Sourced Vendor Leads View Mode (Cards vs Table)
+    const [leadsViewMode, setLeadsViewMode] = useState<"cards" | "table">("cards");
 
     // Helper to check if a supplier is the previous supplier that won the bid with the same item name
     const isPreviousBidWinner = useCallback((itemName: string, supplierName?: string | null, supplierId?: string | number | null, quote?: any | null): boolean => {
@@ -2262,7 +2268,37 @@ export function PotentialSuppliersTab({
                                                         Sourced Vendor Leads & Outreach Pipeline ({group.potentialSuppliers.length})
                                                     </h4>
                                                 </div>
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {/* View Mode Toggle Switch (Cards vs Table) */}
+                                                    <div className="flex items-center p-0.5 rounded-xl bg-[#e2e8f0] dark:bg-[#12131f] border border-white/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setLeadsViewMode("cards")}
+                                                            className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                                leadsViewMode === "cards"
+                                                                    ? "bg-[#e8eef6] dark:bg-[#181a29] text-pink-600 dark:text-pink-400 shadow-[-2px_-2px_5px_rgba(255,255,255,0.9),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.05),_1px_1px_4px_rgba(0,0,0,0.5)] border border-white/60 dark:border-white/[0.06]"
+                                                                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                                            }`}
+                                                            title="Cards View"
+                                                        >
+                                                            <LayoutGrid className="w-3.5 h-3.5" />
+                                                            <span className="hidden sm:inline">Cards</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setLeadsViewMode("table")}
+                                                            className={`px-2.5 py-1 rounded-lg text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                                leadsViewMode === "table"
+                                                                    ? "bg-[#e8eef6] dark:bg-[#181a29] text-pink-600 dark:text-pink-400 shadow-[-2px_-2px_5px_rgba(255,255,255,0.9),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.05),_1px_1px_4px_rgba(0,0,0,0.5)] border border-white/60 dark:border-white/[0.06]"
+                                                                    : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                                                            }`}
+                                                            title="Table View"
+                                                        >
+                                                            <Table className="w-3.5 h-3.5" />
+                                                            <span className="hidden sm:inline">Table</span>
+                                                        </button>
+                                                    </div>
+
                                                     <button
                                                         type="button"
                                                         onClick={() => {
@@ -2280,6 +2316,7 @@ export function PotentialSuppliersTab({
                                                 </div>
                                             </div>
 
+                                            {leadsViewMode === "cards" ? (
                                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
                                             {group.potentialSuppliers.map((supplier) => {
                                                 const hasEmail = Boolean(supplier.email && supplier.email.includes("@"));
@@ -2809,6 +2846,336 @@ export function PotentialSuppliersTab({
                                                 );
                                             })}
                                         </div>
+                                        ) : (
+                                        /* Standardized table-pro View for Sourced Vendor Leads */
+                                        <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40 shadow-[inset_1.5px_1.5px_4px_rgba(166,175,195,0.25)]">
+                                            <table className="table-pro w-full text-left text-xs border-collapse p-1">
+                                                <thead className="bg-[#e4ebf5] dark:bg-[#14151c] border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10">
+                                                    <tr>
+                                                        <th className="py-3.5 px-4">Vendor &amp; Category</th>
+                                                        <th className="py-3.5 px-4">Location &amp; Distance</th>
+                                                        <th className="py-3.5 px-4">Contact</th>
+                                                        <th className="py-3.5 px-4">Status &amp; Outreach</th>
+                                                        <th className="py-3.5 px-4">Quoted Financials</th>
+                                                        <th className="py-3.5 px-4 text-right sm:w-[220px] sm:min-w-[220px]">Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-xs">
+                                                    {group.potentialSuppliers.length === 0 ? (
+                                                        <tr>
+                                                            <td colSpan={6} className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
+                                                                No vendor leads added for this requisition yet. Click &quot;Add Lead&quot; to source vendors.
+                                                            </td>
+                                                        </tr>
+                                                    ) : (
+                                                            group.potentialSuppliers.map((supplier) => {
+                                                                const hasEmail = Boolean(supplier.email && supplier.email.includes("@"));
+                                                                const isDeleting = deletingSupplierId === supplier.id;
+                                                                const hasQuote = Boolean(supplier.submittedQuote);
+                                                                const cardMeeting = getSupplierActiveMeeting(supplier, group);
+
+                                                                return (
+                                                                    <tr
+                                                                        key={supplier.id}
+                                                                        className={`transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
+                                                                            hasQuote ? "bg-pink-500/[0.02]" : ""
+                                                                        }`}
+                                                                    >
+                                                                        {/* 1. Vendor & Category */}
+                                                                        <td data-label="Vendor" className="py-3.5 px-4 align-top">
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                    <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                                                                                        {supplier.name}
+                                                                                    </span>
+                                                                                    {hasQuote && (
+                                                                                        <StatusBadge tone="pink" size="xs">
+                                                                                            Quote
+                                                                                        </StatusBadge>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div className="flex items-center gap-1 text-[11px] font-bold text-pink-600 dark:text-pink-400">
+                                                                                    <Tag className="w-3 h-3 text-pink-500 shrink-0" />
+                                                                                    <span className="uppercase tracking-wider text-[10px]">
+                                                                                        {supplier.category || "General Store / Supplier"}
+                                                                                    </span>
+                                                                                </div>
+                                                                                {supplier.products && (
+                                                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 max-w-[220px]" title={supplier.products}>
+                                                                                        {supplier.products}
+                                                                                    </p>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+
+                                                                        {/* 2. Location & Distance */}
+                                                                        <td data-label="Location" className="py-3.5 px-4 align-top">
+                                                                            <div className="space-y-1">
+                                                                                <div className="flex items-center gap-1.5">
+                                                                                    <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 bg-[#e2e8f0] dark:bg-[#12131f] px-2 py-0.5 rounded-md shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)] dark:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-slate-200/50 dark:border-white/[0.04]">
+                                                                                        {supplier.distanceKm.toFixed(1)} km from HQ
+                                                                                    </span>
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => setMapSupplier(supplier)}
+                                                                                        className="p-1 rounded-lg text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 transition-colors cursor-pointer"
+                                                                                        title="View on Map"
+                                                                                    >
+                                                                                        <MapPin className="w-3.5 h-3.5 text-pink-500" />
+                                                                                    </button>
+                                                                                </div>
+                                                                                <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2 max-w-[200px]" title={supplier.location}>
+                                                                                    {supplier.location || supplier.city || "Metro Manila"}
+                                                                                </p>
+                                                                            </div>
+                                                                        </td>
+
+                                                                        {/* 3. Contact Info */}
+                                                                        <td data-label="Contact" className="py-3.5 px-4 align-top">
+                                                                            <div className="space-y-1.5">
+                                                                                {supplier.phone ? (
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <Phone className="w-3 h-3 text-pink-500 shrink-0" />
+                                                                                        <a
+                                                                                            href={`tel:${supplier.phone}`}
+                                                                                            className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 hover:text-pink-600 hover:underline"
+                                                                                        >
+                                                                                            {supplier.phone}
+                                                                                        </a>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-slate-400 italic block">No phone listed</span>
+                                                                                )}
+
+                                                                                {hasEmail ? (
+                                                                                    <div className="flex items-center gap-1.5">
+                                                                                        <Mail className="w-3 h-3 text-pink-500 shrink-0" />
+                                                                                        <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={supplier.email}>
+                                                                                            {supplier.email}
+                                                                                        </span>
+                                                                                        <button
+                                                                                            type="button"
+                                                                                            onClick={() => {
+                                                                                                setAddEmailSupplier({ supplier, group });
+                                                                                                setInputEmail(supplier.email || "");
+                                                                                            }}
+                                                                                            className="text-[10px] text-slate-400 hover:text-pink-600 font-bold underline cursor-pointer shrink-0"
+                                                                                            title="Edit supplier email"
+                                                                                        >
+                                                                                            Edit
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <button
+                                                                                        type="button"
+                                                                                        onClick={() => {
+                                                                                            setAddEmailSupplier({ supplier, group });
+                                                                                            setInputEmail(supplier.email || "");
+                                                                                        }}
+                                                                                        className="text-[10px] font-bold text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                                                                    >
+                                                                                        <PlusCircle className="w-3 h-3" />
+                                                                                        <span>Add Email</span>
+                                                                                    </button>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+
+                                                                        {/* 4. Outreach / Status */}
+                                                                        <td data-label="Status" className="py-3.5 px-4 align-top">
+                                                                            <div className="space-y-1.5">
+                                                                                {supplier.submittedQuote ? (
+                                                                                    <StatusBadge
+                                                                                        tone={supplier.submittedQuote.status === 'accepted' ? 'emerald' : 'pink'}
+                                                                                        dot
+                                                                                        size="xs"
+                                                                                    >
+                                                                                        {supplier.submittedQuote.status === 'accepted' ? 'Bid Awarded' : 'Quote Received'}
+                                                                                    </StatusBadge>
+                                                                                ) : supplier.hasRfqSent ? (
+                                                                                    <StatusBadge tone="blue" size="xs" dot>
+                                                                                        RFQ Sent {supplier.rfqSentAt ? `• ${supplier.rfqSentAt}` : ''}
+                                                                                    </StatusBadge>
+                                                                                ) : (
+                                                                                    <StatusBadge tone="amber" size="xs" dot>
+                                                                                        No Quote Yet
+                                                                                    </StatusBadge>
+                                                                                )}
+
+                                                                                {cardMeeting && (
+                                                                                    <div className="flex items-center gap-1 text-[10px] text-pink-700 dark:text-pink-300 font-bold bg-pink-500/10 dark:bg-pink-900/20 px-2 py-0.5 rounded-md border border-pink-500/30">
+                                                                                        <Video className="w-3 h-3 text-pink-500 shrink-0" />
+                                                                                        <span className="truncate max-w-[160px]">
+                                                                                            {cardMeeting.meeting_date} ({cardMeeting.start_time})
+                                                                                        </span>
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </td>
+
+                                                                        {/* 5. Quoted Pricing & Terms */}
+                                                                        <td data-label="Quotation" className="py-3.5 px-4 align-top">
+                                                                            {supplier.submittedQuote ? (
+                                                                                <div className="space-y-0.5">
+                                                                                    <div className="font-mono text-sm font-black text-pink-600 dark:text-pink-400">
+                                                                                        ₱{Number(supplier.submittedQuote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                                    </div>
+                                                                                    <div className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">
+                                                                                        Unit: ₱{Number(supplier.submittedQuote.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })} / {supplier.submittedQuote.unit || 'unit'}
+                                                                                    </div>
+                                                                                    <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                                                                                        <span className="font-bold text-slate-700 dark:text-slate-300">{supplier.submittedQuote.availability}</span>
+                                                                                        <span>•</span>
+                                                                                        <span>{supplier.submittedQuote.lead_time_days}d lead</span>
+                                                                                    </div>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="space-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                                                                                    <div className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[160px]">
+                                                                                        {group.itemName}
+                                                                                    </div>
+                                                                                    <div className="text-[10px]">
+                                                                                        Req Qty: {(() => {
+                                                                                            const qty = group.quantityRequested;
+                                                                                            const unit = group.unit;
+                                                                                            if (supplier.products) {
+                                                                                                const pMatch = supplier.products.match(/^(\d+)\s*([a-zA-Z]+)?\s+of\s+/i);
+                                                                                                if (pMatch && Number(pMatch[1]) > 0 && (!qty || qty === 1 || qty < Number(pMatch[1]))) {
+                                                                                                    return `${pMatch[1]} ${pMatch[2] || unit}`;
+                                                                                                }
+                                                                                            }
+                                                                                            return `${qty} ${unit}`;
+                                                                                        })()}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )}
+                                                                        </td>
+
+                                                                        {/* 6. Action Controls with CrudActionButton */}
+                                                                        <td data-label="Actions" className="py-3.5 px-4 text-right sm:w-[220px] sm:min-w-[220px] w-full" onClick={(e) => e.stopPropagation()}>
+                                                                            <div className="flex items-center justify-end gap-1.5 w-full sm:w-auto flex-wrap">
+                                                                                {/* Review Proposal Button */}
+                                                                                {supplier.submittedQuote && (
+                                                                                    <CrudActionButton
+                                                                                        action="view"
+                                                                                        label="Proposal"
+                                                                                        ariaLabel={`Review quotation from ${supplier.name}`}
+                                                                                        onClick={() => setViewQuotationModal({ supplier, quote: supplier.submittedQuote })}
+                                                                                    />
+                                                                                )}
+
+                                                                                {/* Award / Register / RFQ */}
+                                                                                {supplier.submittedQuote && supplier.submittedQuote.status !== 'accepted' ? (
+                                                                                    <CrudActionButton
+                                                                                        action="approve"
+                                                                                        label="Award"
+                                                                                        variant="auto"
+                                                                                        ariaLabel={`Award bid to ${supplier.name}`}
+                                                                                        disabled={awardingQuoteId === supplier.submittedQuote.id}
+                                                                                        isLoading={awardingQuoteId === supplier.submittedQuote.id}
+                                                                                        onClick={() => handleAwardBid(supplier, supplier.submittedQuote!)}
+                                                                                    />
+                                                                                ) : supplier.submittedQuote && supplier.submittedQuote.status === 'accepted' ? (
+                                                                                    <CrudActionButton
+                                                                                        action="account"
+                                                                                        label="Register"
+                                                                                        variant="pink"
+                                                                                        ariaLabel={`Register and activate ${supplier.name}`}
+                                                                                        onClick={() => handlePromoteSupplier(supplier)}
+                                                                                    />
+                                                                                ) : hasEmail ? (
+                                                                                    supplier.hasRfqSent ? (
+                                                                                        <CrudActionButton
+                                                                                            action="restore"
+                                                                                            label="Follow-up"
+                                                                                            ariaLabel={`Send follow-up RFQ to ${supplier.email}`}
+                                                                                            onClick={() => handleOpenEmailModal(supplier, group, true)}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <CrudActionButton
+                                                                                            action="respond"
+                                                                                            label="Send RFQ"
+                                                                                            variant="pink"
+                                                                                            ariaLabel={`Send RFQ email to ${supplier.email}`}
+                                                                                            onClick={() => handleOpenEmailModal(supplier, group, false)}
+                                                                                        />
+                                                                                    )
+                                                                                ) : (
+                                                                                    <div className="flex items-center gap-1">
+                                                                                        {supplier.phone && (
+                                                                                            <CrudActionButton
+                                                                                                action="custom"
+                                                                                                icon={PhoneCall}
+                                                                                                label="Call"
+                                                                                                ariaLabel={`Call ${supplier.name}`}
+                                                                                                onClick={() => window.open(`tel:${supplier.phone}`, '_self')}
+                                                                                            />
+                                                                                        )}
+                                                                                        <CrudActionButton
+                                                                                            action="add"
+                                                                                            label="Email"
+                                                                                            variant="pink"
+                                                                                            ariaLabel={`Add quotation email for ${supplier.name}`}
+                                                                                            onClick={() => {
+                                                                                                setAddEmailSupplier({ supplier, group });
+                                                                                                setInputEmail(supplier.email || "");
+                                                                                            }}
+                                                                                        />
+                                                                                    </div>
+                                                                                )}
+
+                                                                                {/* Meeting Button */}
+                                                                                {(() => {
+                                                                                    const currentMeeting = getSupplierActiveMeeting(supplier, group);
+                                                                                    if (currentMeeting) {
+                                                                                        return (
+                                                                                            <CrudActionButton
+                                                                                                action="custom"
+                                                                                                icon={Video}
+                                                                                                label="Meeting"
+                                                                                                ariaLabel={`Update meeting with ${supplier.name}`}
+                                                                                                onClick={() => setMeetingModalData({ supplier, group, quote: supplier.submittedQuote, meeting: currentMeeting })}
+                                                                                            />
+                                                                                        );
+                                                                                    }
+                                                                                    return (
+                                                                                        <CrudActionButton
+                                                                                            action="custom"
+                                                                                            icon={Video}
+                                                                                            label="Meet"
+                                                                                            ariaLabel={`Schedule meeting with ${supplier.name}`}
+                                                                                            onClick={() => setMeetingModalData({ supplier, group, quote: supplier.submittedQuote, meeting: null })}
+                                                                                        />
+                                                                                    );
+                                                                                })()}
+
+                                                                                {/* Map Button */}
+                                                                                <CrudActionButton
+                                                                                    action="open"
+                                                                                    icon={MapPin}
+                                                                                    label="Map"
+                                                                                    ariaLabel={`View ${supplier.name} on map`}
+                                                                                    onClick={() => setMapSupplier(supplier)}
+                                                                                />
+
+                                                                                {/* Remove Lead Button */}
+                                                                                <CrudActionButton
+                                                                                    action="delete"
+                                                                                    ariaLabel={`Remove ${supplier.name} from leads`}
+                                                                                    disabled={isDeleting}
+                                                                                    isLoading={isDeleting}
+                                                                                    onClick={() => handleRemoveSupplier(supplier.id, supplier.name, group)}
+                                                                                />
+                                                                            </div>
+                                                                        </td>
+                                                                    </tr>
+                                                                );
+                                                            })
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                                 )}
