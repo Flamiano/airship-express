@@ -32,8 +32,25 @@ import {
     X,
     ShoppingBag,
     Video,
-    AlertTriangle
+    AlertTriangle,
+    Maximize2,
+    Minimize2,
+    Scale,
+    FileSpreadsheet,
+    ChevronDown,
+    ChevronRight,
 } from "lucide-react";
+import {
+    CONTRACT_ELEMENTS,
+    CONTRACT_CATEGORIES,
+    ContractTerms,
+    buildContractFromQuotation,
+    getDefaultContractTerms,
+} from "../../utils/contractElements";
+import {
+    exportContractPdf,
+    exportContractWord,
+} from "../../utils/contractExport";
 
 interface SupplierViewModalProps {
     isOpen: boolean;
@@ -139,8 +156,22 @@ export function SupplierViewModal({
 }: SupplierViewModalProps) {
     const [documents, setDocuments] = useState<any[]>([]);
     const [isLoadingDocs, setIsLoadingDocs] = useState(false);
-    const [activeTab, setActiveTab] = useState<"general" | "terms" | "products" | "docs" | "orders">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "terms" | "products" | "contract_sow" | "docs" | "orders">("general");
     const [previewDoc, setPreviewDoc] = useState<{ url: string; name: string; type: string } | null>(null);
+    const [isFullscreen, setIsFullscreen] = useState(false);
+    const [supplierContract, setSupplierContract] = useState<any | null>(null);
+    const [isLoadingContract, setIsLoadingContract] = useState(false);
+    const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && isFullscreen) {
+                setIsFullscreen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isFullscreen]);
 
     // Enhanced Transaction History State
     const [supplierFullOrders, setSupplierFullOrders] = useState<any[]>([]);
@@ -216,9 +247,28 @@ export function SupplierViewModal({
             .finally(() => {
                 setIsLoadingHistory(false);
             });
+            // Fetch Master SOW Contract from supplier_contracts
+            setIsLoadingContract(true);
+            (async () => {
+                try {
+                    const { data } = await supabase
+                        .from("supplier_contracts")
+                        .select("*")
+                        .eq("supplier_id", supplier.id)
+                        .order("created_at", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    setSupplierContract(data || null);
+                } catch {
+                    setSupplierContract(null);
+                } finally {
+                    setIsLoadingContract(false);
+                }
+            })();
         } else {
             setDocuments([]);
             setPreviewDoc(null);
+            setSupplierContract(null);
             setSupplierFullOrders([]);
             setSupplierQuotations([]);
         }
@@ -233,17 +283,25 @@ export function SupplierViewModal({
     return (
         <Portal>
             <div
-                className="fixed inset-0 z-[130] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+                className={
+                    isFullscreen
+                        ? "fixed inset-0 z-[130] bg-slate-950/95 dark:bg-black/95 flex flex-col p-0 overflow-hidden"
+                        : "fixed inset-0 z-[130] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+                }
                 onClick={onClose}
             >
                 <div
-                    className="relative w-full max-w-4xl bg-[#f0f4fa] dark:bg-[#151724] rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-none overflow-hidden my-auto flex flex-col max-h-[96vh] sm:max-h-[92vh] animate-in zoom-in-95 duration-200"
+                    className={
+                        isFullscreen
+                            ? "fixed inset-0 w-full h-full max-w-none max-h-none rounded-none border-0 shadow-none overflow-hidden flex flex-col z-[135] bg-[#f0f4fa] dark:bg-[#151724]"
+                            : "relative w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl bg-[#f0f4fa] dark:bg-[#151724] rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-2xl overflow-hidden my-auto flex flex-col max-h-[96vh] sm:max-h-[94vh] animate-in zoom-in-95 duration-200"
+                    }
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="p-3.5 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-start sm:items-center justify-between gap-2.5 bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
+                    <div className="p-3.5 sm:px-6 sm:py-4 border-b border-slate-300/80 dark:border-white/10 flex items-start sm:items-center justify-between gap-2.5 bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
                         <div className="flex items-start sm:items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
-                            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)] mt-0.5 sm:mt-0">
+                            <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)] mt-0.5 sm:mt-0">
                                 <Building2 className="w-4 h-4 sm:w-6 sm:h-6 drop-shadow" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -263,19 +321,31 @@ export function SupplierViewModal({
                                     </span>
                                 </div>
                                 <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-                                    Category: <strong className="text-slate-700 dark:text-slate-300">{supplier.category || "General Supplies"}</strong> • Registered Profile
+                                    Category: <strong className="text-slate-700 dark:text-slate-300">{supplier.category || "General Supplies"}</strong> • Registered Supplier Profile
                                 </p>
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] shrink-0 cursor-pointer transition-all active:scale-95 mt-0.5 sm:mt-0"
-                            aria-label="Close modal"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsFullscreen(prev => !prev)}
+                                className="h-8 sm:h-9 px-2.5 sm:px-3 rounded-xl sm:rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 hover:text-pink-600 dark:text-slate-300 dark:hover:text-pink-400 flex items-center gap-1.5 border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] shrink-0 cursor-pointer transition-all active:scale-95 text-xs font-bold"
+                                title={isFullscreen ? "Exit Fullscreen (Esc)" : "Full Screen Mode"}
+                            >
+                                {isFullscreen ? <Minimize2 className="w-4 h-4 text-pink-600" /> : <Maximize2 className="w-4 h-4 text-pink-600" />}
+                                <span className="hidden sm:inline">{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] shrink-0 cursor-pointer transition-all active:scale-95"
+                                aria-label="Close modal"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Navigation Tabs Bar */}
@@ -324,6 +394,23 @@ export function SupplierViewModal({
                             </button>
                             <button
                                 type="button"
+                                onClick={() => setActiveTab("contract_sow")}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
+                                    activeTab === "contract_sow"
+                                        ? "bg-pink-600 text-white shadow-xs"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                <Scale className="w-3.5 h-3.5" />
+                                <span>4. Contract &amp; SOW</span>
+                                <span className={`px-1.5 py-0.2 rounded-full text-[9px] flex items-center justify-center font-black ${
+                                    activeTab === "contract_sow" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
+                                }`}>
+                                    20
+                                </span>
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => setActiveTab("docs")}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 whitespace-nowrap ${
                                     activeTab === "docs"
@@ -331,7 +418,7 @@ export function SupplierViewModal({
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                <span>4. Docs &amp; AI</span>
+                                <span>5. Docs &amp; AI</span>
                                 {documents.length > 0 && (
                                     <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black ${
                                         activeTab === "docs" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
@@ -350,7 +437,7 @@ export function SupplierViewModal({
                                 }`}
                             >
                                 <ShoppingBag className="w-3.5 h-3.5" />
-                                <span>5. Orders ({supplierFullOrders.length + supplierQuotations.length})</span>
+                                <span>6. Orders ({supplierFullOrders.length + supplierQuotations.length})</span>
                             </button>
                         </div>
                     </div>
@@ -625,7 +712,188 @@ export function SupplierViewModal({
                             </div>
                         )}
 
-                        {/* TAB 4: Verification Documents & AI Data */}
+                        {/* TAB 4: PMBOK / ISO 10845 Master SOW Contract */}
+                        {activeTab === "contract_sow" && (() => {
+                            // Synthesize terms from contract or fallback from parsed notes
+                            const effectiveTerms: ContractTerms = (supplierContract?.contract_terms && typeof supplierContract.contract_terms === "object")
+                                ? supplierContract.contract_terms
+                                : getDefaultContractTerms();
+
+                            const contractNum = supplierContract?.contract_number || `AGR-${new Date().getFullYear()}-${String(supplier.id).padStart(4, "0")}`;
+                            const effectiveDate = supplierContract?.effective_date || new Date().toISOString().split("T")[0];
+                            const expirationDate = supplierContract?.expiration_date || "Open / 1-Year Baseline";
+                            const status = supplierContract?.status || (supplier.is_active !== false ? "Active" : "Draft");
+                            const signatories = supplierContract?.signatories || {
+                                buyer: { name: "Airship Express Procurement Officer", title: "Head of Procurement" },
+                                seller: { name: supplier.contact_person || supplier.name, title: "Authorized Representative" }
+                            };
+
+                            const handleExportPdf = async () => {
+                                await exportContractPdf({
+                                    contractNumber: contractNum,
+                                    supplierName: supplier.name,
+                                    supplierContact: supplier.contact_person,
+                                    supplierPhone: supplier.phone,
+                                    supplierEmail: supplier.email,
+                                    supplierAddress: supplier.location,
+                                    effectiveDate,
+                                    expirationDate,
+                                    terms: effectiveTerms,
+                                    signatories,
+                                });
+                            };
+
+                            const handleExportWord = async () => {
+                                await exportContractWord({
+                                    contractNumber: contractNum,
+                                    supplierName: supplier.name,
+                                    supplierContact: supplier.contact_person,
+                                    supplierPhone: supplier.phone,
+                                    supplierEmail: supplier.email,
+                                    supplierAddress: supplier.location,
+                                    effectiveDate,
+                                    expirationDate,
+                                    terms: effectiveTerms,
+                                    signatories,
+                                });
+                            };
+
+                            return (
+                                <div className="space-y-5 animate-in fade-in duration-200">
+                                    {/* Contract Status & Quick Export Header */}
+                                    <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-[#181a29] border border-slate-200/80 dark:border-white/10 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                        <div className="flex items-center gap-3.5">
+                                            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-pink-500/25">
+                                                <Scale className="w-6 h-6" />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <h4 className="font-black text-sm sm:text-base text-slate-900 dark:text-white">
+                                                        Master Procurement Agreement &amp; Statement of Work
+                                                    </h4>
+                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
+                                                        #{contractNum}
+                                                    </span>
+                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800/60">
+                                                        {status}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                                    PMBOK &amp; ISO 10845 Compliant • 20 Statutory Procurement Elements • Validity: {effectiveDate} &rarr; {expirationDate}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <button
+                                                type="button"
+                                                onClick={handleExportPdf}
+                                                className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                            >
+                                                <Download className="w-3.5 h-3.5" />
+                                                <span>PDF Contract</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={handleExportWord}
+                                                className="px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer"
+                                            >
+                                                <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                <span>Word (.doc)</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => onEdit(supplier)}
+                                                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                                            >
+                                                <Edit3 className="w-3.5 h-3.5 text-pink-600" />
+                                                <span>Edit SOW</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Signatories Card */}
+                                    <div className="p-4 rounded-2xl bg-slate-50 dark:bg-[#141624] border border-slate-200 dark:border-white/10 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#181a29] border border-slate-200 dark:border-white/10 space-y-1">
+                                            <span className="text-[10px] font-black uppercase text-pink-600 dark:text-pink-400 block">Buyer Signatory Authority</span>
+                                            <p className="font-bold text-slate-900 dark:text-white">{signatories?.buyer?.name || "Airship Express Procurement Officer"}</p>
+                                            <p className="text-[11px] text-slate-500">{signatories?.buyer?.title || "Head of Procurement & Supply Chain"}</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#181a29] border border-slate-200 dark:border-white/10 space-y-1">
+                                            <span className="text-[10px] font-black uppercase text-pink-600 dark:text-pink-400 block">Seller Signatory Authority</span>
+                                            <p className="font-bold text-slate-900 dark:text-white">{signatories?.seller?.name || supplier.contact_person || supplier.name}</p>
+                                            <p className="text-[11px] text-slate-500">{signatories?.seller?.title || "Authorized Representative"}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* The 20 Elements Grouped by Pillar */}
+                                    <div className="space-y-4">
+                                        {CONTRACT_CATEGORIES.map((category) => {
+                                            const elementsInCat = CONTRACT_ELEMENTS.filter(el => el.category === category);
+                                            const isCollapsed = !!collapsedCategories[category];
+
+                                            return (
+                                                <div
+                                                    key={category}
+                                                    className="rounded-2xl border border-slate-200/80 dark:border-white/10 bg-white dark:bg-[#181a29] overflow-hidden shadow-sm"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setCollapsedCategories(prev => ({ ...prev, [category]: !prev[category] }))}
+                                                        className="w-full px-4 py-3 bg-slate-50 dark:bg-[#151724] border-b border-slate-200/80 dark:border-white/10 flex items-center justify-between text-left hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                                                    >
+                                                        <div className="flex items-center gap-2.5">
+                                                            <span className="w-6 h-6 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 flex items-center justify-center text-xs font-black">
+                                                                {elementsInCat.length}
+                                                            </span>
+                                                            <h5 className="font-bold text-sm text-slate-900 dark:text-white">
+                                                                {category}
+                                                            </h5>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-slate-400">
+                                                            <span className="text-[11px] font-medium hidden sm:inline">
+                                                                {isCollapsed ? "Expand" : "Collapse"}
+                                                            </span>
+                                                            {isCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                                                        </div>
+                                                    </button>
+
+                                                    {!isCollapsed && (
+                                                        <div className="divide-y divide-slate-200/60 dark:divide-white/5">
+                                                            {elementsInCat.map((el) => {
+                                                                const clauseVal = effectiveTerms[el.key] || "";
+                                                                return (
+                                                                    <div key={el.key} className="p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 hover:bg-slate-50/50 dark:hover:bg-white/[0.02]">
+                                                                        <div className="lg:col-span-4">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <span className="w-5 h-5 rounded-md bg-slate-200 dark:bg-white/10 text-slate-700 dark:text-slate-300 text-[11px] font-black flex items-center justify-center shrink-0">
+                                                                                    {el.number}
+                                                                                </span>
+                                                                                <span className="font-bold text-xs text-slate-900 dark:text-white">
+                                                                                    {el.label}
+                                                                                </span>
+                                                                            </div>
+                                                                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 pl-7">
+                                                                                {el.description}
+                                                                            </p>
+                                                                        </div>
+                                                                        <div className="lg:col-span-8 p-3 rounded-xl bg-slate-50 dark:bg-[#141624] border border-slate-200/80 dark:border-white/10 text-slate-800 dark:text-slate-200 text-xs leading-relaxed whitespace-pre-line font-sans">
+                                                                            {clauseVal || <span className="italic text-slate-400">Standard commercial baseline applies.</span>}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* TAB 5: Verification Documents & AI Data */}
                         {activeTab === "docs" && (
                             <div className="space-y-5 animate-in fade-in duration-200">
                                 <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">

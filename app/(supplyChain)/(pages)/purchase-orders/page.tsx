@@ -30,7 +30,7 @@ import { processDeliveredPurchaseOrdersAction } from "./server/actions/delivery-
 import { ReceiptProcessingIndicator } from "../../components/global/ReceiptProcessingIndicator";
 import { CrudActionButton } from "../../components/ui/CrudActionButton";
 import { AppButton } from "../../components/ui/AppButton";
-import { FileText, MoreHorizontal, Receipt, Eye } from "lucide-react";
+import { FileText, MoreHorizontal, Receipt, Eye, Calendar, X } from "lucide-react";
 import type { ViewDocumentData } from "../../components/modals/DocumentViewerModal";
 import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
 import Portal from "../../components/client/Portal";
@@ -180,12 +180,14 @@ export default function PurchaseOrders() {
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
     const initialSearch = searchParams?.get('search') || "";
     const initialStatus = searchParams?.get('status') || "all";
+    const initialMonth = searchParams?.get('month') || "all";
     const [searchTerm, setSearchTerm] = useState(initialSearch);
     const debouncedSearch = useDebounce(searchTerm, 300);
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(15);
     const [totalItems, setTotalItems] = useState(0);
     const [activeStatusFilter, setActiveStatusFilter] = useState<string>(initialStatus);
+    const [selectedMonth, setSelectedMonth] = useState<string>(initialMonth);
     const [isPurchaseOrderModalOpen, setIsPurchaseOrderModalOpen] = useState(false);
     const [selectedRequestForPO, setSelectedRequestForPO] = useState<any>(null);
     const [approvedRequestsCount, setApprovedRequestsCount] = useState<number>(0);
@@ -618,6 +620,14 @@ export default function PurchaseOrders() {
                 query = query.eq('status', activeStatusFilter);
             }
 
+            if (selectedMonth !== 'all') {
+                const [y, m] = selectedMonth.split('-').map(Number);
+                const startIso = new Date(Date.UTC(y, m - 1, 1, 0, 0, 0)).toISOString();
+                const nextMonthDate = new Date(Date.UTC(m === 12 ? y + 1 : y, m === 12 ? 0 : m, 1, 0, 0, 0));
+                const endIso = nextMonthDate.toISOString();
+                query = query.gte('created_at', startIso).lt('created_at', endIso);
+            }
+
             if (debouncedSearch) {
                 query = query.or(`po_number.ilike.%${debouncedSearch}%,supplier_name.ilike.%${debouncedSearch}%`);
             }
@@ -694,7 +704,7 @@ export default function PurchaseOrders() {
                 setIsRefreshing(false);
             }
         }
-    }, [currentPage, itemsPerPage, debouncedSearch, activeStatusFilter]);
+    }, [currentPage, itemsPerPage, debouncedSearch, activeStatusFilter, selectedMonth]);
 
     // Combined fetch
     const fetchData = useCallback(async (opts?: { silent?: boolean; refreshAll?: boolean }) => {
@@ -1409,7 +1419,11 @@ export default function PurchaseOrders() {
         }
     };
     // charts
-    const datasetOrders = useMemo(() => allOrders.length > 0 ? allOrders : purchaseOrders, [allOrders, purchaseOrders]);
+    const datasetOrders = useMemo(() => {
+        const base = allOrders.length > 0 ? allOrders : purchaseOrders;
+        if (selectedMonth === 'all') return base;
+        return base.filter(o => o.created_at && o.created_at.startsWith(selectedMonth));
+    }, [allOrders, purchaseOrders, selectedMonth]);
     useEffect(() => {
         if (loading)
             return;
@@ -1591,17 +1605,70 @@ export default function PurchaseOrders() {
             }
         };
     }, [datasetOrders, loading]);
+    // Dynamic list of months based on existing POs plus the current & past 12 months
+    const monthFilterOptions = useMemo(() => {
+        const monthCounts: Record<string, number> = {};
+
+        allOrders.forEach((o) => {
+            if (o.created_at) {
+                const ym = o.created_at.substring(0, 7);
+                monthCounts[ym] = (monthCounts[ym] || 0) + 1;
+            }
+        });
+
+        const now = new Date();
+        const availableSet = new Set<string>(Object.keys(monthCounts));
+
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+            availableSet.add(`${y}-${m}`);
+        }
+
+        const sortedMonths = Array.from(availableSet).sort().reverse();
+
+        return sortedMonths.map((ym) => {
+            const [y, m] = ym.split('-').map(Number);
+            const dateObj = new Date(Date.UTC(y, m - 1, 1));
+            const label = dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+            return {
+                value: ym,
+                label,
+                count: monthCounts[ym] || 0,
+            };
+        });
+    }, [allOrders]);
+
+    const selectedMonthLabel = useMemo(() => {
+        if (selectedMonth === 'all') return 'All Months';
+        const found = monthFilterOptions.find(o => o.value === selectedMonth);
+        if (found) return found.label;
+        const [y, m] = selectedMonth.split('-').map(Number);
+        return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+    }, [selectedMonth, monthFilterOptions]);
+
+    const monthScopedOrders = useMemo(() => {
+        if (selectedMonth === 'all') return allOrders;
+        return allOrders.filter(o => o.created_at && o.created_at.startsWith(selectedMonth));
+    }, [allOrders, selectedMonth]);
+
     // saved/cache filtering
     const filteredOrders = useMemo(() => {
         const query = (debouncedSearch || '').toLowerCase().trim();
         return purchaseOrders.filter((order) => {
             const matchesStatus = activeStatusFilter === 'all' || order.status === activeStatusFilter;
             if (!matchesStatus) return false;
+            if (selectedMonth !== 'all') {
+                if (!order.created_at || !order.created_at.startsWith(selectedMonth)) {
+                    return false;
+                }
+            }
             if (!query) return true;
             return (order.po_number || '').toLowerCase().includes(query) ||
                 (order.supplier_name || '').toLowerCase().includes(query);
         });
-    }, [purchaseOrders, activeStatusFilter, debouncedSearch]);
+    }, [purchaseOrders, activeStatusFilter, debouncedSearch, selectedMonth]);
 
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
     const handlePageChange = (page: number) => {
@@ -1615,7 +1682,7 @@ export default function PurchaseOrders() {
 
     // saved/cache stats calculation in a single high-performance pass
     const { totalOrders, pendingConfirmation, inTransit, completed, totalSpend } = useMemo(() => {
-        const source = allOrders.length > 0 ? allOrders : purchaseOrders;
+        const source = selectedMonth === 'all' ? (allOrders.length > 0 ? allOrders : purchaseOrders) : monthScopedOrders;
         let pending = 0;
         let transit = 0;
         let done = 0;
@@ -1639,7 +1706,7 @@ export default function PurchaseOrders() {
             completed: done,
             totalSpend: spend,
         };
-    }, [allOrders, purchaseOrders]);
+    }, [allOrders, purchaseOrders, monthScopedOrders, selectedMonth]);
     return (<SessionGuard requiredRole={['Superadmin', 'Admin', 'Purchase Officer']}>
         <div className="p-6 space-y-6 fade-in bgCard">
             {/* header */}
@@ -1692,7 +1759,7 @@ export default function PurchaseOrders() {
 
             {/* stats */}
             {loading ? (<CardsSkeleton count={4} className="grid-cols-2 lg:grid-cols-4" />) : (<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <Cards frontIcon="fa-solid fa-file-invoice" header="Total POs" data={String(totalOrders)} arrow="fa-solid fa-arrow-up" description="All orders" backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`} tooltip="View all POs" tooltipLink="/purchase-orders" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
+                <Cards frontIcon="fa-solid fa-file-invoice" header="Total POs" data={String(totalOrders)} arrow="fa-solid fa-arrow-up" description={selectedMonth !== 'all' ? selectedMonthLabel : "All orders"} backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`} tooltip="View all POs" tooltipLink="/purchase-orders" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
                 <Cards frontIcon="fa-solid fa-clock" header="Pending" data={String(pendingConfirmation)} arrow="fa-solid fa-hourglass-half" description="Awaiting confirmation" backBg="bg-ink dark:bg-ink/90" backHeader="Pending Orders" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`} tooltip="View pending orders" tooltipLink="/purchase-orders?status=Sent" badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
@@ -1745,7 +1812,9 @@ export default function PurchaseOrders() {
                                     </div>
                                 </div>
                             </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Distribution by order status</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                                {selectedMonth !== 'all' ? `Distribution for ${selectedMonthLabel}` : 'Distribution by order status'}
+                            </p>
                         </div>
                         <div className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] text-pink-500 dark:text-pink-400 flex items-center justify-center">
                             <i className="fas fa-chart-pie text-xs" />
@@ -1852,16 +1921,59 @@ export default function PurchaseOrders() {
                             <input className="w-full bg-[#ebf0f7] dark:bg-[#14151c] border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] rounded-2xl px-3.5 py-2 pl-9 pr-8 text-xs text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:border-pink-500 transition-all" placeholder="Search by PO # or supplier..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                         </div>
 
+                        {/* month filter */}
+                        <div className="flex items-center gap-2 bg-[#ebf0f7] dark:bg-[#14151c] px-3 py-1.5 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] shrink-0">
+                            <Calendar className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                            <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden sm:inline">
+                                Month:
+                            </span>
+                            <select
+                                value={selectedMonth}
+                                onChange={(e) => {
+                                    setSelectedMonth(e.target.value);
+                                    setCurrentPage(1);
+                                }}
+                                className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-100 focus:outline-none cursor-pointer pr-1"
+                                aria-label="Filter purchase orders by month"
+                            >
+                                <option value="all" className="bg-white dark:bg-[#191a24] text-slate-900 dark:text-slate-100 font-semibold">
+                                    All Months ({allOrders.length})
+                                </option>
+                                {monthFilterOptions.map((opt) => (
+                                    <option
+                                        key={opt.value}
+                                        value={opt.value}
+                                        className="bg-white dark:bg-[#191a24] text-slate-900 dark:text-slate-100 font-semibold"
+                                    >
+                                        {opt.label} {opt.count > 0 ? `(${opt.count})` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                            {selectedMonth !== 'all' && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setSelectedMonth('all');
+                                        setCurrentPage(1);
+                                    }}
+                                    className="p-1 -mr-1 rounded-lg hover:bg-slate-200/60 dark:hover:bg-slate-800 text-slate-400 hover:text-rose-500 transition-colors cursor-pointer"
+                                    title="Reset month filter"
+                                >
+                                    <X className="w-3 h-3" />
+                                </button>
+                            )}
+                        </div>
+
                         {/* status filter tabs */}
                         <div className="w-full xl:w-auto max-w-full overflow-x-auto pb-1 xl:pb-0 scroll-smooth touch-pan-x">
                             <div className="inline-flex items-center gap-1 bg-[#ebf0f7] dark:bg-[#14151c] p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] min-w-max">
                                 {[
                                     { key: "all", label: "All", count: totalOrders },
-                                    { key: "Draft", label: "Draft", count: allOrders.filter(o => o.status === 'Draft').length },
-                                    { key: "Sent", label: "Sent", count: allOrders.filter(o => o.status === 'Sent').length },
-                                    { key: "Confirmed", label: "Confirmed", count: allOrders.filter(o => o.status === 'Confirmed').length },
-                                    { key: "Delivered", label: "Delivered", count: allOrders.filter(o => o.status === 'Delivered').length },
-                                    { key: "Cancelled", label: "Cancelled", count: allOrders.filter(o => o.status === 'Cancelled').length },
+                                    { key: "Draft", label: "Draft", count: monthScopedOrders.filter(o => o.status === 'Draft').length },
+                                    { key: "Sent", label: "Sent", count: monthScopedOrders.filter(o => o.status === 'Sent').length },
+                                    { key: "Confirmed", label: "Confirmed", count: monthScopedOrders.filter(o => o.status === 'Confirmed').length },
+                                    { key: "Delivered", label: "Delivered", count: monthScopedOrders.filter(o => o.status === 'Delivered').length },
+                                    { key: "Cancelled", label: "Cancelled", count: monthScopedOrders.filter(o => o.status === 'Cancelled').length },
                                 ].map((tab) => {
                                     const isActive = activeStatusFilter === tab.key;
                                     return (<button key={tab.key} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 active:scale-95 ${isActive
@@ -1984,22 +2096,30 @@ export default function PurchaseOrders() {
                                     {filteredOrders.length === 0 ? (<tr>
                                         <td colSpan={10} className="block w-full md:table-cell py-12">
                                             <EmptyState
-                                                title={activeStatusFilter !== 'all' || debouncedSearch ? "No Purchase Orders Found" : "No Purchase Orders Yet"}
-                                                description={activeStatusFilter !== 'all'
-                                                    ? `There are no orders with status "${activeStatusFilter}".`
-                                                    : debouncedSearch
-                                                        ? "Try adjusting your search terms or filter criteria."
-                                                        : "Create purchase orders to start managing supplier procurements and deliveries."}
+                                                title={activeStatusFilter !== 'all' || debouncedSearch || selectedMonth !== 'all' ? "No Purchase Orders Found" : "No Purchase Orders Yet"}
+                                                description={
+                                                    selectedMonth !== 'all' && activeStatusFilter !== 'all'
+                                                        ? `There are no purchase orders with status "${activeStatusFilter}" in ${selectedMonthLabel}.`
+                                                        : selectedMonth !== 'all'
+                                                            ? `There are no purchase orders created in ${selectedMonthLabel}.`
+                                                            : activeStatusFilter !== 'all'
+                                                                ? `There are no orders with status "${activeStatusFilter}".`
+                                                                : debouncedSearch
+                                                                    ? "Try adjusting your search terms or filter criteria."
+                                                                    : "Create purchase orders to start managing supplier procurements and deliveries."
+                                                }
                                                 icon="fas fa-file-invoice"
-                                                actionText={activeStatusFilter === 'all' && !debouncedSearch ? "Create Purchase Order" : undefined}
-                                                onAction={activeStatusFilter === 'all' && !debouncedSearch ? () => {
+                                                actionText={activeStatusFilter === 'all' && !debouncedSearch && selectedMonth === 'all' ? "Create Purchase Order" : undefined}
+                                                onAction={activeStatusFilter === 'all' && !debouncedSearch && selectedMonth === 'all' ? () => {
                                                     setSelectedRequestForPO(null);
                                                     setIsPurchaseOrderModalOpen(true);
                                                 } : undefined}
-                                                isFilterActive={activeStatusFilter !== 'all' || !!debouncedSearch}
+                                                isFilterActive={activeStatusFilter !== 'all' || !!debouncedSearch || selectedMonth !== 'all'}
                                                 onClearSearch={() => {
                                                     setSearchTerm('');
                                                     setActiveStatusFilter('all');
+                                                    setSelectedMonth('all');
+                                                    setCurrentPage(1);
                                                 }}
                                             />
                                         </td>

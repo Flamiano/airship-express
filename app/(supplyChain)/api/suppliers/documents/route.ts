@@ -12,6 +12,11 @@ const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
 });
 
+function isValidUuid(id: string | null | undefined): boolean {
+    if (!id) return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id.trim());
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -65,6 +70,48 @@ export async function GET(request: Request) {
 
         const supplierMap = new Map((suppliersList || []).map((s) => [Number(s.id), s]));
 
+        // Fetch supplier contracts (PMBOK / ISO 10845 Master SOW Agreements)
+        let contractQuery = supabaseAdmin
+            .from("supplier_contracts")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+        if (resolvedSupId) {
+            contractQuery = contractQuery.eq("supplier_id", resolvedSupId);
+        }
+
+        const { data: dbContracts } = await contractQuery;
+
+        const formattedContracts = (dbContracts || []).map((c) => {
+            const matchedSup = supplierMap.get(Number(c.supplier_id));
+            return {
+                id: String(c.id),
+                isContract: true,
+                contractNumber: c.contract_number,
+                contractTitle: c.contract_title || "Master Procurement Agreement & SOW",
+                contractTerms: c.contract_terms,
+                signatories: c.signatories,
+                status: c.status || "Active",
+                effectiveDate: c.effective_date,
+                expirationDate: c.expiration_date,
+                supplierId: c.supplier_id,
+                supplierName: c.supplier_name || matchedSup?.name || `Supplier #${c.supplier_id}`,
+                supplierCategory: matchedSup?.category || "General Supplies",
+                supplierContact: matchedSup?.contact_person || "",
+                supplierEmail: matchedSup?.email || "",
+                supplierPhone: matchedSup?.phone || "",
+                fileName: `${c.contract_number}_Master_Contract_SOW.pdf`,
+                fileType: "application/pdf",
+                fileSize: 153600,
+                documentType: "Master Procurement Agreement & SOW",
+                storagePath: c.document_url || null,
+                fileUrl: c.document_url || null,
+                publicUrl: c.document_url || null,
+                createdAt: c.created_at,
+                uploadedBy: "Procurement Division",
+            };
+        });
+
         const formattedDocs = (dbDocs || []).map((doc) => {
             let publicUrl = doc.file_url || "";
             if (!publicUrl && doc.storage_path) {
@@ -98,14 +145,17 @@ export async function GET(request: Request) {
                 extractedData: doc.extracted_data || null,
                 summary: doc.extracted_data?.document_summary || undefined,
                 createdAt: doc.created_at,
-                uploadedBy: doc.uploaded_by || null,
+                uploadedBy: doc.role || doc.uploaded_by || null,
             };
         });
 
+        const allDocuments = [...formattedContracts, ...formattedDocs];
+
         return NextResponse.json({
             success: true,
-            documents: formattedDocs,
-            count: formattedDocs.length,
+            documents: allDocuments,
+            count: allDocuments.length,
+            contractsCount: formattedContracts.length,
             supplierId: resolvedSupId,
         });
     } catch (error: any) {
@@ -123,7 +173,9 @@ export async function POST(request: Request) {
         const supplierId = formData.get("supplier_id") ? Number(formData.get("supplier_id")) : null;
         const documentType = (formData.get("document_type") as string) || "Contract";
         const file = formData.get("file") as File | null;
-        const uploadedBy = (formData.get("uploaded_by") as string) || "Supply Chain Admin";
+        const rawUploadedBy = (formData.get("uploaded_by") as string | null)?.trim() || "";
+        const uploaderUuid = isValidUuid(rawUploadedBy) ? rawUploadedBy : null;
+        const roleText = !uploaderUuid && rawUploadedBy ? rawUploadedBy : "Supply Chain Officer";
 
         if (!supplierId) {
             return NextResponse.json(
@@ -176,7 +228,9 @@ export async function POST(request: Request) {
                 file_name: file.name,
                 storage_path: storagePath,
                 file_url: fileUrl,
-                uploaded_by: uploadedBy,
+                uploaded_by: uploaderUuid,
+                role: roleText,
+                notes: `Uploaded by ${roleText}`,
                 extracted_data: {
                     file_size: file.size,
                     file_type: file.type,
@@ -207,12 +261,27 @@ export async function DELETE(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
         const docId = searchParams.get("id");
+        const isContract = searchParams.get("is_contract") === "true";
 
         if (!docId) {
             return NextResponse.json(
                 { success: false, error: "Document ID is required." },
                 { status: 400 }
             );
+        }
+
+        if (isContract) {
+            const { error: contractDeleteErr } = await supabaseAdmin
+                .from("supplier_contracts")
+                .delete()
+                .eq("id", docId);
+
+            if (contractDeleteErr) throw contractDeleteErr;
+
+            return NextResponse.json({
+                success: true,
+                message: "Contract deleted successfully.",
+            });
         }
 
         // Fetch document to obtain storage_path

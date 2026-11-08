@@ -46,10 +46,23 @@ import {
     Award,
     Tag,
     Maximize2,
+    Minimize2,
     Plus,
+    FileSpreadsheet,
 } from "lucide-react";
 import type { PotentialSupplierItem } from "../tables/PotentialSuppliersTab";
 import { parseQuotationNotes } from "../../utils/termsParser";
+import { ContractSowTab } from "../contract/ContractSowTab";
+import {
+    ContractTerms,
+    ContractSignatories,
+    buildContractFromQuotation,
+    getDefaultContractTerms,
+} from "../../utils/contractElements";
+import {
+    exportContractPdf,
+    exportContractWord,
+} from "../../utils/contractExport";
 
 export const PRODUCT_UNIT_OPTIONS = [
     "piece",
@@ -192,7 +205,24 @@ export function SupplierReviewModal({
     const [isDragOver, setIsDragOver] = useState<boolean>(false);
     const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
     const [showConfirmActivate, setShowConfirmActivate] = useState<boolean>(false);
-    const [activeSection, setActiveSection] = useState<"general" | "terms" | "other_products" | "docs" | "review">("general");
+    const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+    const [activeSection, setActiveSection] = useState<"general" | "terms" | "other_products" | "contract_sow" | "docs" | "review">("general");
+    const [contractTerms, setContractTerms] = useState<ContractTerms>(getDefaultContractTerms);
+    const [contractNumber, setContractNumber] = useState<string>("");
+    const [effectiveDate, setEffectiveDate] = useState<string>(new Date().toISOString().split("T")[0]);
+    const [expirationDate, setExpirationDate] = useState<string>("");
+    const [signatories, setSignatories] = useState<ContractSignatories>({
+        buyer: {
+            name: "Airship Express Procurement Officer",
+            title: "Head of Procurement",
+            signed_at: null,
+        },
+        seller: {
+            name: "",
+            title: "Authorized Representative",
+            signed_at: null,
+        },
+    });
     const [isCustomPaymentMethod, setIsCustomPaymentMethod] = useState<boolean>(false);
     const [isCustomPaymentTerms, setIsCustomPaymentTerms] = useState<boolean>(false);
     const [previewDoc, setPreviewDoc] = useState<StagedDocument | null>(null);
@@ -504,6 +534,62 @@ export function SupplierReviewModal({
             });
 
             setOtherProducts(initialProductsList);
+
+            // 3. Hydrate or auto-build PMBOK / ISO 10845 Contract & SOW terms (20 Elements)
+            try {
+                let existingContract: any = null;
+                if (resolvedSupplierId) {
+                    const { data: contractRow } = await supabase
+                        .from("supplier_contracts")
+                        .select("*")
+                        .eq("supplier_id", resolvedSupplierId)
+                        .order("created_at", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+                    existingContract = contractRow;
+                }
+
+                if (existingContract && existingContract.contract_terms) {
+                    setContractTerms(existingContract.contract_terms as ContractTerms);
+                    setContractNumber(existingContract.contract_number || `AGR-${new Date().getFullYear()}-${String(resolvedSupplierId).padStart(4, "0")}`);
+                    if (existingContract.effective_date) setEffectiveDate(existingContract.effective_date);
+                    if (existingContract.expiration_date) setExpirationDate(existingContract.expiration_date);
+                    if (existingContract.signatories) setSignatories(existingContract.signatories as ContractSignatories);
+                } else {
+                    const nextFormData = {
+                        name: quote?.supplier_name || supplier.name || "",
+                        category: quote?.category || supplier.category || "General Supplies",
+                        contact_person: quote?.contact_person || supplier.contact_person || "",
+                        phone: quote?.contact_phone || supplier.phone || "",
+                        email: quote?.contact_email || supplier.email || "",
+                        location: discoveredLocation,
+                        products: discoveredProducts,
+                        payment_method: initialPaymentMethod,
+                        payment_terms: initialPaymentTerms,
+                        delivery_terms: parsedDeliveryTerms || "FOB Destination / Direct Delivery",
+                        warranty: parsedWarranty || "1 Year Standard Warranty",
+                        lead_time: parsedLeadTime || "3-5 Business Days",
+                    };
+                    const autoBuiltTerms = buildContractFromQuotation(supplier, quote, nextFormData, initialProductsList);
+                    setContractTerms(autoBuiltTerms);
+                    const generatedContractNum = `AGR-${new Date().getFullYear()}-${String(resolvedSupplierId || Math.floor(1000 + Math.random() * 9000)).padStart(4, "0")}`;
+                    setContractNumber(generatedContractNum);
+                    setSignatories({
+                        buyer: {
+                            name: "Airship Express Procurement Officer",
+                            title: "Head of Procurement",
+                            signed_at: null,
+                        },
+                        seller: {
+                            name: nextFormData.contact_person || "Authorized Representative",
+                            title: "Authorized Representative",
+                            signed_at: null,
+                        },
+                    });
+                }
+            } catch (contractErr) {
+                console.warn("Notice loading contract terms:", contractErr);
+            }
 
             setActiveSection("general");
             setIsLoadingSubmittedQuote(false);
@@ -857,7 +943,14 @@ export function SupplierReviewModal({
                 supplierData: {
                     ...formData,
                     other_products_offer: otherProducts,
+                    quotation_id: submittedProposal?.id || supplier.submittedQuote?.id || null,
                 },
+                contractNumber,
+                contractTerms,
+                effectiveDate,
+                expirationDate,
+                signatories,
+                quotationId: submittedProposal?.id || supplier.submittedQuote?.id || null,
                 documents: stagedDocs.filter(d => !d.isExisting && !!d.fileBase64).map(d => ({
                     file_base64: d.fileBase64,
                     file_name: d.fileName,
@@ -895,48 +988,85 @@ export function SupplierReviewModal({
     return (
         <Portal>
             <div
-                className="fixed inset-0 bg-slate-950/80 dark:bg-black/90 backdrop-blur-md z-[130] flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+                className={
+                    isFullscreen
+                        ? "fixed inset-0 bg-slate-950/95 dark:bg-black/95 z-[130] flex flex-col p-0 overflow-hidden"
+                        : "fixed inset-0 bg-slate-950/80 dark:bg-black/90 backdrop-blur-md z-[130] flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-y-auto animate-in fade-in duration-200"
+                }
                 onClick={onClose}
             >
                 <div
-                    className="relative w-full max-w-4xl bg-[#f0f4fa] dark:bg-[#151724] rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-none overflow-hidden my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
+                    className={
+                        isFullscreen
+                            ? "fixed inset-0 w-full h-full max-w-none max-h-none rounded-none border-0 shadow-none overflow-hidden flex flex-col z-[135] bg-[#f0f4fa] dark:bg-[#151724]"
+                            : "relative w-full max-w-5xl xl:max-w-6xl 2xl:max-w-7xl max-h-[94vh] bg-[#f0f4fa] dark:bg-[#151724] rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-2xl overflow-hidden my-auto flex flex-col animate-in zoom-in-95 duration-200"
+                    }
                     onClick={e => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
-                        <div className="flex items-center gap-3.5">
-                            <div className="w-11 h-11 rounded-2xl bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)]">
+                    <div className="p-4 sm:px-6 sm:py-4 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#131522] shrink-0 gap-3">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)]">
                                 <ShieldCheck className="w-6 h-6" />
                             </div>
-                            <div>
-                                <div className="flex items-center gap-2">
-                                    <h3 className="font-black text-lg text-slate-900 dark:text-white tracking-tight">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h3 className="font-black text-lg text-slate-900 dark:text-white tracking-tight truncate">
                                         Supplier Review & Activation
                                     </h3>
                                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
                                         Review Stage
                                     </span>
+                                    {(formData.name || supplier.name) && (
+                                        <span className="px-2.5 py-0.5 rounded-lg text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-slate-200/80 dark:bg-white/10 truncate max-w-[200px] sm:max-w-[320px]">
+                                            {formData.name || supplier.name}
+                                        </span>
+                                    )}
                                 </div>
-                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Review discovered details, verify documents with AI, and activate this vendor.
+                                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+                                    Review discovered details, verify documents with AI, customize SOW contract, and activate vendor.
                                 </p>
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#151724] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] hover:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.3)] cursor-pointer transition-all active:scale-95"
-                            aria-label="Close modal"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+                        {/* Right Header Action Buttons: Fullscreen & Close */}
+                        <div className="flex items-center gap-2 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsFullscreen(prev => !prev)}
+                                className="h-9 px-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#151724] text-slate-600 hover:text-pink-600 dark:text-slate-300 dark:hover:text-pink-400 flex items-center gap-1.5 border border-white/80 dark:border-white/10 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] hover:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.3)] cursor-pointer transition-all active:scale-95 text-xs font-bold"
+                                title={isFullscreen ? "Exit Fullscreen" : "Full Screen Mode"}
+                                aria-label={isFullscreen ? "Exit Fullscreen" : "Full Screen Mode"}
+                            >
+                                {isFullscreen ? (
+                                    <>
+                                        <Minimize2 className="w-4 h-4 text-pink-600" />
+                                        <span className="hidden sm:inline">Exit Fullscreen</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Maximize2 className="w-4 h-4 text-pink-600" />
+                                        <span className="hidden sm:inline">Fullscreen</span>
+                                    </>
+                                )}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#151724] text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] hover:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.3)] cursor-pointer transition-all active:scale-95"
+                                aria-label="Close modal"
+                                title="Close modal"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Discovery Origin & Nav Bar */}
-                    <div className="px-6 py-3 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2 shrink-0">
-                        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300">
-                            <Store className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                    <div className="px-4 sm:px-6 py-2.5 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2.5 shrink-0">
+                        <div className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 flex-wrap">
+                            <Store className="w-4 h-4 text-pink-600 dark:text-pink-400 shrink-0" />
                             <span>Source: <strong className="text-slate-800 dark:text-slate-100">{supplier.source || "Supplier Discovery"}</strong></span>
                             <span className="text-slate-400">•</span>
                             <span>Distance: <strong className="text-slate-800 dark:text-slate-100">{supplier.distanceKm.toFixed(1)} km</strong></span>
@@ -951,7 +1081,7 @@ export function SupplierReviewModal({
                         </div>
 
                         {/* Navigation Tabs */}
-                        <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-[#e2e8f2] dark:bg-[#111320] border border-white/60 dark:border-white/[0.04] shadow-[inset_2px_2px_5px_rgba(163,177,198,0.4),_inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)]">
+                        <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-[#e2e8f2] dark:bg-[#111320] border border-white/60 dark:border-white/[0.04] shadow-[inset_2px_2px_5px_rgba(163,177,198,0.4),_inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] overflow-x-auto max-w-full">
                             <button
                                 type="button"
                                 onClick={() => setActiveSection("general")}
@@ -995,6 +1125,23 @@ export function SupplierReviewModal({
                             </button>
                             <button
                                 type="button"
+                                onClick={() => setActiveSection("contract_sow")}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    activeSection === "contract_sow"
+                                        ? "bg-pink-600 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.6),_2px_2px_5px_rgba(219,39,119,0.4)]"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                <Scale className="w-3.5 h-3.5" />
+                                <span>4. Contract & SOW</span>
+                                <span className={`px-1.5 py-0.2 rounded-full text-[9px] flex items-center justify-center font-black ${
+                                    activeSection === "contract_sow" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
+                                }`}>
+                                    20
+                                </span>
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => setActiveSection("docs")}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
                                     activeSection === "docs"
@@ -1002,7 +1149,7 @@ export function SupplierReviewModal({
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                <span>4. Docs & AI</span>
+                                <span>5. Docs & AI</span>
                                 {stagedDocs.length > 0 && (
                                     <span className={`w-4 h-4 rounded-full text-[9px] flex items-center justify-center font-black ${
                                         activeSection === "docs" ? "bg-white text-pink-700" : "bg-pink-600 text-white"
@@ -1021,13 +1168,13 @@ export function SupplierReviewModal({
                                 }`}
                             >
                                 <ClipboardCheck className="w-3.5 h-3.5" />
-                                <span>5. Review & Summary</span>
+                                <span>6. Review & Summary</span>
                             </button>
                         </div>
                     </div>
 
                     {/* Scrollable Modal Content */}
-                    <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+                    <div className="p-5 sm:p-7 lg:p-8 overflow-y-auto space-y-6 flex-1 text-xs">
                         {/* TAB 1: General & Contact Information */}
                         {activeSection === "general" && (
                             <div className="space-y-5 animate-in fade-in duration-200">
@@ -1641,6 +1788,45 @@ export function SupplierReviewModal({
                                     </button>
                                     <button
                                         type="button"
+                                        onClick={() => setActiveSection("contract_sow")}
+                                        className="px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-[-2px_-2px_6px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_4px_rgba(0,0,0,0.3)] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+                                    >
+                                        <span>Next: Contract & SOW (20 Elements) &rarr;</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB 4: Contract & SOW Table (20 PMBOK / ISO 10845 Elements) */}
+                        {activeSection === "contract_sow" && (
+                            <div className="space-y-5 animate-in fade-in duration-200">
+                                <ContractSowTab
+                                    supplier={supplier}
+                                    quote={submittedProposal || supplier.submittedQuote}
+                                    formData={formData}
+                                    otherProducts={otherProducts}
+                                    contractTerms={contractTerms}
+                                    setContractTerms={setContractTerms}
+                                    contractNumber={contractNumber}
+                                    setContractNumber={setContractNumber}
+                                    effectiveDate={effectiveDate}
+                                    setEffectiveDate={setEffectiveDate}
+                                    expirationDate={expirationDate}
+                                    setExpirationDate={setExpirationDate}
+                                    signatories={signatories}
+                                    setSignatories={setSignatories}
+                                />
+
+                                <div className="flex items-center justify-between pt-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveSection("other_products")}
+                                        className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/40 dark:hover:bg-white/5 transition-all cursor-pointer"
+                                    >
+                                        &larr; Back to Products to Supply ({otherProducts.length})
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setActiveSection("docs")}
                                         className="px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white font-bold text-xs shadow-[-2px_-2px_6px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_4px_rgba(0,0,0,0.3)] active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
                                     >
@@ -1650,7 +1836,7 @@ export function SupplierReviewModal({
                             </div>
                         )}
 
-                        {/* TAB 4: Optional Document Upload & AI Extraction */}
+                        {/* TAB 5: Optional Document Upload & AI Extraction */}
                         {activeSection === "docs" && (
                             <div className="space-y-5 animate-in fade-in duration-200">
                                 <div className="p-4 rounded-2xl bg-pink-500/10 border border-pink-500/20 shadow-[inset_1px_1px_3px_rgba(236,72,153,0.15)] text-pink-900 dark:text-pink-200 flex items-start gap-2.5">
@@ -2308,12 +2494,104 @@ export function SupplierReviewModal({
                                     )}
                                 </div>
 
-                                {/* Section 4 Review: Supporting Documents */}
+                                {/* Section 4 Review: Master Procurement Contract & Statement of Work (PMBOK / ISO 10845) */}
+                                <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-slate-300/80 dark:border-white/10 space-y-4">
+                                    <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-2.5 flex-wrap gap-2">
+                                        <div className="flex items-center gap-2">
+                                            <Scale className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+                                            <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                                                4. Master Procurement Agreement & SOW (20 Elements)
+                                            </h4>
+                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60">
+                                                #{contractNumber || "AGR-2026-0001"}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await exportContractPdf({
+                                                        contractNumber: contractNumber || "AGR-2026-0001",
+                                                        supplierName: formData.name || supplier?.name || "Supplier",
+                                                        supplierContact: formData.contact_person || supplier?.contact_person,
+                                                        supplierPhone: formData.phone || supplier?.phone,
+                                                        supplierEmail: formData.email || supplier?.email,
+                                                        supplierAddress: formData.location || supplier?.location,
+                                                        effectiveDate,
+                                                        expirationDate,
+                                                        terms: contractTerms,
+                                                        signatories,
+                                                    });
+                                                }}
+                                                className="px-2.5 py-1 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                                            >
+                                                <Download className="w-3 h-3" />
+                                                <span>PDF</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await exportContractWord({
+                                                        contractNumber: contractNumber || "AGR-2026-0001",
+                                                        supplierName: formData.name || supplier?.name || "Supplier",
+                                                        supplierContact: formData.contact_person || supplier?.contact_person,
+                                                        supplierPhone: formData.phone || supplier?.phone,
+                                                        supplierEmail: formData.email || supplier?.email,
+                                                        supplierAddress: formData.location || supplier?.location,
+                                                        effectiveDate,
+                                                        expirationDate,
+                                                        terms: contractTerms,
+                                                        signatories,
+                                                    });
+                                                }}
+                                                className="px-2.5 py-1 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold flex items-center gap-1 shadow-sm transition-all cursor-pointer"
+                                            >
+                                                <FileSpreadsheet className="w-3 h-3" />
+                                                <span>Word (.doc)</span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveSection("contract_sow")}
+                                                className="px-2.5 py-1 rounded-xl bg-white dark:bg-[#141624] text-slate-600 dark:text-slate-400 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-300/70 dark:border-white/10 text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                            >
+                                                <Edit3 className="w-3 h-3" />
+                                                <span>Edit Clauses</span>
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 space-y-1">
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">PMBOK / ISO Scope</span>
+                                            <p className="font-bold text-slate-900 dark:text-white flex items-center gap-1">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                <span>20 / 20 Procurement Elements</span>
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400">All statutory clauses structured and auto-filled</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 space-y-1">
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Contract Term & Validity</span>
+                                            <p className="font-bold text-slate-900 dark:text-white">
+                                                {effectiveDate} &rarr; {expirationDate || "Open / 1-Year Baseline"}
+                                            </p>
+                                            <p className="text-[10px] text-pink-600 dark:text-pink-400 font-semibold">Active upon activation</p>
+                                        </div>
+                                        <div className="p-3 rounded-xl bg-white dark:bg-[#10121b] border border-slate-300/80 dark:border-white/10 space-y-1">
+                                            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Signatories</span>
+                                            <p className="font-bold text-slate-900 dark:text-white truncate">
+                                                Buyer: Airship Express · Seller: {signatories.seller.name || formData.contact_person || "Authorized Rep"}
+                                            </p>
+                                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">Ready for legal execution</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Section 5 Review: Supporting Documents */}
                                 <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-slate-300/80 dark:border-white/10 space-y-4">
                                     <div className="flex items-center justify-between border-b border-slate-300/70 dark:border-white/10 pb-2.5">
                                         <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                             <FileText className="w-4 h-4 text-pink-600 dark:text-pink-400" />
-                                            <span>4. Attached Verification Documents ({stagedDocs.length})</span>
+                                            <span>5. Attached Verification Documents ({stagedDocs.length})</span>
                                         </h4>
                                         <button
                                             type="button"
@@ -2517,17 +2795,49 @@ export function SupplierReviewModal({
                         )}
                     </div>
 
+                    {/* Visual Progress Bar */}
+                    {(() => {
+                        const stepNumber = activeSection === "general" ? 1 : activeSection === "terms" ? 2 : activeSection === "other_products" ? 3 : activeSection === "contract_sow" ? 4 : activeSection === "docs" ? 5 : 6;
+                        const stepPercent = Math.round((stepNumber / 6) * 100);
+                        return (
+                            <div className="w-full bg-slate-200 dark:bg-white/5 h-1 shrink-0 overflow-hidden">
+                                <div
+                                    className="h-full bg-gradient-to-r from-pink-500 via-rose-500 to-emerald-500 transition-all duration-300"
+                                    style={{ width: `${stepPercent}%` }}
+                                />
+                            </div>
+                        );
+                    })()}
+
                     {/* Footer Actions */}
-                    <div className="p-5 sm:px-6 border-t border-slate-300/80 dark:border-white/10 flex items-center justify-between flex-wrap gap-3 bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
-                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                            <ShieldCheck className="w-4 h-4 text-emerald-500" />
-                            <span>
+                    <div className="p-4 sm:px-6 border-t border-slate-300/80 dark:border-white/10 flex items-center justify-between flex-wrap gap-3 bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
+                        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                            {(() => {
+                                const stepNumber = activeSection === "general" ? 1 : activeSection === "terms" ? 2 : activeSection === "other_products" ? 3 : activeSection === "contract_sow" ? 4 : activeSection === "docs" ? 5 : 6;
+                                return (
+                                    <div className="w-8 h-8 rounded-xl bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 flex items-center justify-center font-black text-xs border border-pink-200 dark:border-pink-800/60 shrink-0 shadow-sm">
+                                        {stepNumber}/6
+                                    </div>
+                                );
+                            })()}
+                            <div>
                                 {activeSection === "review" ? (
-                                    <>Ready to activate as <strong className="text-slate-800 dark:text-slate-200">{formData.name || supplier.name}</strong></>
+                                    <span className="font-bold text-slate-800 dark:text-slate-100">
+                                        Step 6: Ready to activate <strong className="text-pink-600 dark:text-pink-400">{formData.name || supplier.name}</strong>
+                                    </span>
                                 ) : (
-                                    <>Step {activeSection === "general" ? "1/5" : activeSection === "terms" ? "2/5" : activeSection === "other_products" ? "3/5" : activeSection === "docs" ? "4/5" : "5/5"} • <span className="text-slate-400">Navigate to Tab 5 to Approve & Activate</span></>
+                                    <div className="space-y-0.5">
+                                        <div className="font-bold text-slate-800 dark:text-slate-200">
+                                            {activeSection === "general" && "Step 1 of 6: General Business & Contact Info"}
+                                            {activeSection === "terms" && "Step 2 of 6: Commercial Terms & Payment Parameters"}
+                                            {activeSection === "other_products" && `Step 3 of 6: Products & Catalog Pricing (${otherProducts.length} items)`}
+                                            {activeSection === "contract_sow" && "Step 4 of 6: PMBOK / ISO 10845 Master SOW Contract (20 Elements)"}
+                                            {activeSection === "docs" && `Step 5 of 6: Supporting Documents & AI Verification (${stagedDocs.length} files)`}
+                                        </div>
+                                        <p className="text-[11px] text-slate-400">Navigate through tabs or click Next &rarr; to advance</p>
+                                    </div>
                                 )}
-                            </span>
+                            </div>
                         </div>
 
                         <div className="flex items-center gap-2.5">
@@ -2541,7 +2851,7 @@ export function SupplierReviewModal({
                                 <span>Cancel</span>
                             </AppButton>
 
-                            {/* Enable Approve & Activate Supplier ONLY in Tab 5 */}
+                            {/* Enable Approve & Activate Supplier ONLY in Tab 6 */}
                             {activeSection === "review" ? (
                                 <AppButton
                                     type="button"
@@ -2572,7 +2882,8 @@ export function SupplierReviewModal({
                                     onClick={() => {
                                         if (activeSection === "general") setActiveSection("terms");
                                         else if (activeSection === "terms") setActiveSection("other_products");
-                                        else if (activeSection === "other_products") setActiveSection("docs");
+                                        else if (activeSection === "other_products") setActiveSection("contract_sow");
+                                        else if (activeSection === "contract_sow") setActiveSection("docs");
                                         else if (activeSection === "docs") setActiveSection("review");
                                     }}
                                     className="bg-pink-600 hover:bg-pink-500 text-white border-0 font-bold cursor-pointer"
@@ -2580,7 +2891,8 @@ export function SupplierReviewModal({
                                     <span>
                                         {activeSection === "general" && "Next: Commercial Terms \u2192"}
                                         {activeSection === "terms" && `Next: Products to Supply (${otherProducts.length}) \u2192`}
-                                        {activeSection === "other_products" && "Next: Verification Docs \u2192"}
+                                        {activeSection === "other_products" && "Next: Contract & SOW (20 Elements) \u2192"}
+                                        {activeSection === "contract_sow" && "Next: Verification Docs \u2192"}
                                         {activeSection === "docs" && "Next: Final Review \u2192"}
                                     </span>
                                 </AppButton>
@@ -2618,6 +2930,10 @@ export function SupplierReviewModal({
                                 <div className="flex items-center justify-between">
                                     <span className="text-slate-500 dark:text-slate-400">Category:</span>
                                     <span className="font-bold text-slate-800 dark:text-slate-200">{formData.category || "General Supplies"}</span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-slate-500 dark:text-slate-400">Master Contract & SOW:</span>
+                                    <span className="font-bold text-pink-600 dark:text-pink-400">#{contractNumber || "AGR-2026-0001"} (20 Elements Bound)</span>
                                 </div>
                                 <div className="flex items-center justify-between">
                                     <span className="text-slate-500 dark:text-slate-400">Payment Terms:</span>

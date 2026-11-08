@@ -20,10 +20,19 @@ import {
     ChevronLeft,
     ChevronRight,
     Package,
-    AlertTriangle
+    AlertTriangle,
+    Copy,
+    Share2,
+    Check
 } from "lucide-react";
 import { Supplier, StockShortageItem } from "../types/index";
 import { FindSupplierModal } from "../../inventory/components/modals/FindSupplierModal";
+import { MarketplaceCopyModal } from "./MarketplaceCopyModal";
+import { 
+    formatFacebookMarketplacePost, 
+    formatBatchSourcingList, 
+    copyTextToClipboard 
+} from "../utils/marketplacePostFormatter";
 import Cards from "../../../components/global/Cards";
 import { supabase } from "../../../lib/services/client/supabase";
 import { toast } from "sonner";
@@ -62,6 +71,13 @@ export function StageFindPotentialSuppliers({
     const [isCreatingDraftPO, setIsCreatingDraftPO] = useState(false);
     const [currentPage, setCurrentPage] = useState<number>(1);
     const itemsPerPage = 6;
+
+    // Marketplace copying state
+    const [isCopyModalOpen, setIsCopyModalOpen] = useState(false);
+    const [copyTargetItem, setCopyTargetItem] = useState<StockShortageItem | null>(null);
+    const [copyTargetQty, setCopyTargetQty] = useState<number>(1);
+    const [copiedItemKey, setCopiedItemKey] = useState<string | null>(null);
+    const [isBatchCopying, setIsBatchCopying] = useState<boolean>(false);
 
     // Synchronize active sourcing focus
     useEffect(() => {
@@ -104,6 +120,61 @@ export function StageFindPotentialSuppliers({
             ...prev,
             [itemKey]: validQty,
         }));
+    };
+
+    // Open Marketplace Post Customizer Modal
+    const handleOpenCopyModal = (item: StockShortageItem, qty?: number) => {
+        const itemKey = String(item.id || item.item_code);
+        const effectiveQty = qty !== undefined ? qty : (editedQuantities[itemKey] || item.remaining_deficit || item.deficit || 1);
+        setCopyTargetItem(item);
+        setCopyTargetQty(effectiveQty);
+        setIsCopyModalOpen(true);
+    };
+
+    // Quick 1-click copy formatted Facebook Marketplace post template
+    const handleQuickCopyMarketplace = async (item: StockShortageItem, qty: number) => {
+        const itemKey = String(item.id || item.item_code);
+        const post = formatFacebookMarketplacePost(item, {
+            quantity: qty,
+            location: `${ORIGIN_LOCATION} (Airship HQ) / Metro Manila`,
+        });
+        const ok = await copyTextToClipboard(post);
+        if (ok) {
+            setCopiedItemKey(itemKey);
+            toast.success(`Copied "${item.item_name}" for Marketplace!`, {
+                description: `Includes online quotation link (Qty: ${qty} ${item.unit || "units"}). Ready to paste into Facebook or Viber.`,
+                action: {
+                    label: "Customize",
+                    onClick: () => handleOpenCopyModal(item, qty),
+                },
+            });
+            setTimeout(() => setCopiedItemKey((prev) => (prev === itemKey ? null : prev)), 2500);
+        } else {
+            handleOpenCopyModal(item, qty);
+        }
+    };
+
+    // Quick copy all filtered shortage items as a consolidated sourcing list
+    const handleCopyAllSourcingList = async () => {
+        if (filteredShortages.length === 0) {
+            toast.info("No shortage items to copy.");
+            return;
+        }
+        setIsBatchCopying(true);
+        const batchText = formatBatchSourcingList(
+            filteredShortages,
+            editedQuantities,
+            `${ORIGIN_LOCATION} (Airship HQ) / Metro Manila`
+        );
+        const ok = await copyTextToClipboard(batchText);
+        if (ok) {
+            toast.success(`Copied sourcing list for ${filteredShortages.length} shortage items!`, {
+                description: "Consolidated list ready to post in wholesale / hardware supplier groups.",
+            });
+        } else {
+            toast.error("Failed to copy sourcing list to clipboard.");
+        }
+        setTimeout(() => setIsBatchCopying(false), 2000);
     };
 
     // Build the request object for FindSupplierModal with edited quantity
@@ -256,14 +327,28 @@ export function StageFindPotentialSuppliers({
                         </div>
                     </div>
 
-                    <button
-                        type="button"
-                        onClick={onClearSourcingFocus}
-                        className="px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#181a28] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_6px_rgba(255,255,255,0.9),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)]"
-                    >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Clear Sourcing Focus</span>
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {activeSourcingFocus.shortageItem && (
+                            <button
+                                type="button"
+                                onClick={() => handleOpenCopyModal(activeSourcingFocus.shortageItem!, activeSourcingFocus.deficit || 1)}
+                                className="px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#181a28] text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_6px_rgba(255,255,255,0.9),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)]"
+                                title="Format and copy this item details for Facebook Marketplace or Viber"
+                            >
+                                <Share2 className="w-3.5 h-3.5" />
+                                <span>Copy for Marketplace</span>
+                            </button>
+                        )}
+
+                        <button
+                            type="button"
+                            onClick={onClearSourcingFocus}
+                            className="px-3.5 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#181a28] text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_6px_rgba(255,255,255,0.9),_2px_2px_6px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)]"
+                        >
+                            <X className="w-3.5 h-3.5" />
+                            <span>Clear Sourcing Focus</span>
+                        </button>
+                    </div>
                 </div>
             )}
 
@@ -384,9 +469,21 @@ export function StageFindPotentialSuppliers({
                                 <Boxes className="w-4 h-4 text-pink-500" />
                                 <span>Shortage Items Awaiting Sourcing ({filteredShortages.length}{filteredShortages.length !== shortages.length ? ` of ${shortages.length}` : ""})</span>
                             </h4>
-                            <span className="text-[11px] text-slate-400 font-medium">
-                                Adjust order quantity below and click Find to draft a PO &amp; open sourcing map
-                            </span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <button
+                                    type="button"
+                                    disabled={isBatchCopying || filteredShortages.length === 0}
+                                    onClick={handleCopyAllSourcingList}
+                                    className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)] flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-40"
+                                    title="Copy a consolidated list of all shortage items to post in wholesale / hardware supplier groups"
+                                >
+                                    <Copy className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                                    <span>Copy Sourcing List ({filteredShortages.length})</span>
+                                </button>
+                                <span className="text-[11px] text-slate-400 font-medium hidden md:inline">
+                                    Adjust order quantity below, or copy post details for marketplace
+                                </span>
+                            </div>
                         </div>
 
                         {filteredShortages.length === 0 ? (
@@ -538,23 +635,62 @@ export function StageFindPotentialSuppliers({
                                                         <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 pr-1 truncate max-w-[50px]">{item.unit || "units"}</span>
                                                     </div>
 
-                                                    <button
-                                                        type="button"
-                                                        disabled={isAwarded}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            if (!isAwarded) handleSearchNearbySuppliers(item);
-                                                        }}
-                                                        className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
-                                                            isAwarded
-                                                                ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 cursor-default"
-                                                                : "bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.4)]"
-                                                        }`}
-                                                        title={`Search nearby suppliers for ${item.item_name} (${remDeficit} ${item.unit})`}
-                                                    >
-                                                        <Compass className="w-3.5 h-3.5" />
-                                                        <span>Find ({remDeficit})</span>
-                                                    </button>
+                                                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+                                                        {/* 1-Click Quick Copy Button */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleQuickCopyMarketplace(item, currentQty);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] flex items-center gap-1 cursor-pointer transition-all"
+                                                            title="Quick copy Facebook Marketplace post to clipboard"
+                                                        >
+                                                            {copiedItemKey === itemKey ? (
+                                                                <>
+                                                                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                                                    <span className="text-[10px] font-black text-emerald-600 dark:text-emerald-400">Copied</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Copy className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                                                                    <span className="text-[10px] font-black">Copy</span>
+                                                                </>
+                                                            )}
+                                                        </button>
+
+                                                        {/* Customize Post / Template Modal Trigger */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleOpenCopyModal(item, currentQty);
+                                                            }}
+                                                            className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 flex items-center justify-center border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] cursor-pointer transition-all"
+                                                            title="Open Marketplace Post Customizer (FB, Viber, Plain text)"
+                                                        >
+                                                            <Share2 className="w-3.5 h-3.5" />
+                                                        </button>
+
+                                                        {/* Find Nearby Suppliers Button */}
+                                                        <button
+                                                            type="button"
+                                                            disabled={isAwarded}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                if (!isAwarded) handleSearchNearbySuppliers(item);
+                                                            }}
+                                                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                                isAwarded
+                                                                    ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 cursor-default"
+                                                                    : "bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.4)]"
+                                                            }`}
+                                                            title={`Search nearby suppliers for ${item.item_name} (${remDeficit} ${item.unit})`}
+                                                        >
+                                                            <Compass className="w-3.5 h-3.5" />
+                                                            <span>Find ({remDeficit})</span>
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             </div>
                                         );
@@ -630,6 +766,20 @@ export function StageFindPotentialSuppliers({
                         setIsFindModalOpen(false);
                         onOpenPOModal?.(item, selectedSupplier);
                     }}
+                />
+            )}
+
+            {/* Marketplace Copy & Sourcing Post Modal */}
+            {isCopyModalOpen && copyTargetItem && (
+                <MarketplaceCopyModal
+                    key={String(copyTargetItem.id || copyTargetItem.item_code)}
+                    isOpen={isCopyModalOpen}
+                    onClose={() => {
+                        setIsCopyModalOpen(false);
+                        setCopyTargetItem(null);
+                    }}
+                    item={copyTargetItem}
+                    initialQuantity={copyTargetQty}
                 />
             )}
         </div>

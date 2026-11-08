@@ -16,6 +16,10 @@ export interface AIBestOfferRecommendation {
     leadTimeDays: number;
     availability: string;
     overallScore?: number;
+    priceScore?: number;
+    speedScore?: number;
+    servicesScore?: number;
+    logisticsScore?: number;
     summary?: string;
     strengths?: string[];
     comparisonQuotes?: Array<{
@@ -23,6 +27,24 @@ export interface AIBestOfferRecommendation {
         totalAmount: number;
         leadTimeDays: number;
     }>;
+    topRecommendations?: Array<{
+        rank: number;
+        supplierName: string;
+        totalAmount: number;
+        unitPrice: number;
+        leadTimeDays: number;
+        availability: string;
+        overallScore: number;
+        verdict?: string;
+        strengths?: string[];
+    }>;
+    historicalContext?: {
+        previousWinner?: string;
+        previousUnitPrice?: number;
+        pastOrderCount?: number;
+        defectCount?: number;
+        onTimeDeliveryRate?: string;
+    };
 }
 
 interface AIContextType {

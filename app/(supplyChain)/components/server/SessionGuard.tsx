@@ -818,6 +818,8 @@ export function SessionGuard({ children, requiredRole }: SessionGuardProps) {
                 if (data.user) {
                     const userData = data.user as any;
                     user.updateUser({
+                        userId: userData.id || user.getUserId(),
+                        email: userData.email || user.getEmail(),
                         role: userData.role || userRole,
                         name: userData.display_name || user.getName(),
                         allowedTimeStart: userData.allowed_time_start,

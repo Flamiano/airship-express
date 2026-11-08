@@ -23,6 +23,12 @@ export async function POST(request: NextRequest) {
             userId = null,
             officialForInventoryItemId = null,
             officialForInventoryItemName = null,
+            contractNumber = null,
+            contractTerms = null,
+            effectiveDate = null,
+            expirationDate = null,
+            signatories = null,
+            quotationId = null,
         } = body;
 
         if (!supplierData || !supplierData.name?.trim()) {
@@ -294,6 +300,8 @@ export async function POST(request: NextRequest) {
                     .getPublicUrl(storagePath);
                 const fileUrl = publicUrlData?.publicUrl || null;
 
+                const validUserId = (userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(userId).trim())) ? String(userId).trim() : null;
+
                 // Insert into public.supplier_documents
                 const { data: docRecord, error: docDbError } = await supabaseAdmin
                     .from("supplier_documents")
@@ -305,7 +313,8 @@ export async function POST(request: NextRequest) {
                         file_url: fileUrl,
                         extracted_text: doc.extracted_text || null,
                         extracted_data: doc.extracted_data || null,
-                        uploaded_by: userId || null,
+                        uploaded_by: validUserId,
+                        role: !validUserId && userId ? String(userId).trim() : "Procurement Officer",
                     })
                     .select()
                     .single();
@@ -351,12 +360,69 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // 4. Contract & SOW Ledger Archival (PMBOK / ISO 10845)
+        // If contract terms are provided, persist the 20 procurement elements into public.supplier_contracts
+        let savedContract: any = null;
+        if (contractTerms && typeof contractTerms === "object") {
+            try {
+                const cNum = (contractNumber && String(contractNumber).trim()) || 
+                             `AGR-${new Date().getFullYear()}-${String(activeSupplierId).padStart(4, "0")}`;
+                const effDate = effectiveDate || new Date().toISOString().split("T")[0];
+                const expDate = expirationDate || null;
+
+                const resolvedQuotationId = quotationId && !isNaN(Number(quotationId)) 
+                    ? Number(quotationId) 
+                    : (supplierData?.quotation_id && !isNaN(Number(supplierData.quotation_id)) ? Number(supplierData.quotation_id) : null);
+
+                const { data: contractRecord, error: contractErr } = await supabaseAdmin
+                    .from("supplier_contracts")
+                    .upsert({
+                        contract_number: cNum,
+                        contract_title: "Master Procurement Agreement & Statement of Work",
+                        supplier_id: activeSupplierId,
+                        supplier_name: trimmedName,
+                        quotation_id: resolvedQuotationId,
+                        status: "Active",
+                        version: 1,
+                        effective_date: effDate,
+                        expiration_date: expDate,
+                        contract_terms: contractTerms,
+                        signatories: signatories || {
+                            buyer: {
+                                name: "Airship Express Procurement Officer",
+                                title: "Head of Procurement",
+                                signed_at: new Date().toISOString(),
+                            },
+                            seller: {
+                                name: supplierData.contact_person || trimmedName,
+                                title: "Authorized Representative",
+                                signed_at: new Date().toISOString(),
+                            },
+                        },
+                        created_by: userId || "Procurement Operations",
+                        updated_at: new Date().toISOString(),
+                    }, { onConflict: "contract_number" })
+                    .select()
+                    .single();
+
+                if (contractErr) {
+                    console.error("Error creating/updating supplier contract record:", contractErr);
+                } else if (contractRecord) {
+                    savedContract = contractRecord;
+                    console.log("Supplier contract established successfully:", contractRecord.contract_number);
+                }
+            } catch (cErr) {
+                console.warn("Notice persisting contract to supplier_contracts:", cErr);
+            }
+        }
+
         const successMessage = `Supplier "${savedSupplier.name}" has been successfully reviewed and registered in the Supplier Directory!`;
 
         return NextResponse.json({
             success: true,
             supplier: savedSupplier,
             supplierId: activeSupplierId,
+            contract: savedContract,
             documentsUploaded: uploadedDocs.length,
             accountProvisioned: false,
             emailSent: false,

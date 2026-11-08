@@ -24,7 +24,9 @@ import {
     ExternalLink,
     Paperclip,
     Sparkles,
-    FolderKanban
+    FolderKanban,
+    Scale,
+    FileSpreadsheet
 } from "lucide-react";
 import Cards from "../../../../components/global/Cards";
 import { Pagination } from "../../../../components/global/pagination";
@@ -33,6 +35,10 @@ import { Supplier } from "../../types";
 import { supabase } from "../../../../lib/services/client/supabase";
 import { SupplierDocumentPreviewModal } from "../modals/SupplierDocumentPreviewModal";
 import { UploadSupplierDocumentModal } from "../modals/UploadSupplierDocumentModal";
+import { 
+    exportContractPdf, 
+    exportContractWord 
+} from "../../utils/contractExport";
 
 export interface SupplierDocumentItem {
     id: string;
@@ -54,6 +60,14 @@ export interface SupplierDocumentItem {
     summary?: string;
     createdAt?: string;
     uploadedBy?: string | null;
+    isContract?: boolean;
+    contractNumber?: string;
+    contractTitle?: string;
+    contractTerms?: any;
+    signatories?: any;
+    effectiveDate?: string;
+    expirationDate?: string;
+    status?: string;
 }
 
 interface ContractsAndSupplierDocumentsTabProps {
@@ -149,6 +163,13 @@ export function ContractsAndSupplierDocumentsTab({
             )
             .on(
                 "postgres_changes",
+                { event: "*", schema: "public", table: "supplier_contracts" },
+                () => {
+                    loadDocuments(true);
+                }
+            )
+            .on(
+                "postgres_changes",
                 { event: "*", schema: "public", table: "suppliers" },
                 () => {
                     loadDocuments(true);
@@ -162,12 +183,72 @@ export function ContractsAndSupplierDocumentsTab({
         };
     }, [loadDocuments, onRefresh]);
 
+    // Direct export handlers for contracts
+    const handleDirectPdf = (doc: SupplierDocumentItem) => {
+        if (!doc.contractTerms) {
+            toast.error("Contract terms are not loaded.");
+            return;
+        }
+        exportContractPdf({
+            contractNumber: doc.contractNumber || "AGR-2026-0001",
+            supplierName: doc.supplierName,
+            supplierContact: doc.supplierContact,
+            supplierPhone: doc.supplierPhone,
+            supplierEmail: doc.supplierEmail,
+            effectiveDate: doc.effectiveDate,
+            expirationDate: doc.expirationDate,
+            terms: doc.contractTerms,
+            signatories: doc.signatories ? {
+                buyer: {
+                    name: doc.signatories.buyer?.name || "Airship Express Procurement Officer",
+                    title: doc.signatories.buyer?.title || "Head of Procurement",
+                    signed_at: doc.signatories.buyer?.signed_at || null,
+                },
+                seller: {
+                    name: doc.signatories.seller?.name || doc.supplierContact || doc.supplierName || "",
+                    title: doc.signatories.seller?.title || "Authorized Representative",
+                    signed_at: doc.signatories.seller?.signed_at || null,
+                },
+            } : undefined,
+        });
+    };
+
+    const handleDirectWord = (doc: SupplierDocumentItem) => {
+        if (!doc.contractTerms) {
+            toast.error("Contract terms are not loaded.");
+            return;
+        }
+        exportContractWord({
+            contractNumber: doc.contractNumber || "AGR-2026-0001",
+            supplierName: doc.supplierName,
+            supplierContact: doc.supplierContact,
+            supplierPhone: doc.supplierPhone,
+            supplierEmail: doc.supplierEmail,
+            effectiveDate: doc.effectiveDate,
+            expirationDate: doc.expirationDate,
+            terms: doc.contractTerms,
+            signatories: doc.signatories ? {
+                buyer: {
+                    name: doc.signatories.buyer?.name || "Airship Express Procurement Officer",
+                    title: doc.signatories.buyer?.title || "Head of Procurement",
+                    signed_at: doc.signatories.buyer?.signed_at || null,
+                },
+                seller: {
+                    name: doc.signatories.seller?.name || doc.supplierContact || doc.supplierName || "",
+                    title: doc.signatories.seller?.title || "Authorized Representative",
+                    signed_at: doc.signatories.seller?.signed_at || null,
+                },
+            } : undefined,
+        });
+    };
+
     // Delete document handler
     const handleDeleteDocument = async (doc: SupplierDocumentItem) => {
+        const itemType = doc.isContract ? "Contract Agreement" : "Document";
         const confirmed = await confirm({
-            title: "Delete Supplier Document?",
+            title: `Delete Supplier ${itemType}?`,
             message: `Are you sure you want to permanently delete "${doc.fileName}" for supplier "${doc.supplierName}"? This action cannot be undone.`,
-            confirmText: "Delete Document",
+            confirmText: `Delete ${itemType}`,
             cancelText: "Cancel",
             confirmVariant: "danger",
         });
@@ -175,7 +256,8 @@ export function ContractsAndSupplierDocumentsTab({
         if (!confirmed) return;
 
         try {
-            const res = await fetch(`/api/suppliers/documents?id=${doc.id}`, {
+            const isContractParam = doc.isContract ? "&is_contract=true" : "";
+            const res = await fetch(`/api/suppliers/documents?id=${doc.id}${isContractParam}`, {
                 method: "DELETE",
             });
             const data = await res.json();
@@ -183,7 +265,7 @@ export function ContractsAndSupplierDocumentsTab({
                 throw new Error(data.error || "Failed to delete document.");
             }
 
-            toast.success(`Document "${doc.fileName}" deleted.`);
+            toast.success(`${itemType} "${doc.fileName}" deleted.`);
             setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
         } catch (err: any) {
             console.error("Error deleting document:", err);
@@ -436,6 +518,7 @@ export function ContractsAndSupplierDocumentsTab({
                         className="px-3 py-2 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] text-xs font-bold text-slate-700 dark:text-slate-300 border border-white/80 dark:border-white/[0.05] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] focus:outline-none focus:border-pink-500 cursor-pointer"
                     >
                         <option value="all">All Document Types</option>
+                        <option value="Master Procurement Agreement">Master SOW Contracts (20 Elements)</option>
                         <option value="contract">Contracts &amp; SLAs</option>
                         <option value="quotation">Quotations &amp; Proposals</option>
                         <option value="permit">Business Permits</option>
@@ -690,13 +773,24 @@ export function ContractsAndSupplierDocumentsTab({
                                                     >
                                                         <div>
                                                             <div className="flex items-start justify-between gap-2">
-                                                                <div className="flex items-center gap-2">
+                                                                 <div className="flex items-center gap-2">
                                                                     <div className="w-8 h-8 rounded-xl bg-pink-50 dark:bg-pink-950/40 flex items-center justify-center text-xs">
-                                                                        <i className={getDocTypeIcon(doc.documentType)} />
+                                                                        {doc.isContract ? (
+                                                                            <Scale className="w-4 h-4 text-pink-600" />
+                                                                        ) : (
+                                                                            <i className={getDocTypeIcon(doc.documentType)} />
+                                                                        )}
                                                                     </div>
-                                                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40">
-                                                                        {doc.documentType || "Document"}
-                                                                    </span>
+                                                                    {doc.isContract ? (
+                                                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800 flex items-center gap-1">
+                                                                            <Scale className="w-3 h-3 text-pink-600" />
+                                                                            <span>Master SOW Contract</span>
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40">
+                                                                            {doc.documentType || "Document"}
+                                                                        </span>
+                                                                    )}
                                                                 </div>
 
                                                                 <span className="text-[10px] text-slate-400 font-mono">
@@ -723,28 +817,49 @@ export function ContractsAndSupplierDocumentsTab({
                                                                 className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#12131b] text-slate-700 dark:text-slate-200 hover:text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-950/40 text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                                                             >
                                                                 <Eye className="w-3.5 h-3.5" />
-                                                                <span>View</span>
+                                                                <span>{doc.isContract ? "View SOW" : "View"}</span>
                                                             </button>
 
                                                             <div className="flex items-center gap-1.5">
-                                                                {(doc.fileUrl || doc.publicUrl) && (
-                                                                    <a
-                                                                        href={doc.fileUrl || doc.publicUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        download={doc.fileName}
-                                                                        className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-pink-600 transition-colors"
-                                                                        title="Download File"
-                                                                    >
-                                                                        <Download className="w-3.5 h-3.5" />
-                                                                    </a>
+                                                                {doc.isContract ? (
+                                                                    <>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDirectPdf(doc)}
+                                                                            className="p-1.5 rounded-xl bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 hover:bg-pink-100 transition-colors"
+                                                                            title="Download Contract PDF (20 Elements)"
+                                                                        >
+                                                                            <Download className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleDirectWord(doc)}
+                                                                            className="p-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors"
+                                                                            title="Download Contract Word (.doc)"
+                                                                        >
+                                                                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                                                                        </button>
+                                                                    </>
+                                                                ) : (
+                                                                    (doc.fileUrl || doc.publicUrl) && (
+                                                                        <a
+                                                                            href={doc.fileUrl || doc.publicUrl}
+                                                                            target="_blank"
+                                                                            rel="noopener noreferrer"
+                                                                            download={doc.fileName}
+                                                                            className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-pink-600 transition-colors"
+                                                                            title="Download File"
+                                                                        >
+                                                                            <Download className="w-3.5 h-3.5" />
+                                                                        </a>
+                                                                    )
                                                                 )}
 
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => handleDeleteDocument(doc)}
                                                                     className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                                                    title="Delete Document"
+                                                                    title={doc.isContract ? "Delete Contract" : "Delete Document"}
                                                                 >
                                                                     <Trash2 className="w-3.5 h-3.5" />
                                                                 </button>
@@ -801,9 +916,16 @@ export function ContractsAndSupplierDocumentsTab({
                             >
                                 <div>
                                     <div className="flex items-start justify-between gap-2">
-                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40">
-                                            {doc.documentType || "Document"}
-                                        </span>
+                                        {doc.isContract ? (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-100 dark:bg-pink-950/80 text-pink-700 dark:text-pink-300 border border-pink-300 dark:border-pink-800 flex items-center gap-1">
+                                                <Scale className="w-3 h-3 text-pink-600" />
+                                                <span>Master SOW Contract</span>
+                                            </span>
+                                        ) : (
+                                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-50 dark:bg-pink-950/40 text-pink-600 dark:text-pink-400 border border-pink-200 dark:border-pink-800/40">
+                                                {doc.documentType || "Document"}
+                                            </span>
+                                        )}
                                         <span className="text-[10px] text-slate-400 font-mono">
                                             {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}
                                         </span>
@@ -835,28 +957,49 @@ export function ContractsAndSupplierDocumentsTab({
                                         className="px-3.5 py-1.5 rounded-xl bg-pink-500 hover:bg-pink-600 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
                                     >
                                         <Eye className="w-3.5 h-3.5" />
-                                        <span>Preview Document</span>
+                                        <span>{doc.isContract ? "View SOW" : "Preview Document"}</span>
                                     </button>
 
                                     <div className="flex items-center gap-1.5">
-                                        {(doc.fileUrl || doc.publicUrl) && (
-                                            <a
-                                                href={doc.fileUrl || doc.publicUrl}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                download={doc.fileName}
-                                                className="p-2 rounded-xl bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-pink-600 transition-colors"
-                                                title="Download File"
-                                            >
-                                                <Download className="w-4 h-4" />
-                                            </a>
+                                        {doc.isContract ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDirectPdf(doc)}
+                                                    className="p-2 rounded-xl bg-pink-50 dark:bg-pink-950/60 text-pink-600 dark:text-pink-400 hover:bg-pink-100 transition-colors"
+                                                    title="Download Contract PDF (20 Elements)"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDirectWord(doc)}
+                                                    className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors"
+                                                    title="Download Contract Word (.doc)"
+                                                >
+                                                    <FileSpreadsheet className="w-4 h-4" />
+                                                </button>
+                                            </>
+                                        ) : (
+                                            (doc.fileUrl || doc.publicUrl) && (
+                                                <a
+                                                    href={doc.fileUrl || doc.publicUrl}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    download={doc.fileName}
+                                                    className="p-2 rounded-xl bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-pink-600 transition-colors"
+                                                    title="Download File"
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                </a>
+                                            )
                                         )}
 
                                         <button
                                             type="button"
                                             onClick={() => handleDeleteDocument(doc)}
                                             className="p-2 rounded-xl bg-white dark:bg-slate-800 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
-                                            title="Delete Document"
+                                            title={doc.isContract ? "Delete Contract" : "Delete Document"}
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>

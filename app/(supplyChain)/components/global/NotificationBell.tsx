@@ -557,12 +557,13 @@ export function NotificationBell() {
         }
     }, [saveToCache, fetchUnreadCount, isNotificationForUser, userId]);
 
+    // Ensure component mounts on client side
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
     // load initial notifications
     useEffect(() => {
-        if (!userRole || !userEmail) return;
-
-        setIsMounted(true);
-
         const hasCache = loadCachedNotifications();
 
         if (!hasCache) {
@@ -1381,7 +1382,7 @@ export function NotificationBell() {
                             </span>
                         </>
                     ) : (
-                        <BellOff className="h-4 w-4 text-slate-400 dark:text-slate-500" />
+                        <Bell className="h-4 w-4 text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors" />
                     )}
                 </button>
 

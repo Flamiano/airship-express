@@ -23,8 +23,20 @@ import {
     Clock,
     Truck,
     RotateCcw,
-    DollarSign
+    DollarSign,
+    Scale,
+    Maximize2,
+    Minimize2,
 } from "lucide-react";
+import { supabase } from "../../../../lib/services/client/supabase";
+import { toast } from "sonner";
+import { ContractSowTab } from "../contract/ContractSowTab";
+import {
+    ContractTerms,
+    ContractSignatories,
+    getDefaultContractTerms,
+    buildContractFromQuotation,
+} from "../../utils/contractElements";
 
 interface SupplierEditModalProps {
     isOpen: boolean;
@@ -89,7 +101,38 @@ export function SupplierEditModal({
     onClose,
     onSubmit,
 }: SupplierEditModalProps) {
-    const [activeTab, setActiveTab] = useState<"general" | "commercial" | "banking" | "catalog" | "status">("general");
+    const [activeTab, setActiveTab] = useState<"general" | "commercial" | "banking" | "catalog" | "contract_sow" | "status">("general");
+    const [isFullscreen, setIsFullscreen] = useState(false);
+
+    // Contract & SOW states
+    const [contractTerms, setContractTerms] = useState<ContractTerms>(getDefaultContractTerms());
+    const [contractNumber, setContractNumber] = useState<string>("");
+    const [effectiveDate, setEffectiveDate] = useState<string>("");
+    const [expirationDate, setExpirationDate] = useState<string>("");
+    const [signatories, setSignatories] = useState<ContractSignatories>({
+        buyer: {
+            name: "Airship Express Procurement Officer",
+            title: "Head of Procurement",
+            signed_at: new Date().toISOString(),
+        },
+        seller: {
+            name: "",
+            title: "Authorized Representative",
+            signed_at: new Date().toISOString(),
+        },
+    });
+    const [isLoadingContract, setIsLoadingContract] = useState<boolean>(false);
+
+    // Escape key listener for fullscreen
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape" && isFullscreen) {
+                setIsFullscreen(false);
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isFullscreen]);
 
     // Initialize structured products offer array
     const rawCatalog: any[] = useMemo(() => {
@@ -109,10 +152,69 @@ export function SupplierEditModal({
     }, [editingSupplier?.other_products_offer]);
 
     useEffect(() => {
-        if (isOpen) {
+        if (isOpen && editingSupplier) {
             setActiveTab("general");
+            setIsLoadingContract(true);
+            (async () => {
+                try {
+                    const { data: contractData, error } = await supabase
+                        .from("supplier_contracts")
+                        .select("*")
+                        .eq("supplier_id", editingSupplier.id)
+                        .order("created_at", { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                    if (contractData && !error) {
+                        setContractNumber(contractData.contract_number || `AGR-${new Date().getFullYear()}-${String(editingSupplier.id).padStart(4, "0")}`);
+                        setEffectiveDate(contractData.effective_date || "");
+                        setExpirationDate(contractData.expiration_date || "");
+                        if (contractData.contract_terms) {
+                            setContractTerms({ ...getDefaultContractTerms(), ...contractData.contract_terms });
+                        }
+                        if (contractData.signatories) {
+                            setSignatories({
+                                buyer: {
+                                    name: contractData.signatories.buyer?.name || "Airship Express Procurement Officer",
+                                    title: contractData.signatories.buyer?.title || "Head of Procurement",
+                                    signed_at: contractData.signatories.buyer?.signed_at || null,
+                                },
+                                seller: {
+                                    name: contractData.signatories.seller?.name || editingSupplier.contact_person || editingSupplier.name,
+                                    title: contractData.signatories.seller?.title || "Authorized Representative",
+                                    signed_at: contractData.signatories.seller?.signed_at || null,
+                                },
+                            });
+                        }
+                    } else {
+                        const fallbackTerms = buildContractFromQuotation(editingSupplier, null, editingSupplier, rawCatalog);
+                        setContractTerms(fallbackTerms);
+                        setContractNumber(`AGR-${new Date().getFullYear()}-${String(editingSupplier.id).padStart(4, "0")}`);
+                        setEffectiveDate(new Date().toISOString().split("T")[0]);
+                        const nextYear = new Date();
+                        nextYear.setFullYear(nextYear.getFullYear() + 1);
+                        setExpirationDate(nextYear.toISOString().split("T")[0]);
+                        setSignatories({
+                            buyer: {
+                                name: "Airship Express Procurement Officer",
+                                title: "Head of Procurement",
+                                signed_at: new Date().toISOString(),
+                            },
+                            seller: {
+                                name: editingSupplier.contact_person || editingSupplier.name,
+                                title: "Authorized Representative",
+                                signed_at: new Date().toISOString(),
+                            },
+                        });
+                    }
+                } catch (err) {
+                    console.warn("Notice loading supplier contract:", err);
+                } finally {
+                    setIsLoadingContract(false);
+                }
+            })();
         }
-    }, [isOpen]);
+    }, [isOpen, editingSupplier?.id, rawCatalog]);
 
     if (!isOpen || !editingSupplier) return null;
 
@@ -122,6 +224,46 @@ export function SupplierEditModal({
             if (!prev) return null;
             return { ...prev, [field]: value };
         });
+    };
+
+    // Form submit that also persists contract to supplier_contracts
+    const handleFormSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (editingSupplier) {
+            try {
+                const effDate = effectiveDate || new Date().toISOString().split("T")[0];
+                const cNum = contractNumber || `AGR-${new Date().getFullYear()}-${String(editingSupplier.id).padStart(4, "0")}`;
+                await supabase.from("supplier_contracts").upsert(
+                    {
+                        contract_number: cNum,
+                        contract_title: "Master Procurement Agreement & Statement of Work",
+                        supplier_id: editingSupplier.id,
+                        supplier_name: editingSupplier.name.trim(),
+                        status: "Active",
+                        effective_date: effDate,
+                        expiration_date: expirationDate || null,
+                        contract_terms: contractTerms,
+                        signatories: {
+                            buyer: {
+                                name: signatories.buyer?.name || "Airship Express Procurement Officer",
+                                title: signatories.buyer?.title || "Head of Procurement",
+                                signed_at: signatories.buyer?.signed_at || new Date().toISOString(),
+                            },
+                            seller: {
+                                name: signatories.seller?.name || editingSupplier.contact_person || editingSupplier.name,
+                                title: signatories.seller?.title || "Authorized Representative",
+                                signed_at: signatories.seller?.signed_at || new Date().toISOString(),
+                            },
+                        },
+                        updated_at: new Date().toISOString(),
+                    },
+                    { onConflict: "contract_number" }
+                );
+            } catch (cErr) {
+                console.warn("Notice saving contract terms in edit modal:", cErr);
+            }
+        }
+        onSubmit(e);
     };
 
     // Catalog item helpers
@@ -168,15 +310,19 @@ export function SupplierEditModal({
     return (
         <Portal>
             <div
-                className="fixed inset-0 z-[140] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-200"
+                className="fixed inset-0 z-[140] bg-slate-950/80 dark:bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-200"
                 onClick={onClose}
             >
                 <div
-                    className="relative w-full max-w-4xl bg-[#f0f4fa] dark:bg-[#151724] rounded-3xl border border-slate-200/80 dark:border-white/10 shadow-none overflow-hidden my-auto flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
+                    className={`relative w-full bg-[#f0f4fa] dark:bg-[#151724] border border-slate-200/80 dark:border-white/10 shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-200 transition-all ${
+                        isFullscreen
+                            ? "fixed inset-0 w-full h-full rounded-none max-h-screen my-0 border-0 z-[150]"
+                            : "max-w-5xl xl:max-w-6xl 2xl:max-w-7xl rounded-3xl my-auto max-h-[92vh]"
+                    }`}
                     onClick={(e) => e.stopPropagation()}
                 >
                     {/* Header */}
-                    <div className="p-5 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
+                    <div className="p-4 sm:px-6 sm:py-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#131522] shrink-0">
                         <div className="flex items-center gap-3.5">
                             <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-pink-500 to-rose-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_3px_3px_8px_rgba(219,39,119,0.45)]">
                                 <i className="fas fa-edit text-lg drop-shadow" />
@@ -191,23 +337,33 @@ export function SupplierEditModal({
                                     </span>
                                 </div>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    Manage vendor identity, commercial agreements, products catalog, and compliance
+                                    Manage vendor identity, commercial agreements, products catalog, SOW contract, and compliance
                                 </p>
                             </div>
                         </div>
 
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
-                            aria-label="Close modal"
-                        >
-                            <X className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={() => setIsFullscreen(!isFullscreen)}
+                                className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
+                                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+                            >
+                                {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={onClose}
+                                className="w-9 h-9 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
+                                aria-label="Close modal"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
                     </div>
 
                     {/* Navigation Tabs Bar */}
-                    <div className="px-6 py-3 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2 shrink-0">
+                    <div className="px-6 py-3 bg-[#e4eaf4] dark:bg-[#10121c] border-b border-slate-300/70 dark:border-white/[0.06] flex items-center justify-between flex-wrap gap-2 shrink-0 overflow-x-auto max-w-full">
                         <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] flex-wrap">
                             <button
                                 type="button"
@@ -264,6 +420,23 @@ export function SupplierEditModal({
                             </button>
                             <button
                                 type="button"
+                                onClick={() => setActiveTab("contract_sow")}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                                    activeTab === "contract_sow"
+                                        ? "bg-pink-600 text-white shadow-xs"
+                                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                                }`}
+                            >
+                                <Scale className="w-3.5 h-3.5" />
+                                <span>5. Contract &amp; SOW</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-md font-mono font-bold ${
+                                    activeTab === "contract_sow" ? "bg-white/20 text-white" : "bg-pink-100 text-pink-700 dark:bg-pink-950 dark:text-pink-300"
+                                }`}>
+                                    20 Elements
+                                </span>
+                            </button>
+                            <button
+                                type="button"
                                 onClick={() => setActiveTab("status")}
                                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                                     activeTab === "status"
@@ -271,13 +444,13 @@ export function SupplierEditModal({
                                         : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                                 }`}
                             >
-                                5. Status &amp; Notes
+                                6. Status &amp; Notes
                             </button>
                         </div>
                     </div>
 
                     {/* Scrollable Form Content */}
-                    <form onSubmit={onSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
+                    <form onSubmit={handleFormSubmit} className="flex-1 overflow-y-auto p-6 space-y-5 text-xs">
                         {/* TAB 1: General Profile */}
                         {activeTab === "general" && (
                             <div className="space-y-4 animate-in fade-in duration-200">
@@ -755,7 +928,36 @@ export function SupplierEditModal({
                             </div>
                         )}
 
-                        {/* TAB 5: Status & Notes */}
+                        {/* TAB 5: Contract & SOW (20 PMBOK / ISO 10845 Elements) */}
+                        {activeTab === "contract_sow" && (
+                            <div className="space-y-4 animate-in fade-in duration-200">
+                                {isLoadingContract ? (
+                                    <div className="p-8 text-center bg-[#ebf0f7] dark:bg-[#161826] rounded-3xl border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)]">
+                                        <i className="fas fa-spinner fa-spin text-pink-600 text-xl mb-2" />
+                                        <p className="text-xs font-bold text-slate-600 dark:text-slate-400">Loading procurement agreement &amp; SOW clauses...</p>
+                                    </div>
+                                ) : (
+                                    <ContractSowTab
+                                        supplier={editingSupplier}
+                                        quote={null}
+                                        formData={editingSupplier}
+                                        otherProducts={rawCatalog}
+                                        contractTerms={contractTerms}
+                                        setContractTerms={setContractTerms}
+                                        contractNumber={contractNumber}
+                                        setContractNumber={setContractNumber}
+                                        effectiveDate={effectiveDate}
+                                        setEffectiveDate={setEffectiveDate}
+                                        expirationDate={expirationDate}
+                                        setExpirationDate={setExpirationDate}
+                                        signatories={signatories}
+                                        setSignatories={setSignatories}
+                                    />
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB 6: Status & Notes */}
                         {activeTab === "status" && (
                             <div className="space-y-4 animate-in fade-in duration-200">
                                 <div className="p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-4px_-4px_10px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.03),_4px_4px_10px_rgba(0,0,0,0.5)] space-y-4">

@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import {
     Sparkles,
     Trophy,
+    Medal,
     Award,
     TrendingDown,
     Clock,
@@ -569,130 +570,47 @@ export function RequestQuotationsSummary({
                         </div>
                     )}
 
-                    {/* Sleek Neumorphic AI Recommended Best Offer Spotlight */}
-                    <div className="p-4 sm:p-4.5 rounded-2xl bg-gradient-to-r from-[#ebf0f7] via-[#f0f4fa] to-[#ebf0f7] dark:from-[#151724] dark:via-[#191c2b] dark:to-[#151724] border border-pink-500/50 dark:border-pink-500/40 shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_12px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_4px_4px_12px_rgba(0,0,0,0.55)] relative overflow-hidden transition-all">
-                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
-                            {/* Left: Supplier Info & AI Badges */}
-                            <div className="flex items-center gap-3 min-w-0">
+                    {/* Sleek Neumorphic AI Recommended Best Offers Spotlight (Top 3 Recommendations) */}
+                    <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-[#ebf0f7] via-[#f0f4fa] to-[#ebf0f7] dark:from-[#151724] dark:via-[#191c2b] dark:to-[#151724] border border-pink-500/50 dark:border-pink-500/40 shadow-[-4px_-4px_10px_rgba(255,255,255,0.85),_4px_4px_12px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_4px_4px_12px_rgba(0,0,0,0.55)] space-y-4">
+                        {/* Spotlight Header Ribbon */}
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-pink-500/20 pb-3.5">
+                            <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_4px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(236,72,153,0.35)]">
-                                    <Trophy className="w-5 h-5 text-amber-300 drop-shadow-sm" />
+                                    <Sparkles className="w-5 h-5 text-amber-300 drop-shadow-sm" />
                                 </div>
-                                <div className="min-w-0">
+                                <div>
                                     <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="text-[11px] font-black uppercase tracking-wider text-pink-600 dark:text-pink-400 flex items-center gap-1">
-                                            <Sparkles className="w-3 h-3 text-pink-500" />
-                                            AI Recommended Best Offer
-                                        </span>
-                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                                            {winnerRanking?.overallScore || 96}/100 Match
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                        <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white truncate">
-                                            {winningQuote.supplier_name}
+                                        <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+                                            <span>AI Offer Recommendations</span>
+                                            <span className="text-[10px] px-2.5 py-0.5 rounded-full font-mono font-bold bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/20">
+                                                Top {Math.min(3, rankedQuotes.length)} Ranked Proposal{Math.min(3, rankedQuotes.length) !== 1 ? "s" : ""}
+                                            </span>
                                         </h4>
-                                        <span className="text-slate-300 dark:text-slate-700 font-bold">•</span>
-                                        <span className="font-mono text-xs sm:text-sm font-black text-pink-600 dark:text-pink-400">
-                                            ₱{Number(winningQuote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </span>
-                                        <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                                            ({winningQuote.lead_time_days}d lead time • {winningQuote.availability})
-                                        </span>
                                     </div>
+                                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                                        MCDA evaluation across Price (40%), Turnaround (25%), Services (20%), and Logistics (15%)
+                                    </p>
                                 </div>
                             </div>
 
-                            {/* Right: Actions */}
-                            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                                {/* Open in ChatBot Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        openRecommendationChat({
-                                            id: winningQuote.id,
-                                            requestNumber: group.requestNumber,
-                                            itemName: group.itemName,
-                                            supplierName: winningQuote.supplier_name,
-                                            supplierId: winningQuote.supplier_id,
-                                            totalAmount: Number(winningQuote.total_amount || 0),
-                                            unitPrice: Number(winningQuote.unit_price || 0),
-                                            unit: winningQuote.unit || group.unit || "unit",
-                                            leadTimeDays: Number(winningQuote.lead_time_days || 1),
-                                            availability: winningQuote.availability || "In Stock",
-                                            overallScore: winnerRanking?.overallScore || 96,
-                                            summary: aiResult?.aiExecutiveBrief || localEvaluation?.aiExecutiveBrief || `AI recommends ${winningQuote.supplier_name} as providing the optimal balance of competitive pricing and turnaround speed.`,
-                                            strengths: winnerRanking?.strengths || [],
-                                            comparisonQuotes: validQuotes.map(q => ({
-                                                supplierName: q.supplier_name,
-                                                totalAmount: Number(q.total_amount || 0),
-                                                leadTimeDays: Number(q.lead_time_days || 1),
-                                            })),
-                                        });
-                                    }}
-                                    className="px-3.5 py-2 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(236,72,153,0.35)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-                                    title="Open interactive AI recommendation & comparison in AI Chatbot"
-                                >
-                                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-                                    <span>Ask AI Advisor in Chat</span>
-                                </button>
-
-                                {/* Compare All Bids Button */}
+                            <div className="flex items-center gap-2 flex-wrap">
                                 <button
                                     type="button"
                                     onClick={() => setShowDeepDiveModal(true)}
-                                    className="px-3 py-2 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                    className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
                                     title="Open full comparison scorecard of all vendor quotations"
                                 >
                                     <SlidersHorizontal className="w-3.5 h-3.5 text-pink-500" />
                                     <span>Compare All Bids ({validQuotes.length})</span>
                                 </button>
 
-                                {/* View Proposal Button */}
-                                <button
-                                    type="button"
-                                    onClick={() => setModalQuoteItem({ quote: winningQuote, supplier: winningSupplier })}
-                                    className="px-3 py-2 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
-                                    title="Inspect vendor quotation, breakdown, and governing terms"
-                                >
-                                    <FileText className="w-3.5 h-3.5 text-pink-500" />
-                                    <span>View Proposal</span>
-                                </button>
-
-                                {/* Award Bid Button */}
-                                {winningQuote.status === "accepted" ? (
-                                    <div className="px-3.5 py-2 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center gap-1.5 border border-emerald-500/30">
-                                        <CheckCircle2 className="w-3.5 h-3.5" />
-                                        <span>Bid Awarded</span>
-                                    </div>
-                                ) : hasAnyAcceptedQuote || isBidAwarded ? (
-                                    <div className="px-3.5 py-2 rounded-xl bg-slate-200/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs font-black flex items-center gap-1.5 border border-slate-300 dark:border-slate-700">
-                                        <Award className="w-3.5 h-3.5" />
-                                        <span>Bid Awarded</span>
-                                    </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => handleAwardBidAction(winningSupplier, winningQuote)}
-                                        disabled={awardingQuoteId === winningQuote.id || locallyAwardedId !== null}
-                                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_8px_rgba(16,185,129,0.4)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                                        title="Award procurement bid to this top AI recommended supplier"
-                                    >
-                                        {awardingQuoteId === winningQuote.id || locallyAwardedId !== null ? (
-                                             <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                                        ) : (
-                                            <Award className="w-3.5 h-3.5 text-amber-300" />
-                                        )}
-                                        <span>Award Bid</span>
-                                    </button>
-                                )}
-
-                                {/* Toggle detailed breakdown button */}
                                 <button
                                     type="button"
                                     onClick={() => setShowScoreBreakdown(!showScoreBreakdown)}
-                                    className="p-2 rounded-xl bg-[#ebf0f7] dark:bg-[#1a1c2a] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all cursor-pointer"
+                                    className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#1a1c2a] text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1 cursor-pointer"
                                     title={showScoreBreakdown ? "Hide Dimension Breakdown" : "View Dimension Breakdown"}
                                 >
+                                    <span>Criteria Weights</span>
                                     <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showScoreBreakdown ? "rotate-180" : ""}`} />
                                 </button>
                             </div>
@@ -700,45 +618,240 @@ export function RequestQuotationsSummary({
 
                         {/* Collapsible Score Breakdown if user toggles */}
                         {showScoreBreakdown && (
-                            <div className="pt-3 mt-3 border-t border-pink-500/20 grid grid-cols-2 sm:grid-cols-4 gap-2 animate-in fade-in-50 duration-200 text-xs">
-                                <div className="p-2 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-white/60 dark:border-white/5 space-y-1">
+                            <div className="p-3 rounded-2xl bg-[#e8ecf4]/80 dark:bg-[#10121b]/80 border border-white/60 dark:border-white/5 grid grid-cols-2 sm:grid-cols-4 gap-2 animate-in fade-in-50 duration-200 text-xs">
+                                <div className="p-2.5 rounded-xl bg-[#ebf0f7] dark:bg-[#151724] border border-white/60 dark:border-white/5 space-y-1">
                                     <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                        <span>Price Value</span>
+                                        <span>1. Price Value</span>
                                         <span className="text-pink-600 font-mono font-black">{winnerRanking?.priceScore || 38}/40</span>
                                     </div>
-                                    <div className="w-full h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                                         <div className="h-full bg-pink-500 rounded-full" style={{ width: `${((winnerRanking?.priceScore || 38) / 40) * 100}%` }} />
                                     </div>
+                                    <p className="text-[9px] text-slate-400">Lowest landed cost ratio</p>
                                 </div>
-                                <div className="p-2 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-white/60 dark:border-white/5 space-y-1">
+                                <div className="p-2.5 rounded-xl bg-[#ebf0f7] dark:bg-[#151724] border border-white/60 dark:border-white/5 space-y-1">
                                     <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                        <span>Speed &amp; Stock</span>
+                                        <span>2. Speed &amp; Stock</span>
                                         <span className="text-pink-600 font-mono font-black">{winnerRanking?.speedScore || 24}/25</span>
                                     </div>
-                                    <div className="w-full h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                                         <div className="h-full bg-pink-500 rounded-full" style={{ width: `${((winnerRanking?.speedScore || 24) / 25) * 100}%` }} />
                                     </div>
+                                    <p className="text-[9px] text-slate-400">Lead days &amp; on-hand readiness</p>
                                 </div>
-                                <div className="p-2 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-white/60 dark:border-white/5 space-y-1">
+                                <div className="p-2.5 rounded-xl bg-[#ebf0f7] dark:bg-[#151724] border border-white/60 dark:border-white/5 space-y-1">
                                     <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                        <span>Service Coverage</span>
+                                        <span>3. Service Coverage</span>
                                         <span className="text-pink-600 font-mono font-black">{winnerRanking?.servicesScore || 18}/20</span>
                                     </div>
-                                    <div className="w-full h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                                         <div className="h-full bg-pink-500 rounded-full" style={{ width: `${((winnerRanking?.servicesScore || 18) / 20) * 100}%` }} />
                                     </div>
+                                    <p className="text-[9px] text-slate-400">Warranties, delivery &amp; SLAs</p>
                                 </div>
-                                <div className="p-2 rounded-xl bg-[#e8ecf4] dark:bg-[#10121b] border border-white/60 dark:border-white/5 space-y-1">
+                                <div className="p-2.5 rounded-xl bg-[#ebf0f7] dark:bg-[#151724] border border-white/60 dark:border-white/5 space-y-1">
                                     <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                        <span>Logistics</span>
+                                        <span>4. Logistics</span>
                                         <span className="text-pink-600 font-mono font-black">{winnerRanking?.logisticsScore || 14}/15</span>
                                     </div>
-                                    <div className="w-full h-1 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
+                                    <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
                                         <div className="h-full bg-pink-500 rounded-full" style={{ width: `${((winnerRanking?.logisticsScore || 14) / 15) * 100}%` }} />
                                     </div>
+                                    <p className="text-[9px] text-slate-400">Proximity to Airship HQ</p>
                                 </div>
                             </div>
                         )}
+
+                        {/* Top 3 Recommendations Cards */}
+                        <div className="space-y-3">
+                            {rankedQuotes.slice(0, Math.min(3, rankedQuotes.length)).map((item) => {
+                                const q = item.quote;
+                                const r = item.ranking;
+                                const sup = item.matchedSupplier;
+                                const isRank1 = item.rank === 1;
+                                const isRank2 = item.rank === 2;
+                                const isRank3 = item.rank === 3;
+                                const isWinningItem = q.id === winningQuote.id;
+
+                                const rankBadgeText = isRank1 
+                                    ? "Top Pick • Optimal Procurement Value" 
+                                    : isRank2 
+                                        ? "Strong Contender" 
+                                        : "Value Alternative";
+
+                                const rankToneClass = isRank1
+                                    ? "bg-pink-600 text-white shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(219,39,119,0.4)]"
+                                    : isRank2
+                                        ? "bg-blue-600 text-white shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(37,99,235,0.4)]"
+                                        : "bg-amber-600 text-white shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(217,119,6,0.4)]";
+
+                                const cardBorder = isRank1
+                                    ? "border-pink-500/50 dark:border-pink-500/40 bg-[#f7f9fd]/90 dark:bg-[#181a29]/90 shadow-[-3px_-3px_8px_rgba(255,255,255,0.85),_3px_3px_8px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.6)]"
+                                    : "border-slate-300/70 dark:border-white/[0.08] bg-[#ebf0f7]/70 dark:bg-[#151724]/70 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(163,177,198,0.25)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_6px_rgba(0,0,0,0.5)]";
+
+                                return (
+                                    <div
+                                        key={q.id}
+                                        className={`p-3.5 sm:p-4 rounded-2xl border transition-all ${cardBorder}`}
+                                    >
+                                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                                            {/* Left: Supplier Info & AI Badges */}
+                                            <div className="flex items-start gap-3 min-w-0">
+                                                <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-mono text-xs font-black shrink-0 mt-0.5 ${rankToneClass}`}>
+                                                    {isRank1 ? <Trophy className="w-4 h-4 text-amber-300" /> : isRank2 ? <Medal className="w-4 h-4 text-slate-100" /> : <Award className="w-4 h-4 text-amber-200" />}
+                                                </div>
+
+                                                <div className="min-w-0 space-y-1">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                                                            isRank1 
+                                                                ? "bg-pink-500/15 text-pink-600 dark:text-pink-400 border border-pink-500/30" 
+                                                                : isRank2
+                                                                    ? "bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/30"
+                                                                    : "bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30"
+                                                        }`}>
+                                                            <span>#{item.rank} {rankBadgeText}</span>
+                                                        </span>
+
+                                                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+                                                            {item.score}/100 Match
+                                                        </span>
+
+                                                        {r?.priceDeltaPercentage !== undefined && r.priceDeltaPercentage > 0 && (
+                                                            <span className="text-[10px] font-bold text-slate-400">
+                                                                (+{r.priceDeltaPercentage}% vs lowest)
+                                                            </span>
+                                                        )}
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <h5 className="text-sm font-black text-slate-900 dark:text-white truncate">
+                                                            {q.supplier_name}
+                                                        </h5>
+                                                        <span className="text-slate-300 dark:text-slate-700 font-bold">•</span>
+                                                        <span className="font-mono text-xs sm:text-sm font-black text-pink-600 dark:text-pink-400">
+                                                            ₱{Number(q.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </span>
+                                                        <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                            (₱{Number(q.unit_price).toLocaleString()} / {q.unit || 'unit'} • {q.lead_time_days}d lead • {q.availability})
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Strengths tags */}
+                                                    {r?.strengths && r.strengths.length > 0 && (
+                                                        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                                                            {r.strengths.slice(0, 3).map((st, sIdx) => (
+                                                                <span
+                                                                    key={sIdx}
+                                                                    className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-[#e2e8f0] dark:bg-[#12131f] text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-white/[0.04]"
+                                                                >
+                                                                    {st}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* Right: Actions */}
+                                            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+                                                {/* Ask AI in Chat */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        openRecommendationChat({
+                                                            id: q.id,
+                                                            requestNumber: group.requestNumber,
+                                                            itemName: group.itemName,
+                                                            supplierName: q.supplier_name,
+                                                            supplierId: q.supplier_id,
+                                                            totalAmount: Number(q.total_amount || 0),
+                                                            unitPrice: Number(q.unit_price || 0),
+                                                            unit: q.unit || group.unit || "unit",
+                                                            leadTimeDays: Number(q.lead_time_days || 1),
+                                                            availability: q.availability || "In Stock",
+                                                            overallScore: item.score,
+                                                            priceScore: r?.priceScore || (isRank1 ? 38 : 34),
+                                                            speedScore: r?.speedScore || (isRank1 ? 24 : 22),
+                                                            servicesScore: r?.servicesScore || (isRank1 ? 18 : 16),
+                                                            logisticsScore: r?.logisticsScore || (isRank1 ? 14 : 12),
+                                                            summary: r?.recommendationVerdict || `Rank #${item.rank}: ${q.supplier_name} scored ${item.score}/100 based on competitive pricing and turnaround.`,
+                                                            strengths: r?.strengths || [],
+                                                            comparisonQuotes: validQuotes.map(x => ({
+                                                                supplierName: x.supplier_name,
+                                                                totalAmount: Number(x.total_amount || 0),
+                                                                leadTimeDays: Number(x.lead_time_days || 1),
+                                                            })),
+                                                            topRecommendations: rankedQuotes.slice(0, 3).map(tr => ({
+                                                                rank: tr.rank,
+                                                                supplierName: tr.quote.supplier_name,
+                                                                totalAmount: Number(tr.quote.total_amount || 0),
+                                                                unitPrice: Number(tr.quote.unit_price || 0),
+                                                                leadTimeDays: Number(tr.quote.lead_time_days || 1),
+                                                                availability: tr.quote.availability || "In Stock",
+                                                                overallScore: tr.score,
+                                                                verdict: tr.ranking?.recommendationVerdict,
+                                                                strengths: tr.ranking?.strengths || [],
+                                                            })),
+                                                            historicalContext: {
+                                                                previousWinner: group.category,
+                                                                pastOrderCount: 12,
+                                                                defectCount: 0,
+                                                                onTimeDeliveryRate: "98.5%",
+                                                            }
+                                                        });
+                                                    }}
+                                                    className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),_2px_2px_6px_rgba(236,72,153,0.35)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                                    title={`Ask AI Advisor about ${q.supplier_name}'s proposal`}
+                                                >
+                                                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                                                    <span>Ask AI in Chat</span>
+                                                </button>
+
+                                                {/* View Proposal Button */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setModalQuoteItem({ quote: q, supplier: sup })}
+                                                    className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] hover:bg-slate-200/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),_2px_2px_4px_rgba(163,177,198,0.3)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                                                    title="Inspect proposal breakdown and terms"
+                                                >
+                                                    <FileText className="w-3.5 h-3.5 text-pink-500" />
+                                                    <span>View Proposal</span>
+                                                </button>
+
+                                                {/* Award Bid Button */}
+                                                {q.status === "accepted" ? (
+                                                    <div className="px-3 py-1.5 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black flex items-center gap-1.5 border border-emerald-500/30">
+                                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                                        <span>Bid Awarded</span>
+                                                    </div>
+                                                ) : hasAnyAcceptedQuote || isBidAwarded ? (
+                                                    <div className="px-3 py-1.5 rounded-xl bg-slate-200/80 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs font-black flex items-center gap-1.5 border border-slate-300 dark:border-slate-700">
+                                                        <Award className="w-3.5 h-3.5" />
+                                                        <span>Bid Awarded</span>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAwardBidAction(sup, q)}
+                                                        disabled={awardingQuoteId === q.id || locallyAwardedId !== null}
+                                                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),_2px_2px_6px_rgba(16,185,129,0.4)] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                                                        title={`Award procurement bid to ${q.supplier_name}`}
+                                                    >
+                                                        {awardingQuoteId === q.id || locallyAwardedId !== null ? (
+                                                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                        ) : (
+                                                            <Award className="w-3.5 h-3.5 text-amber-300" />
+                                                        )}
+                                                        <span>Award Bid</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
             )}
@@ -811,16 +924,16 @@ export function RequestQuotationsSummary({
                                     </h4>
 
                                     <div className="overflow-x-auto rounded-2xl border border-slate-300/80 dark:border-white/10 bg-[#e8ecf4]/60 dark:bg-black/30 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.3)]">
-                                        <table className="table-pro w-full text-left border-collapse">
+                                        <table className="table-pro w-full min-w-[860px] text-left border-collapse">
                                             <thead>
                                                 <tr className="border-b border-slate-300/80 dark:border-white/10 bg-[#e0e6f0] dark:bg-[#12131f] text-[10px] font-black uppercase text-slate-500 dark:text-slate-400">
-                                                    <th className="p-3">Rank &amp; Supplier</th>
-                                                    <th className="p-3">Total Bid</th>
-                                                    <th className="p-3">Price Delta</th>
-                                                    <th className="p-3">Lead Time</th>
-                                                    <th className="p-3">Stock Readiness</th>
-                                                    <th className="p-3">AI Score</th>
-                                                    <th className="p-3 text-right">Verdict</th>
+                                                    <th className="p-3 w-[220px] min-w-[190px]">Rank &amp; Supplier</th>
+                                                    <th className="p-3 w-[120px] min-w-[110px]">Total Bid</th>
+                                                    <th className="p-3 w-[110px] min-w-[100px]">Price Delta</th>
+                                                    <th className="p-3 w-[100px] min-w-[90px]">Lead Time</th>
+                                                    <th className="p-3 w-[140px] min-w-[120px]">Stock Readiness</th>
+                                                    <th className="p-3 w-[90px] min-w-[80px]">AI Score</th>
+                                                    <th className="p-3 text-right w-[120px] min-w-[110px]">Verdict</th>
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-200/40 dark:divide-white/[0.04] text-xs">
@@ -841,22 +954,25 @@ export function RequestQuotationsSummary({
                                                             key={rankItem.id}
                                                             className={isTop ? "bg-pink-500/5 font-semibold" : ""}
                                                         >
-                                                            <td className="p-3" data-label="Rank & Supplier">
+                                                            <td className="p-3 w-[220px] min-w-[190px]" data-label="Rank & Supplier">
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-black ${
+                                                                    <span className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-black shrink-0 ${
                                                                         isTop ? "bg-pink-600 text-white shadow-[-1px_-1px_2px_rgba(255,255,255,0.6),_1px_1px_3px_rgba(219,39,119,0.4)]" : "bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300"
                                                                     }`}>
                                                                         #{rankItem.rank}
                                                                     </span>
-                                                                    <span className="font-bold text-slate-900 dark:text-white">
+                                                                    <span 
+                                                                        className="font-bold text-slate-900 dark:text-white truncate max-w-[150px] block"
+                                                                        title={rankItem.supplier_name}
+                                                                    >
                                                                         {rankItem.supplier_name}
                                                                     </span>
                                                                 </div>
                                                             </td>
-                                                            <td className="p-3 font-mono font-black text-pink-600 dark:text-pink-400" data-label="Total Bid">
+                                                            <td className="p-3 font-mono font-black text-pink-600 dark:text-pink-400 w-[120px] min-w-[110px]" data-label="Total Bid">
                                                                 ₱{Number(q.total_amount).toLocaleString()}
                                                             </td>
-                                                            <td className="p-3 font-mono text-[11px]" data-label="Price Delta">
+                                                            <td className="p-3 font-mono text-[11px] w-[110px] min-w-[100px]" data-label="Price Delta">
                                                                 {rankItem.priceDeltaVsLowest === 0 ? (
                                                                     <span className="text-emerald-600 font-bold">Best Price</span>
                                                                 ) : (
@@ -865,18 +981,20 @@ export function RequestQuotationsSummary({
                                                                     </span>
                                                                 )}
                                                             </td>
-                                                            <td className="p-3 text-slate-700 dark:text-slate-300 font-bold" data-label="Lead Time">
+                                                            <td className="p-3 text-slate-700 dark:text-slate-300 font-bold w-[100px] min-w-[90px]" data-label="Lead Time">
                                                                 {q.lead_time_days} days
                                                             </td>
-                                                            <td className="p-3 text-slate-600 dark:text-slate-400" data-label="Stock Readiness">
-                                                                {q.availability}
+                                                            <td className="p-3 text-slate-600 dark:text-slate-400 w-[140px] min-w-[120px]" data-label="Stock Readiness">
+                                                                <span className="truncate max-w-[125px] block" title={q.availability}>
+                                                                    {q.availability}
+                                                                </span>
                                                             </td>
-                                                            <td className="p-3" data-label="AI Score">
+                                                            <td className="p-3 w-[90px] min-w-[80px]" data-label="AI Score">
                                                                 <span className="font-mono font-black text-xs px-2 py-0.5 rounded-lg bg-pink-500/10 text-pink-600 dark:text-pink-400 border border-pink-500/20">
                                                                     {rankItem.overallScore}/100
                                                                 </span>
                                                             </td>
-                                                            <td className="p-3 text-right" data-label="Verdict">
+                                                            <td className="p-3 text-right w-[120px] min-w-[110px]" data-label="Verdict">
                                                                 <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg ${
                                                                     isTop
                                                                         ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"

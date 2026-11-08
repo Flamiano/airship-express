@@ -243,8 +243,12 @@ export function PotentialSuppliersTab({
     const [isAddSupplierModalOpen, setIsAddSupplierModalOpen] = useState<boolean>(false);
     const [addModalInitialReqId, setAddModalInitialReqId] = useState<string>("");
 
-    // Sourced Vendor Leads View Mode (Cards vs Table)
-    const [leadsViewMode, setLeadsViewMode] = useState<"cards" | "table">("cards");
+    // Sourced Vendor Leads View Mode (Cards vs Table) - defaults to table
+    const [leadsViewMode, setLeadsViewMode] = useState<"cards" | "table">("table");
+
+    // Sourced Vendor Leads Pagination State per requisition group (5 leads per page)
+    const [leadsPageByGroup, setLeadsPageByGroup] = useState<Record<string, number>>({});
+    const LEADS_PER_PAGE = 5;
 
     // Helper to check if a supplier is the previous supplier that won the bid with the same item name
     const isPreviousBidWinner = useCallback((itemName: string, supplierName?: string | null, supplierId?: string | number | null, quote?: any | null): boolean => {
@@ -2143,6 +2147,13 @@ export function PotentialSuppliersTab({
                         const isExpanded = expandedGroupKeys.has(group.groupKey);
                         const priorityLower = (group.priority || "normal").toLowerCase();
 
+                        // Sourced Vendor Leads Pagination logic (5 leads per page)
+                        const currentLeadsPage = leadsPageByGroup[group.groupKey] || 1;
+                        const totalLeads = group.potentialSuppliers.length;
+                        const totalLeadsPages = Math.max(1, Math.ceil(totalLeads / LEADS_PER_PAGE));
+                        const leadsStartIndex = (currentLeadsPage - 1) * LEADS_PER_PAGE;
+                        const paginatedLeads = group.potentialSuppliers.slice(leadsStartIndex, leadsStartIndex + LEADS_PER_PAGE);
+
                         return (
                             <div
                                 key={group.groupKey}
@@ -2318,7 +2329,7 @@ export function PotentialSuppliersTab({
 
                                             {leadsViewMode === "cards" ? (
                                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-                                            {group.potentialSuppliers.map((supplier) => {
+                                            {paginatedLeads.map((supplier) => {
                                                 const hasEmail = Boolean(supplier.email && supplier.email.includes("@"));
                                                 const isDeleting = deletingSupplierId === supplier.id;
                                                 const isPromoting = promotingSupplierId === supplier.id;
@@ -2849,26 +2860,28 @@ export function PotentialSuppliersTab({
                                         ) : (
                                         /* Standardized table-pro View for Sourced Vendor Leads */
                                         <div className="overflow-x-auto rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-[#ebf0f7]/40 dark:bg-[#14151c]/40 shadow-[inset_1.5px_1.5px_4px_rgba(166,175,195,0.25)]">
-                                            <table className="table-pro w-full text-left text-xs border-collapse p-1">
+                                            <table className="table-pro w-full min-w-[1450px] text-left text-xs border-collapse p-1">
                                                 <thead className="bg-[#e4ebf5] dark:bg-[#14151c] border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10">
                                                     <tr>
-                                                        <th className="py-3.5 px-4">Vendor &amp; Category</th>
-                                                        <th className="py-3.5 px-4">Location &amp; Distance</th>
-                                                        <th className="py-3.5 px-4">Contact</th>
-                                                        <th className="py-3.5 px-4">Status &amp; Outreach</th>
-                                                        <th className="py-3.5 px-4">Quoted Financials</th>
-                                                        <th className="py-3.5 px-4 text-right sm:w-[220px] sm:min-w-[220px]">Actions</th>
+                                                        <th className="py-3.5 px-4 w-[200px] min-w-[180px]">Vendor / Supplier</th>
+                                                        <th className="py-3.5 px-4 w-[130px] min-w-[120px]">Category</th>
+                                                        <th className="py-3.5 px-4 w-[200px] min-w-[180px]">Products &amp; Specs</th>
+                                                        <th className="py-3.5 px-4 w-[180px] min-w-[160px]">Location &amp; Distance</th>
+                                                        <th className="py-3.5 px-4 w-[190px] min-w-[170px]">Contact Info</th>
+                                                        <th className="py-3.5 px-4 w-[140px] min-w-[130px]">Status</th>
+                                                        <th className="py-3.5 px-4 w-[170px] min-w-[150px]">Quoted Financials</th>
+                                                        <th className="py-3.5 px-4 text-right w-[240px] min-w-[220px]">Actions</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-xs">
                                                     {group.potentialSuppliers.length === 0 ? (
                                                         <tr>
-                                                            <td colSpan={6} className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
+                                                            <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
                                                                 No vendor leads added for this requisition yet. Click &quot;Add Lead&quot; to source vendors.
                                                             </td>
                                                         </tr>
                                                     ) : (
-                                                            group.potentialSuppliers.map((supplier) => {
+                                                            paginatedLeads.map((supplier) => {
                                                                 const hasEmail = Boolean(supplier.email && supplier.email.includes("@"));
                                                                 const isDeleting = deletingSupplierId === supplier.id;
                                                                 const hasQuote = Boolean(supplier.submittedQuote);
@@ -2881,11 +2894,14 @@ export function PotentialSuppliersTab({
                                                                             hasQuote ? "bg-pink-500/[0.02]" : ""
                                                                         }`}
                                                                     >
-                                                                        {/* 1. Vendor & Category */}
-                                                                        <td data-label="Vendor" className="py-3.5 px-4 align-top">
+                                                                        {/* 1. Vendor Name & Source */}
+                                                                        <td data-label="Vendor" className="py-3.5 px-4 align-top w-[200px] min-w-[180px]">
                                                                             <div className="space-y-1">
                                                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                                                    <span className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm">
+                                                                                    <span 
+                                                                                        className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate max-w-[160px] block"
+                                                                                        title={supplier.name}
+                                                                                    >
                                                                                         {supplier.name}
                                                                                     </span>
                                                                                     {hasQuote && (
@@ -2894,51 +2910,78 @@ export function PotentialSuppliersTab({
                                                                                         </StatusBadge>
                                                                                     )}
                                                                                 </div>
-                                                                                <div className="flex items-center gap-1 text-[11px] font-bold text-pink-600 dark:text-pink-400">
-                                                                                    <Tag className="w-3 h-3 text-pink-500 shrink-0" />
-                                                                                    <span className="uppercase tracking-wider text-[10px]">
-                                                                                        {supplier.category || "General Store / Supplier"}
+                                                                                {supplier.source && (
+                                                                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono capitalize truncate max-w-[160px] block" title={`Source: ${supplier.source}`}>
+                                                                                        Source: {supplier.source}
                                                                                     </span>
-                                                                                </div>
-                                                                                {supplier.products && (
-                                                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 max-w-[220px]" title={supplier.products}>
-                                                                                        {supplier.products}
-                                                                                    </p>
                                                                                 )}
                                                                             </div>
                                                                         </td>
 
-                                                                        {/* 2. Location & Distance */}
-                                                                        <td data-label="Location" className="py-3.5 px-4 align-top">
+                                                                        {/* 2. Category */}
+                                                                        <td data-label="Category" className="py-3.5 px-4 align-top w-[130px] min-w-[120px]">
+                                                                            <div className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-pink-500/10 dark:bg-pink-900/20 text-pink-600 dark:text-pink-400 border border-pink-500/20 max-w-[120px]">
+                                                                                <Tag className="w-3 h-3 text-pink-500 shrink-0" />
+                                                                                <span 
+                                                                                    className="uppercase tracking-wider text-[10px] font-bold truncate block"
+                                                                                    title={supplier.category || "General Store / Supplier"}
+                                                                                >
+                                                                                    {supplier.category || "General"}
+                                                                                </span>
+                                                                            </div>
+                                                                        </td>
+
+                                                                        {/* 3. Products & Specifications */}
+                                                                        <td data-label="Products" className="py-3.5 px-4 align-top w-[200px] min-w-[180px]">
+                                                                            {supplier.products ? (
+                                                                                <p 
+                                                                                    className="text-[11px] text-slate-700 dark:text-slate-300 font-medium truncate max-w-[180px] block" 
+                                                                                    title={supplier.products}
+                                                                                >
+                                                                                    {supplier.products}
+                                                                                </p>
+                                                                            ) : (
+                                                                                <span className="text-[10px] text-slate-400 dark:text-slate-500 italic block">
+                                                                                    No specific specs
+                                                                                </span>
+                                                                            )}
+                                                                        </td>
+
+                                                                        {/* 4. Location & Distance */}
+                                                                        <td data-label="Location" className="py-3.5 px-4 align-top w-[180px] min-w-[160px]">
                                                                             <div className="space-y-1">
                                                                                 <div className="flex items-center gap-1.5">
-                                                                                    <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 bg-[#e2e8f0] dark:bg-[#12131f] px-2 py-0.5 rounded-md shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)] dark:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-slate-200/50 dark:border-white/[0.04]">
+                                                                                    <span className="text-[10px] font-black text-slate-700 dark:text-slate-300 bg-[#e2e8f0] dark:bg-[#12131f] px-2 py-0.5 rounded-md shadow-[inset_1px_1px_2px_rgba(163,177,198,0.3)] dark:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.5)] border border-slate-200/50 dark:border-white/[0.04] shrink-0">
                                                                                         {supplier.distanceKm.toFixed(1)} km from HQ
                                                                                     </span>
                                                                                     <button
                                                                                         type="button"
                                                                                         onClick={() => setMapSupplier(supplier)}
-                                                                                        className="p-1 rounded-lg text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 transition-colors cursor-pointer"
+                                                                                        className="p-1 rounded-lg text-slate-500 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 transition-colors cursor-pointer shrink-0"
                                                                                         title="View on Map"
                                                                                     >
                                                                                         <MapPin className="w-3.5 h-3.5 text-pink-500" />
                                                                                     </button>
                                                                                 </div>
-                                                                                <p className="text-[11px] text-slate-600 dark:text-slate-400 line-clamp-2 max-w-[200px]" title={supplier.location}>
+                                                                                <p 
+                                                                                    className="text-[11px] text-slate-600 dark:text-slate-400 truncate max-w-[160px] block" 
+                                                                                    title={supplier.location || supplier.city || "Metro Manila"}
+                                                                                >
                                                                                     {supplier.location || supplier.city || "Metro Manila"}
                                                                                 </p>
                                                                             </div>
                                                                         </td>
 
-                                                                        {/* 3. Contact Info */}
-                                                                        <td data-label="Contact" className="py-3.5 px-4 align-top">
+                                                                        {/* 5. Contact Info */}
+                                                                        <td data-label="Contact" className="py-3.5 px-4 align-top w-[190px] min-w-[170px]">
                                                                             <div className="space-y-1.5">
                                                                                 {supplier.phone ? (
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         <Phone className="w-3 h-3 text-pink-500 shrink-0" />
                                                                                         <a
                                                                                             href={`tel:${supplier.phone}`}
-                                                                                            className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 hover:text-pink-600 hover:underline"
+                                                                                            className="font-mono text-xs font-bold text-slate-800 dark:text-slate-200 hover:text-pink-600 hover:underline truncate max-w-[150px] block"
+                                                                                            title={supplier.phone}
                                                                                         >
                                                                                             {supplier.phone}
                                                                                         </a>
@@ -2950,7 +2993,10 @@ export function PotentialSuppliersTab({
                                                                                 {hasEmail ? (
                                                                                     <div className="flex items-center gap-1.5">
                                                                                         <Mail className="w-3 h-3 text-pink-500 shrink-0" />
-                                                                                        <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 truncate max-w-[170px]" title={supplier.email}>
+                                                                                        <span 
+                                                                                            className="text-[11px] font-medium text-slate-700 dark:text-slate-300 truncate max-w-[125px] block" 
+                                                                                            title={supplier.email}
+                                                                                        >
                                                                                             {supplier.email}
                                                                                         </span>
                                                                                         <button
@@ -2981,8 +3027,8 @@ export function PotentialSuppliersTab({
                                                                             </div>
                                                                         </td>
 
-                                                                        {/* 4. Outreach / Status */}
-                                                                        <td data-label="Status" className="py-3.5 px-4 align-top">
+                                                                        {/* 6. Outreach / Status */}
+                                                                        <td data-label="Status" className="py-3.5 px-4 align-top w-[140px] min-w-[130px]">
                                                                             <div className="space-y-1.5">
                                                                                 {supplier.submittedQuote ? (
                                                                                     <StatusBadge
@@ -3005,7 +3051,7 @@ export function PotentialSuppliersTab({
                                                                                 {cardMeeting && (
                                                                                     <div className="flex items-center gap-1 text-[10px] text-pink-700 dark:text-pink-300 font-bold bg-pink-500/10 dark:bg-pink-900/20 px-2 py-0.5 rounded-md border border-pink-500/30">
                                                                                         <Video className="w-3 h-3 text-pink-500 shrink-0" />
-                                                                                        <span className="truncate max-w-[160px]">
+                                                                                        <span className="truncate max-w-[120px] block" title={`${cardMeeting.meeting_date} (${cardMeeting.start_time})`}>
                                                                                             {cardMeeting.meeting_date} ({cardMeeting.start_time})
                                                                                         </span>
                                                                                     </div>
@@ -3013,28 +3059,31 @@ export function PotentialSuppliersTab({
                                                                             </div>
                                                                         </td>
 
-                                                                        {/* 5. Quoted Pricing & Terms */}
-                                                                        <td data-label="Quotation" className="py-3.5 px-4 align-top">
+                                                                        {/* 7. Quoted Pricing & Terms */}
+                                                                        <td data-label="Financials" className="py-3.5 px-4 align-top w-[170px] min-w-[150px]">
                                                                             {supplier.submittedQuote ? (
                                                                                 <div className="space-y-0.5">
-                                                                                    <div className="font-mono text-sm font-black text-pink-600 dark:text-pink-400">
+                                                                                    <div className="font-mono text-xs sm:text-sm font-black text-pink-600 dark:text-pink-400 truncate block">
                                                                                         ₱{Number(supplier.submittedQuote.total_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                                     </div>
-                                                                                    <div className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">
+                                                                                    <div 
+                                                                                        className="text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400 truncate block"
+                                                                                        title={`Unit: ₱${Number(supplier.submittedQuote.unit_price).toLocaleString()} / ${supplier.submittedQuote.unit || 'unit'}`}
+                                                                                    >
                                                                                         Unit: ₱{Number(supplier.submittedQuote.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 })} / {supplier.submittedQuote.unit || 'unit'}
                                                                                     </div>
                                                                                     <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
-                                                                                        <span className="font-bold text-slate-700 dark:text-slate-300">{supplier.submittedQuote.availability}</span>
+                                                                                        <span className="font-bold text-slate-700 dark:text-slate-300 truncate max-w-[75px] block">{supplier.submittedQuote.availability}</span>
                                                                                         <span>•</span>
-                                                                                        <span>{supplier.submittedQuote.lead_time_days}d lead</span>
+                                                                                        <span className="shrink-0">{supplier.submittedQuote.lead_time_days}d lead</span>
                                                                                     </div>
                                                                                 </div>
                                                                             ) : (
                                                                                 <div className="space-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
-                                                                                    <div className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[160px]">
+                                                                                    <div className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[150px] block" title={group.itemName}>
                                                                                         {group.itemName}
                                                                                     </div>
-                                                                                    <div className="text-[10px]">
+                                                                                    <div className="text-[10px] truncate block">
                                                                                         Req Qty: {(() => {
                                                                                             const qty = group.quantityRequested;
                                                                                             const unit = group.unit;
@@ -3051,8 +3100,8 @@ export function PotentialSuppliersTab({
                                                                             )}
                                                                         </td>
 
-                                                                        {/* 6. Action Controls with CrudActionButton */}
-                                                                        <td data-label="Actions" className="py-3.5 px-4 text-right sm:w-[220px] sm:min-w-[220px] w-full" onClick={(e) => e.stopPropagation()}>
+                                                                        {/* 8. Action Controls with CrudActionButton */}
+                                                                        <td data-label="Actions" className="py-3.5 px-4 text-right w-[240px] min-w-[220px]" onClick={(e) => e.stopPropagation()}>
                                                                             <div className="flex items-center justify-end gap-1.5 w-full sm:w-auto flex-wrap">
                                                                                 {/* Review Proposal Button */}
                                                                                 {supplier.submittedQuote && (
@@ -3174,6 +3223,50 @@ export function PotentialSuppliersTab({
                                                         )}
                                                     </tbody>
                                                 </table>
+                                            </div>
+                                        )}
+
+                                        {/* Sourced Vendor Leads Pagination Controls */}
+                                        {totalLeads > LEADS_PER_PAGE && (
+                                            <div className="flex items-center justify-between gap-3 pt-3.5 px-2 border-t border-slate-300/60 dark:border-white/[0.06] flex-wrap text-xs">
+                                                <div className="text-slate-500 dark:text-slate-400 font-medium">
+                                                    Showing <span className="font-bold text-slate-800 dark:text-slate-200">{leadsStartIndex + 1}</span> to <span className="font-bold text-slate-800 dark:text-slate-200">{Math.min(leadsStartIndex + LEADS_PER_PAGE, totalLeads)}</span> of <span className="font-bold text-slate-800 dark:text-slate-200">{totalLeads}</span> vendor leads
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5">
+                                                    <button
+                                                        type="button"
+                                                        disabled={currentLeadsPage <= 1}
+                                                        onClick={() => setLeadsPageByGroup(prev => ({ ...prev, [group.groupKey]: Math.max(1, currentLeadsPage - 1) }))}
+                                                        className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] text-slate-600 dark:text-slate-300 text-xs font-bold border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_4px_rgba(255,255,255,0.8),_2px_2px_4px_rgba(163,177,198,0.3)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                                                    >
+                                                        &larr; Prev
+                                                    </button>
+
+                                                    {Array.from({ length: totalLeadsPages }, (_, i) => i + 1).map(pageNum => (
+                                                        <button
+                                                            key={pageNum}
+                                                            type="button"
+                                                            onClick={() => setLeadsPageByGroup(prev => ({ ...prev, [group.groupKey]: pageNum }))}
+                                                            className={`w-7 h-7 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center ${
+                                                                currentLeadsPage === pageNum
+                                                                    ? "bg-pink-600 text-white shadow-[-1px_-1px_3px_rgba(255,255,255,0.5),_2px_2px_5px_rgba(219,39,119,0.4)]"
+                                                                    : "bg-[#ebf0f7] dark:bg-[#181a28] text-slate-600 dark:text-slate-300 hover:text-pink-600 border border-white/80 dark:border-white/[0.05] shadow-[-1px_-1px_3px_rgba(255,255,255,0.8),_1px_1px_3px_rgba(163,177,198,0.3)]"
+                                                            }`}
+                                                        >
+                                                            {pageNum}
+                                                        </button>
+                                                    ))}
+
+                                                    <button
+                                                        type="button"
+                                                        disabled={currentLeadsPage >= totalLeadsPages}
+                                                        onClick={() => setLeadsPageByGroup(prev => ({ ...prev, [group.groupKey]: Math.min(totalLeadsPages, currentLeadsPage + 1) }))}
+                                                        className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] text-slate-600 dark:text-slate-300 text-xs font-bold border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_4px_rgba(255,255,255,0.8),_2px_2px_4px_rgba(163,177,198,0.3)] disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                                                    >
+                                                        Next &rarr;
+                                                    </button>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
