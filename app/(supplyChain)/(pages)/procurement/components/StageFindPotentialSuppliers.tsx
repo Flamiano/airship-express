@@ -237,7 +237,7 @@ export function StageFindPotentialSuppliers({
     return (
         <div className="space-y-6">
             {/* Top Overview Cards using 3D Flipping Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 <Cards
                     frontIcon="fas fa-boxes-stacked mr-1"
                     header="Shortage Items"
@@ -352,45 +352,44 @@ export function StageFindPotentialSuppliers({
                 </div>
             )}
 
-            <div className="p-5 sm:p-6 rounded-3xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] shadow-[-6px_-6px_16px_rgba(255,255,255,0.85),_6px_6px_16px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.02),_2px_2px_10px_rgba(0,0,0,0.55)] space-y-5">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                    <Compass className="w-5 h-5 text-pink-500" />
-                    <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                        Find Potential Suppliers &amp; Logistics Sourcing Map
-                    </h3>
-                </div>
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div>
-                        <div className="flex items-center gap-2.5 flex-wrap">
-                            {/* Saved suppliers counter & link to /procurement?stage=3 */}
-                            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)]">
-                                <Store className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                                <a
-                                    href="/procurement?stage=3"
-                                    className="text-[11px] font-black text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline flex items-center gap-1 cursor-pointer"
-                                    title="View saved potential suppliers and quotations in Stage 3"
-                                >
-                                    <span className="underlined">View Supplier Quotations&rarr;</span>
-                                </a>
-                            </div>
-                        </div>
+            <div className="p-4 sm:p-6 rounded-3xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] shadow-[-6px_-6px_16px_rgba(255,255,255,0.85),_6px_6px_16px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_8px_rgba(255,255,255,0.02),_2px_2px_10px_rgba(0,0,0,0.55)] space-y-5">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-2.5">
+                        <Compass className="w-5 h-5 text-pink-500" />
+                        <h3 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                            Find Potential Suppliers
+                        </h3>
                     </div>
 
-                    <button
-                        type="button"
-                        disabled={isCreatingDraftPO}
-                        onClick={() => handleSearchNearbySuppliers()}
-                        className="px-4 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.6),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
-                    >
-                        <Compass className="w-4 h-4" />
-                        <span>Open Sourcing Map &amp; Finder</span>
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                        {/* Saved suppliers counter & link to /procurement?stage=3 */}
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)]">
+                            <Store className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
+                            <a
+                                href="/procurement?stage=3"
+                                className="text-[11px] font-black text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline flex items-center gap-1 cursor-pointer"
+                                title="View saved potential suppliers and quotations in Stage 3"
+                            >
+                                <span>View Supplier Quotations &rarr;</span>
+                            </a>
+                        </div>
+
+                        <button
+                            type="button"
+                            disabled={isCreatingDraftPO}
+                            onClick={() => handleSearchNearbySuppliers()}
+                            className="px-4 py-2 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.6),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                        >
+                            <Search className="w-3.5 h-3.5" />
+                            <span>Overpass Store Finder</span>
+                        </button>
+                    </div>
                 </div>
 
                 {/* Sourcing Search Parameters Form */}
-                <div className="p-4 sm:p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#12131f] border border-white/80 dark:border-white/[0.04] shadow-[inset_2px_2px_6px_rgba(163,177,198,0.3),_inset_-2px_-2px_6px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.5),_inset_-2px_-2px_6px_rgba(255,255,255,0.02)] space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {/* Search Query - functional filtering and enter trigger */}
+                <div className="p-3.5 sm:p-5 rounded-3xl bg-[#ebf0f7] dark:bg-[#12131f] border border-white/80 dark:border-white/[0.04] shadow-[inset_2px_2px_6px_rgba(163,177,198,0.3),_inset_-2px_-2px_6px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.5),_inset_-2px_-2px_6px_rgba(255,255,255,0.02)] space-y-3 sm:space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
+                        {/* Search Query */}
                         <div className="md:col-span-2">
                             <label className="text-xs font-black text-slate-700 dark:text-slate-300 block mb-1">
                                 Supplies / Item Name *
@@ -444,12 +443,12 @@ export function StageFindPotentialSuppliers({
                         </div>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-end">
+                    <div className="pt-1 flex items-center justify-end">
                         <button
                             type="button"
                             disabled={isCreatingDraftPO}
                             onClick={() => handleSearchNearbySuppliers()}
-                            className="px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black flex items-center gap-2 cursor-pointer transition-all shadow-[-2px_-2px_6px_rgba(255,255,255,0.6),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50"
+                            className="w-full sm:w-auto px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black flex items-center justify-center gap-2 cursor-pointer transition-all shadow-[-2px_-2px_6px_rgba(255,255,255,0.6),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] disabled:opacity-50"
                         >
                             {isCreatingDraftPO ? (
                                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -589,53 +588,60 @@ export function StageFindPotentialSuppliers({
 
                                                 {/* Bottom Row: Deep Neumorphic Integrated Quantity Stepper Well & Find Action */}
                                                 <div 
-                                                    className="flex items-center justify-between p-2 rounded-2xl bg-[#e2e8f0]/90 dark:bg-[#10121d] border border-white/60 dark:border-white/[0.03] shadow-[inset_2px_2px_5px_rgba(163,177,198,0.4),_inset_-2px_-2px_5px_rgba(255,255,255,0.95)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.7),_inset_-1px_-1px_3px_rgba(255,255,255,0.02)] gap-2"
+                                                    className="flex flex-col sm:flex-row sm:items-center justify-between p-2 sm:p-2.5 rounded-2xl bg-[#e2e8f0]/90 dark:bg-[#10121d] border border-white/60 dark:border-white/[0.03] shadow-[inset_2px_2px_5px_rgba(163,177,198,0.4),_inset_-2px_-2px_5px_rgba(255,255,255,0.95)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.7),_inset_-1px_-1px_3px_rgba(255,255,255,0.02)] gap-2.5"
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
-                                                    <div className="flex items-center gap-1 pl-1">
-                                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Qty:</span>
-                                                        <div className="flex items-center gap-1">
-                                                            <button
-                                                                type="button"
-                                                                disabled={isAwarded}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleUpdateItemQty(itemKey, currentQty - 1);
-                                                                }}
-                                                                className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center font-black text-sm shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.4)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.03),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.5),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.8)] border border-white/80 dark:border-white/[0.04] transition-all cursor-pointer disabled:opacity-40"
-                                                                title="Decrease quantity"
-                                                            >
-                                                                -
-                                                            </button>
-                                                            <input
-                                                                type="number"
-                                                                min={1}
-                                                                disabled={isAwarded}
-                                                                value={currentQty}
-                                                                onChange={(e) => {
-                                                                    e.stopPropagation();
-                                                                    const val = Math.max(1, parseInt(e.target.value) || 1);
-                                                                    handleUpdateItemQty(itemKey, val);
-                                                                }}
-                                                                className="w-12 text-center bg-transparent text-xs font-black text-slate-900 dark:text-white focus:outline-none font-mono"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                disabled={isAwarded}
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleUpdateItemQty(itemKey, currentQty + 1);
-                                                                }}
-                                                                className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center font-black text-sm shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.4)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.03),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.5),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.8)] border border-white/80 dark:border-white/[0.04] transition-all cursor-pointer disabled:opacity-40"
-                                                                title="Increase quantity"
-                                                            >
-                                                                +
-                                                            </button>
+                                                    <div className="flex items-center justify-between sm:justify-start gap-2 pl-0.5 w-full sm:w-auto">
+                                                        <div className="flex items-center gap-1.5">
+                                                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">Qty:</span>
+                                                            <div className="flex items-center gap-1">
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isAwarded}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleUpdateItemQty(itemKey, currentQty - 1);
+                                                                    }}
+                                                                    className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center font-black text-sm shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.4)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.03),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.5),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.8)] border border-white/80 dark:border-white/[0.04] transition-all cursor-pointer disabled:opacity-40"
+                                                                    title="Decrease quantity"
+                                                                >
+                                                                    -
+                                                                </button>
+                                                                <input
+                                                                    type="number"
+                                                                    min={1}
+                                                                    disabled={isAwarded}
+                                                                    value={currentQty}
+                                                                    onChange={(e) => {
+                                                                        e.stopPropagation();
+                                                                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                                                                        handleUpdateItemQty(itemKey, val);
+                                                                    }}
+                                                                    className="w-12 text-center bg-transparent text-xs font-black text-slate-900 dark:text-white focus:outline-none font-mono"
+                                                                />
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={isAwarded}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleUpdateItemQty(itemKey, currentQty + 1);
+                                                                    }}
+                                                                    className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 flex items-center justify-center font-black text-sm shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.4)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.03),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.5),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.8)] border border-white/80 dark:border-white/[0.04] transition-all cursor-pointer disabled:opacity-40"
+                                                                    title="Increase quantity"
+                                                                >
+                                                                    +
+                                                                </button>
+                                                            </div>
+                                                            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 truncate max-w-[60px]">{item.unit || "units"}</span>
                                                         </div>
-                                                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 pr-1 truncate max-w-[50px]">{item.unit || "units"}</span>
+
+                                                        {/* Mobile badge indicating remaining deficit */}
+                                                        <span className="sm:hidden text-[10px] font-bold text-pink-600 dark:text-pink-400 bg-pink-100/70 dark:bg-pink-950/40 px-2 py-0.5 rounded-lg border border-pink-200/50 dark:border-pink-800/40">
+                                                            Deficit: {remDeficit}
+                                                        </span>
                                                     </div>
 
-                                                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap sm:flex-nowrap">
+                                                    <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end pt-1 sm:pt-0 border-t sm:border-t-0 border-white/40 dark:border-white/[0.03]">
                                                         {/* 1-Click Quick Copy Button */}
                                                         <button
                                                             type="button"
@@ -643,7 +649,7 @@ export function StageFindPotentialSuppliers({
                                                                 e.stopPropagation();
                                                                 handleQuickCopyMarketplace(item, currentQty);
                                                             }}
-                                                            className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] flex items-center gap-1 cursor-pointer transition-all"
+                                                            className="flex-1 sm:flex-none px-2.5 py-1.5 rounded-xl text-xs font-bold bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] flex items-center justify-center gap-1 cursor-pointer transition-all"
                                                             title="Quick copy Facebook Marketplace post to clipboard"
                                                         >
                                                             {copiedItemKey === itemKey ? (
@@ -666,7 +672,7 @@ export function StageFindPotentialSuppliers({
                                                                 e.stopPropagation();
                                                                 handleOpenCopyModal(item, currentQty);
                                                             }}
-                                                            className="w-7 h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 flex items-center justify-center border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] cursor-pointer transition-all"
+                                                            className="w-8 h-8 sm:w-7 sm:h-7 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-600 hover:text-pink-600 dark:text-slate-400 dark:hover:text-pink-400 flex items-center justify-center border border-white/80 dark:border-white/[0.04] shadow-[-2px_-2px_5px_rgba(255,255,255,0.95),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.6)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.3)] cursor-pointer transition-all shrink-0"
                                                             title="Open Marketplace Post Customizer (FB, Viber, Plain text)"
                                                         >
                                                             <Share2 className="w-3.5 h-3.5" />
@@ -680,7 +686,7 @@ export function StageFindPotentialSuppliers({
                                                                 e.stopPropagation();
                                                                 if (!isAwarded) handleSearchNearbySuppliers(item);
                                                             }}
-                                                            className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                                            className={`flex-1 sm:flex-none px-3 py-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                                                                 isAwarded
                                                                     ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-300 cursor-default"
                                                                     : "bg-pink-600 hover:bg-pink-500 text-white shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.4)]"

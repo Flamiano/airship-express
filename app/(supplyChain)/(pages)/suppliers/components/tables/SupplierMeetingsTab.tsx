@@ -711,6 +711,7 @@ export function SupplierMeetingsTab({
             {/* Set / Update Supplier Meeting Modal */}
             <SetSupplierMeetingModal
                 isOpen={isMeetingModalOpen}
+                allowSupplierSelection={true}
                 onClose={() => {
                     setIsMeetingModalOpen(false);
                     setSelectedMeetingForEdit(null);

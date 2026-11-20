@@ -468,6 +468,9 @@ export function FindSupplierModal({
     const [showFiltersInFullMap, setShowFiltersInFullMap] = useState<boolean>(false);
     const [visibleCardsLimit, setVisibleCardsLimit] = useState<number>(30);
     const [activeDetailView, setActiveDetailView] = useState<boolean>(false);
+    const [mobileTab, setMobileTab] = useState<'map' | 'list'>('map');
+    const [showMobilePRDetails, setShowMobilePRDetails] = useState<boolean>(false);
+    const [showMobileFilters, setShowMobileFilters] = useState<boolean>(false);
 
     // View All modal state & filters
     const [isViewAllOpen, setIsViewAllOpen] = useState<boolean>(false);
@@ -1314,39 +1317,39 @@ export function FindSupplierModal({
 
     return (
         <Portal>
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/65 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
-                {/* Main Modal Shell */}
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-4 bg-slate-900/65 backdrop-blur-md animate-in fade-in duration-200 overflow-y-auto">
+                {/* Main Modal Shell - Scrollable on mobile/tablet view */}
                 <div 
-                    className={`bg-[#ebf0f7] dark:bg-[#12141f] shadow-none border border-slate-200/80 dark:border-white/10 flex flex-col min-h-0 overflow-hidden my-auto transition-all duration-300 ${
+                    className={`bg-[#ebf0f7] dark:bg-[#12141f] shadow-none border border-slate-200/80 dark:border-white/10 flex flex-col min-h-0 overflow-y-auto lg:overflow-hidden my-auto transition-all duration-300 ${
                         isFullMap 
                             ? 'fixed inset-1 sm:inset-2 w-[calc(100vw-8px)] sm:w-[calc(100vw-16px)] h-[calc(100vh-8px)] sm:h-[calc(100vh-16px)] max-w-none max-h-none rounded-2xl sm:rounded-3xl z-[60]' 
-                            : 'w-full max-w-[1540px] h-[95vh] max-h-[960px] rounded-[32px]'
+                            : 'w-full max-w-[1540px] h-[96dvh] sm:h-[95vh] max-h-[960px] rounded-2xl sm:rounded-[32px]'
                     }`}
                 >
-                    {/* Modal Top Header */}
-                    <div className={`px-4 sm:px-6 ${isFullMap ? 'py-2.5' : 'py-4'} border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7]/80 dark:bg-[#141624]/80 backdrop-blur-md flex items-center justify-between gap-3 shrink-0`}>
-                        <div className="flex items-center gap-3">
-                            <div className={`${isFullMap ? 'w-9 h-9' : 'w-11 h-11'} rounded-2xl bg-pink-600 text-white flex items-center justify-center shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(219,39,119,0.4)] shrink-0`}>
-                                <Compass className={isFullMap ? "w-4 h-4" : "w-5 h-5"} />
+                    {/* Modal Top Header - Streamlined & clean on mobile view */}
+                    <div className={`px-3 sm:px-6 ${isFullMap ? 'py-2 sm:py-2.5' : 'py-2.5 sm:py-4'} border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7]/80 dark:bg-[#141624]/80 backdrop-blur-md flex items-center justify-between gap-2 sm:gap-3 shrink-0`}>
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                            <div className={`${isFullMap ? 'w-8 h-8 sm:w-9 sm:h-9' : 'w-8 h-8 sm:w-11 sm:h-11'} rounded-xl sm:rounded-2xl bg-pink-600 text-white flex items-center justify-center shadow-[-3px_-3px_8px_rgba(255,255,255,0.8),_4px_4px_10px_rgba(219,39,119,0.4)] shrink-0`}>
+                                <Compass className={isFullMap ? "w-4 h-4" : "w-4 h-4 sm:w-5 sm:h-5"} />
                             </div>
-                            <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <h2 className={`${isFullMap ? 'text-sm sm:text-base' : 'text-base sm:text-lg'} font-black text-slate-900 dark:text-white tracking-tight`}>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                                    <h2 className={`${isFullMap ? 'text-xs sm:text-base' : 'text-xs sm:text-lg'} font-black text-slate-900 dark:text-white tracking-tight truncate`}>
                                         FIND POTENTIAL SUPPLIERS
                                     </h2>
                                     {/* Saved suppliers counter & link to /procurement?stage=3 */}
-                                    <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)]">
-                                        <Store className="w-3.5 h-3.5 text-pink-600 dark:text-pink-400" />
-                                        <span className="text-[11px] font-black text-slate-800 dark:text-slate-100">
-                                            {totalSavedForThisRequest} Saved
+                                    <div className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-0.5 sm:py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] border border-white/80 dark:border-white/[0.05] shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_5px_rgba(0,0,0,0.6)]">
+                                        <Store className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-pink-600 dark:text-pink-400" />
+                                        <span className="text-[10px] sm:text-[11px] font-black text-slate-800 dark:text-slate-100">
+                                            {totalSavedForThisRequest} <span className="hidden xs:inline">Saved</span>
                                         </span>
-                                        <span className="text-slate-300 dark:text-slate-600">•</span>
+                                        <span className="text-slate-300 dark:text-slate-600 hidden sm:inline">•</span>
                                         <a
                                             href="/procurement?stage=3"
-                                            className="text-[11px] font-black text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline flex items-center gap-1 cursor-pointer"
+                                            className="hidden sm:flex text-[11px] font-black text-pink-600 dark:text-pink-400 hover:text-pink-700 dark:hover:text-pink-300 hover:underline items-center gap-1 cursor-pointer"
                                             title="View saved potential suppliers and quotations in Stage 3"
                                         >
-                                            <span>View in /procurement?stage=3 &rarr;</span>
+                                            <span>Stage 3 &rarr;</span>
                                         </a>
                                     </div>
                                     {isFullMap ? (
@@ -1356,13 +1359,13 @@ export function FindSupplierModal({
                                             <span>{searchItemName || request.item_name}</span>
                                         </span>
                                     ) : (
-                                        <span className="px-2.5 py-0.5 rounded-xl text-[10px] font-black bg-[#e2e8f0] dark:bg-[#1c1e2e] text-pink-600 dark:text-pink-400 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4),_inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5),_inset_-1px_-1px_3px_rgba(255,255,255,0.02)] border border-white/60 dark:border-white/[0.04]">
+                                        <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-xl text-[10px] font-black bg-[#e2e8f0] dark:bg-[#1c1e2e] text-pink-600 dark:text-pink-400 shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4),_inset_-1px_-1px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.5),_inset_-1px_-1px_3px_rgba(255,255,255,0.02)] border border-white/60 dark:border-white/[0.04]">
                                             OpenStreetMap Overpass API
                                         </span>
                                     )}
                                 </div>
                                 {!isFullMap && (
-                                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
+                                    <p className="hidden sm:block text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-medium">
                                         Discover and evaluate real nearby businesses for pending purchase request • Request remains <strong className="text-amber-600 dark:text-amber-400 font-bold">Pending</strong>
                                     </p>
                                 )}
@@ -1446,9 +1449,35 @@ export function FindSupplierModal({
                         </div>
                     )}
 
-                    {/* Purchase Request Overview Header Card (Only in Split View) */}
+                    {/* Mobile Compact Requisition Summary Bar (Replaces overwhelming desktop headers on mobile) */}
                     {!isFullMap && (
-                        <div className="px-6 py-2.5 border-b border-white/80 dark:border-white/[0.05] bg-[#e6ecf5] dark:bg-[#141624] flex items-center justify-between gap-4 flex-wrap text-xs shrink-0">
+                        <div className="lg:hidden px-3.5 py-2 border-b border-white/80 dark:border-white/[0.05] bg-[#e6ecf5] dark:bg-[#141624] flex items-center justify-between gap-2 text-xs shrink-0">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-mono font-black text-pink-600 dark:text-pink-400 text-[11px] shrink-0">
+                                    {request.request_number || (request.id ? `PR-${String(request.id).slice(0, 8)}` : 'PR-GENERAL')}
+                                </span>
+                                <span className="text-slate-300 dark:text-slate-600">•</span>
+                                <span className="font-bold text-slate-800 dark:text-slate-200 text-[11px] truncate">
+                                    {searchItemName || request.item_name}
+                                </span>
+                                <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                                    ({requestedProducts[activeProductIndex]?.quantity || 1} {requestedProducts[activeProductIndex]?.unit || 'units'})
+                                </span>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowMobilePRDetails((prev) => !prev)}
+                                className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#181a28] text-[10px] font-black text-slate-700 dark:text-slate-300 hover:text-pink-600 border border-white/80 dark:border-white/[0.05] shadow-sm flex items-center gap-1 shrink-0 cursor-pointer"
+                            >
+                                <span>{showMobilePRDetails ? 'Less Info' : 'PR Details'}</span>
+                                <ChevronDown className={`w-3 h-3 transition-transform ${showMobilePRDetails ? 'rotate-180' : ''}`} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Purchase Request Overview Header Card (Desktop always, Mobile collapsible) */}
+                    {!isFullMap && (
+                        <div className={`${showMobilePRDetails ? 'flex' : 'hidden lg:flex'} px-4 sm:px-6 py-2.5 border-b border-white/80 dark:border-white/[0.05] bg-[#e6ecf5] dark:bg-[#141624] items-center justify-between gap-4 flex-wrap text-xs shrink-0 animate-in fade-in duration-200`}>
                             <div className="flex items-center gap-4 flex-wrap">
                                 <div>
                                     <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">Purchase Request</span>
@@ -1496,9 +1525,9 @@ export function FindSupplierModal({
                         </div>
                     )}
 
-                    {/* Interactive Requested Products & Quantity Sourcing Manager (Only in Split View) */}
+                    {/* Interactive Requested Products & Quantity Sourcing Manager (Desktop always, Mobile collapsible) */}
                     {!isFullMap && (
-                        <div className="px-6 py-3 border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#131522] space-y-2.5 shrink-0">
+                        <div className={`${showMobilePRDetails ? 'block' : 'hidden lg:block'} px-4 sm:px-6 py-3 border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#131522] space-y-2.5 shrink-0 animate-in fade-in duration-200`}>
                             <div className="flex items-center justify-between gap-3 flex-wrap">
                                 <div className="flex items-center gap-2">
                                     <Boxes className="w-4 h-4 text-pink-600 dark:text-pink-400" />
@@ -1686,8 +1715,136 @@ export function FindSupplierModal({
 
                     {/* Interactive Search Controls Bar */}
                     {(!isFullMap || showFiltersInFullMap) && (
-                        <div className="p-4 border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#131522] space-y-3 shrink-0 animate-in fade-in duration-200">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end">
+                        <div className="p-2.5 sm:p-4 border-b border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#131522] space-y-2 shrink-0 animate-in fade-in duration-200">
+                            {/* Mobile View: Compact Single Row Search with Filter Pill Toggle */}
+                            <div className="lg:hidden space-y-2">
+                                <div className="flex items-center gap-1.5">
+                                    <div className="relative flex-1">
+                                        <Search className="w-3.5 h-3.5 text-pink-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                                        <input
+                                            type="text"
+                                            value={searchItemName}
+                                            onChange={(e) => setSearchItemName(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter') {
+                                                    e.preventDefault();
+                                                    runOverpassSearch(selectedRadiusKm, undefined, searchItemName);
+                                                }
+                                            }}
+                                            placeholder="Search items or stores..."
+                                            className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.4),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] border border-white/60 dark:border-white/[0.03] text-xs font-bold text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-pink-500/40"
+                                        />
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => runOverpassSearch()}
+                                        disabled={loadingOverpass}
+                                        className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-md flex items-center gap-1 shrink-0 cursor-pointer disabled:opacity-60"
+                                    >
+                                        <Search className={`w-3 h-3 ${loadingOverpass ? 'animate-spin' : ''}`} />
+                                        <span>{loadingOverpass ? 'Searching...' : 'Search'}</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowMobileFilters((prev) => !prev)}
+                                        className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                                            showMobileFilters
+                                                ? 'bg-pink-600 text-white border-pink-600 shadow-md'
+                                                : 'bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 border-white/70 dark:border-white/[0.05] shadow-sm'
+                                        }`}
+                                        title="Adjust location & radius"
+                                    >
+                                        <Filter className="w-3.5 h-3.5" />
+                                        <span className="text-[10px] font-black">{selectedRadiusKm}km</span>
+                                        <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showMobileFilters ? 'rotate-180' : ''}`} />
+                                    </button>
+                                </div>
+
+                                {/* Collapsible Location & Radius Filters on Mobile */}
+                                {showMobileFilters && (
+                                    <div className="p-2.5 rounded-2xl bg-[#e2e8f0]/80 dark:bg-[#161826] border border-white/70 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.3)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] space-y-2 animate-in fade-in duration-150">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 shrink-0">City:</span>
+                                            {isCustomLocation ? (
+                                                <div className="flex items-center gap-1 flex-1">
+                                                    <input
+                                                        type="text"
+                                                        value={customLocationText}
+                                                        onChange={(e) => setCustomLocationText(e.target.value)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter') {
+                                                                e.preventDefault();
+                                                                runOverpassSearch(selectedRadiusKm, customLocationText);
+                                                            }
+                                                        }}
+                                                        placeholder="Enter Philippine city..."
+                                                        className="w-full px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#12141f] text-xs font-bold text-slate-900 dark:text-white border border-white/60 dark:border-white/[0.03] focus:outline-none"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsCustomLocation(false)}
+                                                        className="px-2 py-1 rounded-lg text-[9px] font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                                                    >
+                                                        Presets
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <select
+                                                    value={selectedLocation}
+                                                    onChange={(e) => {
+                                                        if (e.target.value === '__custom__') {
+                                                            setIsCustomLocation(true);
+                                                            setCustomLocationText('');
+                                                        } else {
+                                                            setSelectedLocation(e.target.value);
+                                                            runOverpassSearch(selectedRadiusKm, e.target.value);
+                                                        }
+                                                    }}
+                                                    className="w-full px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#12141f] text-xs font-bold text-slate-800 dark:text-slate-200 border border-white/60 dark:border-white/[0.03] focus:outline-none"
+                                                >
+                                                    {LOCATION_PRESETS.map((loc) => (
+                                                        <option key={loc.value} value={loc.value}>
+                                                            {loc.label}
+                                                        </option>
+                                                    ))}
+                                                    <option value="__custom__">+ Custom Location...</option>
+                                                </select>
+                                            )}
+                                        </div>
+
+                                        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                                            <span className="text-[10px] font-black uppercase text-slate-500 dark:text-slate-400 shrink-0">Radius:</span>
+                                            {[
+                                                { label: '10km', val: 10 },
+                                                { label: '25km', val: 25 },
+                                                { label: '50km', val: 50 },
+                                                { label: '100km', val: 100 },
+                                                { label: '250km', val: 250 },
+                                                { label: '500km', val: 500 },
+                                            ].map((r) => (
+                                                <button
+                                                    key={r.val}
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedRadiusKm(r.val);
+                                                        runOverpassSearch(r.val);
+                                                    }}
+                                                    className={`px-2 py-1 rounded-lg text-[10px] font-black shrink-0 transition-all cursor-pointer ${
+                                                        selectedRadiusKm === r.val
+                                                            ? 'bg-pink-600 text-white shadow-sm'
+                                                            : 'bg-[#ebf0f7] dark:bg-[#12141f] text-slate-600 dark:text-slate-300'
+                                                    }`}
+                                                >
+                                                    {r.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Desktop View: Full 4-Column Grid */}
+                            <div className="hidden lg:grid grid-cols-4 gap-3 items-end">
                                 {/* 1. Requested Item Query */}
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 flex items-center justify-between">
@@ -1827,6 +1984,38 @@ export function FindSupplierModal({
                         </div>
                     )}
 
+                    {/* Mobile View Switcher (Map vs Directory) - Ensures Map is prominently accessible on mobile */}
+                    {!isFullMap && (
+                        <div className="flex lg:hidden p-1.5 bg-[#e2e8f0]/95 dark:bg-[#141624]/95 border-b border-white/60 dark:border-white/[0.05] shrink-0">
+                            <div className="flex w-full p-1 rounded-2xl bg-[#ebf0f7] dark:bg-[#10121d] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.4),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)]">
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileTab('map')}
+                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                        mobileTab === 'map'
+                                            ? 'bg-pink-600 text-white shadow-[-1px_-1px_3px_rgba(255,255,255,0.4),_2px_2px_6px_rgba(219,39,119,0.4)]'
+                                            : 'text-slate-600 dark:text-slate-300 hover:text-pink-600'
+                                    }`}
+                                >
+                                    <Compass className="w-3.5 h-3.5" />
+                                    <span>Map View</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMobileTab('list')}
+                                    className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                                        mobileTab === 'list'
+                                            ? 'bg-pink-600 text-white shadow-[-1px_-1px_3px_rgba(255,255,255,0.4),_2px_2px_6px_rgba(219,39,119,0.4)]'
+                                            : 'text-slate-600 dark:text-slate-300 hover:text-pink-600'
+                                    }`}
+                                >
+                                    <Store className="w-3.5 h-3.5" />
+                                    <span>Stores Directory ({filteredBusinesses.length})</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Modal Body: Left Directory & Right Leaflet Map */}
                     <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden relative">
                         {/* Left Side: Results List or Detailed Business View */}
@@ -1836,14 +2025,14 @@ export function FindSupplierModal({
                                     ? showSidebarInFullMap
                                         ? 'w-full sm:w-[440px] absolute left-0 top-0 bottom-0 z-30 shadow-2xl bg-[#ebf0f7]/95 dark:bg-[#12141f]/95 backdrop-blur-xl border-r h-full animate-in slide-in-from-left duration-200' 
                                         : 'hidden' 
-                                    : 'w-full lg:w-[540px] xl:w-[590px] h-[400px] lg:h-full shrink-0'
+                                    : `${mobileTab === 'list' ? 'flex flex-1 h-full' : 'hidden lg:flex'} w-full lg:w-[540px] xl:w-[590px] lg:h-full shrink-0`
                             }`}
                         >
                             {/* View Switch: Results List vs Business Detail View */}
                             {activeDetailView && selectedBusiness ? (
                                 /* Detailed Business View */
                                 <div className="flex-1 min-h-0 flex flex-col overflow-y-auto p-4 space-y-4 animate-in fade-in slide-in-from-left duration-200 overscroll-contain">
-                                    <div className="flex items-center justify-between">
+                                    <div className="flex items-center justify-between gap-2 flex-wrap">
                                         <button
                                             type="button"
                                             onClick={() => setActiveDetailView(false)}
@@ -1852,9 +2041,19 @@ export function FindSupplierModal({
                                             <ChevronLeft className="w-3.5 h-3.5" />
                                             <span>Back to Results</span>
                                         </button>
-                                        <span className="text-[10px] font-mono text-slate-400">
-                                            OSM ID: {selectedBusiness.osmType || 'node'}/{selectedBusiness.osmId || selectedBusiness.id}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setMobileTab('map')}
+                                                className="lg:hidden px-3 py-1.5 rounded-xl bg-pink-600 text-white text-xs font-black shadow-md flex items-center gap-1 cursor-pointer"
+                                            >
+                                                <Compass className="w-3.5 h-3.5" />
+                                                <span>View on Map</span>
+                                            </button>
+                                            <span className="text-[10px] font-mono text-slate-400">
+                                                OSM ID: {selectedBusiness.osmType || 'node'}/{selectedBusiness.osmId || selectedBusiness.id}
+                                            </span>
+                                        </div>
                                     </div>
 
                                     {/* Business Profile Card */}
@@ -2231,7 +2430,7 @@ export function FindSupplierModal({
                         </div>
 
                         {/* Right Side: Leaflet Sourcing Map */}
-                        <div className={`flex-1 min-h-[280px] lg:min-h-0 h-full relative ${isFullMap ? 'p-0' : 'p-3'} bg-[#0d0f17]`}>
+                        <div className={`${mobileTab === 'map' ? 'flex flex-1' : 'hidden lg:flex lg:flex-1'} min-h-[380px] sm:min-h-[440px] h-[60vh] lg:h-full relative ${isFullMap ? 'p-0' : 'p-1.5 sm:p-3'} bg-[#0d0f17] flex-col`}>
                             <SupplierSourcingMap
                                 suppliers={filteredBusinesses}
                                 selectedSupplierId={selectedBusiness?.id || null}
@@ -2266,6 +2465,20 @@ export function FindSupplierModal({
                                 searchTerm={resultsSearchTerm}
                                 onSearchChange={(term) => setResultsSearchTerm(term)}
                             />
+
+                            {/* Mobile Floating Button to flip to Stores List */}
+                            {!isFullMap && mobileTab === 'map' && (
+                                <div className="lg:hidden absolute bottom-4 left-1/2 -translate-x-1/2 z-[400] pointer-events-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMobileTab('list')}
+                                        className="px-4 py-2 rounded-2xl bg-slate-900/95 hover:bg-slate-900 text-white text-xs font-black shadow-2xl border border-white/20 backdrop-blur-md flex items-center gap-2 cursor-pointer transition-all active:scale-95"
+                                    >
+                                        <Store className="w-3.5 h-3.5 text-pink-400" />
+                                        <span>Stores Directory ({filteredBusinesses.length})</span>
+                                    </button>
+                                </div>
+                            )}
 
                             {/* Floating Quick Action Pill in Full Map Mode when a supplier is selected */}
                             {isFullMap && selectedBusiness && (
@@ -2341,19 +2554,19 @@ export function FindSupplierModal({
 
                     {/* Modal Footer (hidden in Full Map mode to maximize map canvas) */}
                     {!isFullMap && (
-                        <div className="px-6 py-4 border-t border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#141624] flex items-center justify-between gap-3 shrink-0 flex-wrap">
-                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                        <div className="px-3 sm:px-6 py-2.5 sm:py-4 border-t border-white/80 dark:border-white/[0.05] bg-[#ebf0f7] dark:bg-[#141624] flex items-center justify-between gap-2 sm:gap-3 shrink-0 flex-wrap">
+                            <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
                                 <Building2 className="w-4 h-4 text-pink-500" />
                                 <span>
                                     Search Anchor: <strong>{activeCenterCoords.name}</strong> ({activeCenterCoords.latitude.toFixed(4)}, {activeCenterCoords.longitude.toFixed(4)})
                                 </span>
                             </div>
 
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
                                 <button
                                     type="button"
                                     onClick={onClose}
-                                    className="px-5 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 font-bold text-xs shadow-[-3px_-3px_8px_rgba(255,255,255,0.85),_3px_3px_8px_rgba(163,177,198,0.4)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.65)] hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all cursor-pointer border border-white/60 dark:border-white/[0.04]"
+                                    className="flex-1 sm:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 font-bold text-xs shadow-[-3px_-3px_8px_rgba(255,255,255,0.85),_3px_3px_8px_rgba(163,177,198,0.4)] dark:shadow-[-2px_-2px_6px_rgba(255,255,255,0.02),_3px_3px_8px_rgba(0,0,0,0.65)] hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all cursor-pointer border border-white/60 dark:border-white/[0.04] text-center"
                                 >
                                     Close
                                 </button>
@@ -2366,11 +2579,11 @@ export function FindSupplierModal({
 
                                     if (isOff) {
                                         return (
-                                            <div className="flex items-center gap-2">
+                                            <div className="flex items-center gap-2 flex-1 sm:flex-none">
                                                 <button
                                                     type="button"
                                                     onClick={() => handleInquireSupplier(selectedBusiness)}
-                                                    className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950"
+                                                    className="flex-1 sm:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(245,158,11,0.45)] transition-all flex items-center justify-center gap-1.5 cursor-pointer bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950"
                                                 >
                                                     <MessageSquare className="w-4 h-4" />
                                                     <span>Inquire</span>
@@ -2378,10 +2591,10 @@ export function FindSupplierModal({
                                                 <button
                                                     type="button"
                                                     onClick={() => handleOrderFromOfficialSupplier(selectedBusiness, off)}
-                                                    className="px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)] transition-all flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
+                                                    className="flex-1 sm:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(37,99,235,0.45)] transition-all flex items-center justify-center gap-1.5 cursor-pointer bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white"
                                                 >
                                                     <ShoppingCart className="w-4 h-4" />
-                                                    <span>Order (Official supplier)</span>
+                                                    <span>Order (Official)</span>
                                                 </button>
                                             </div>
                                         );
@@ -2392,7 +2605,7 @@ export function FindSupplierModal({
                                             type="button"
                                             onClick={() => handleAddAsPotentialSupplier(selectedBusiness)}
                                             disabled={savingSupplierId === String(selectedBusiness.id)}
-                                            className={`px-5 py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(244,63,94,0.45)] transition-all flex items-center gap-1.5 cursor-pointer ${
+                                            className={`flex-1 sm:flex-none px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.25),_3px_3px_10px_rgba(244,63,94,0.45)] transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                                 isSaved
                                                     ? 'bg-emerald-600 text-white'
                                                     : 'bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white'
@@ -2401,12 +2614,12 @@ export function FindSupplierModal({
                                             {isSaved ? (
                                                 <>
                                                     <CheckCircle2 className="w-4 h-4" />
-                                                    <span>Saved as Potential Supplier</span>
+                                                    <span>Saved</span>
                                                 </>
                                             ) : (
                                                 <>
                                                     <PlusCircle className="w-4 h-4" />
-                                                    <span>Add "{selectedBusiness.name}" as Potential Supplier</span>
+                                                    <span className="truncate">Add as Potential</span>
                                                 </>
                                             )}
                                         </button>

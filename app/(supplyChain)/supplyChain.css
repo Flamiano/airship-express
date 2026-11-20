@@ -591,7 +591,7 @@
       font-size: 10px;
       font-weight: 800;
       text-transform: uppercase;
-      color: #64748b;
+      color: #475569;
       flex-shrink: 0;
       text-align: left;
       user-select: none;
@@ -600,7 +600,7 @@
 
     .dark .table-pro tbody td[data-label]::before,
     .dark .supplychain-container .table-pro tbody td[data-label]::before {
-      color: #94a3b8 !important;
+      color: #cbd5e1 !important;
     }
 
     /* content truncation & wrapping */

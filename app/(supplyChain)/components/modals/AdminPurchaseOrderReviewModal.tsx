@@ -72,14 +72,45 @@ export function AdminPurchaseOrderReviewModal({
         if (!effectivePoId && !poNumber && !initialPoData) return;
         setIsLoading(true);
         try {
-            let query = supabase.from("purchase_orders").select("*");
-            if (effectivePoId) {
-                query = query.eq("id", effectivePoId);
-            } else if (poNumber) {
-                query = query.eq("po_number", poNumber);
+            let poRecord: any = null;
+            const searchIdentifier = String(effectivePoId || poNumber || '').trim();
+            const looksLikePoNumber = searchIdentifier.toUpperCase().startsWith("PO-");
+
+            // 1. If it looks like a PO Number, query po_number first
+            if (looksLikePoNumber) {
+                const { data } = await supabase
+                    .from("purchase_orders")
+                    .select("*")
+                    .eq("po_number", searchIdentifier)
+                    .maybeSingle();
+                if (data) poRecord = data;
             }
-            const { data, error } = await query.single();
-            if (error) throw error;
+
+            // 2. Next query by primary id
+            if (!poRecord && effectivePoId) {
+                const { data } = await supabase
+                    .from("purchase_orders")
+                    .select("*")
+                    .eq("id", effectivePoId)
+                    .maybeSingle();
+                if (data) poRecord = data;
+            }
+
+            // 3. Fallback query by po_number if not already found
+            if (!poRecord && searchIdentifier) {
+                const { data } = await supabase
+                    .from("purchase_orders")
+                    .select("*")
+                    .eq("po_number", searchIdentifier)
+                    .maybeSingle();
+                if (data) poRecord = data;
+            }
+
+            if (!poRecord) {
+                throw new Error("Purchase order details not found.");
+            }
+
+            const data = poRecord;
             if (data) {
                 if (typeof data.items === "string") {
                     try {
@@ -376,15 +407,15 @@ export function AdminPurchaseOrderReviewModal({
 
             if (error) throw error;
 
-            // Notify Purchase Officer / Procurement
+            // Notify Executives, Admins & Purchase Officers
             try {
                 await createNotification({
-                    title: "Purchase Order Approved",
-                    message: `PO #${po.po_number} for ${po.supplier_name} (₱${Number(po.total_amount).toLocaleString()}) has been officially approved by Admin ${user.getName() || "Admin"}. Status remains Pending.`,
+                    title: `PO ${po.po_number} Approved by Admin`,
+                    message: `PO #${po.po_number} for ${po.supplier_name} (₱${Number(po.total_amount).toLocaleString()}) has been officially approved by Admin ${user.getName() || "Admin"} and is awaiting Financial Approval & Issuance.`,
                     type: "purchase_order_approved",
-                    role: ["Purchase Officer", "Procurement Officer"],
-                    poRequestId: po.id,
-                    link: `/purchase-orders?poNumber=${po.po_number}`,
+                    role: ["Executive", "Superadmin", "Admin", "Purchase Officer", "Procurement Officer"],
+                    poRequestId: String(po.id),
+                    link: `/purchase-orders?poNumber=${po.po_number}&po_id=${po.id}&action=manage`,
                     creatorName: user.getName() || "System Admin",
                     creatorEmail: user.getEmail() || "admin@airship.express",
                 });

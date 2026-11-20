@@ -38,7 +38,7 @@ export function buildEmailTemplate({
     paymentTerms?: string;
     termsAndConditions?: string;
     notes: string;
-    confirmLink: string;
+    confirmLink?: string;
     customBodyText?: string;
     senderName?: string;
     senderPosition?: string;
@@ -77,7 +77,7 @@ export function buildEmailTemplate({
           `
         : `
             <p style="font-size: 14px; color: #475569; line-height: 1.6; margin: 0 0 20px 0;">
-                Please review and accept this official purchase order for the item(s) listed below. Confirm availability and expected delivery schedule at your earliest convenience.
+                Please find the official purchase order details below. This purchase order has received administrative and financial approval and is officially issued for fulfillment.
             </p>
           `;
 
@@ -236,24 +236,13 @@ export function buildEmailTemplate({
                                 ` : ''}
                             </div>
 
-                            <!-- Primary Action CTA -->
-                            <div style="text-align: center; margin: 28px 0 20px;">
-                                <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
-                                    <tr>
-                                        <td style="padding: 0 6px;">
-                                            <a href="${confirmLink}&action=accept" target="_blank" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 12px 24px; font-size: 13.5px; font-weight: 700; border-radius: 8px; letter-spacing: 0.01em;">
-                                                Accept & Confirm Order &rarr;
-                                            </a>
-                                        </td>
-                                        <td style="padding: 0 6px;">
-                                            <a href="${confirmLink}&action=reject" target="_blank" style="display: inline-block; background-color: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; text-decoration: none; padding: 11px 20px; font-size: 13px; font-weight: 600; border-radius: 8px; letter-spacing: 0.01em;">
-                                                Decline Order
-                                            </a>
-                                        </td>
-                                    </tr>
-                                </table>
-                                <p style="font-size: 11px; color: #94a3b8; margin: 10px 0 0;">
-                                    Click above to confirm availability or decline this order.
+                            <!-- Official PO Issued Status Banner -->
+                            <div style="background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px 18px; margin: 24px 0 20px; text-align: center;">
+                                <div style="display: inline-block; font-size: 13px; font-weight: 800; color: #166534; text-transform: uppercase; letter-spacing: 0.04em;">
+                                    ✓ Officially Issued Purchase Order
+                                </div>
+                                <p style="font-size: 12px; color: #15803d; margin: 6px 0 0; line-height: 1.5;">
+                                    This purchase order has received administrative and financial approval. Please proceed with order fulfillment and reply to this email with your dispatch schedule and tracking details.
                                 </p>
                             </div>
 
@@ -271,7 +260,7 @@ export function buildEmailTemplate({
 
                 <!-- System Disclaimer -->
                 <div style="text-align: center; margin-top: 16px; font-size: 11px; color: #94a3b8;">
-                    AirshipExpress Procurement System · Automated Order Notification
+                    AirshipExpress Procurement System · Official Purchase Order Notification
                 </div>
 
             </td>
@@ -281,4 +270,4 @@ export function buildEmailTemplate({
 </body>
 </html>
     `;
-}
+}

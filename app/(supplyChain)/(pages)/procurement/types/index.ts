@@ -73,6 +73,7 @@ export interface StockShortageItem {
     has_no_active_supplier?: boolean;
     request_id?: string;
     is_bid_awarded?: boolean;
+    has_active_po?: boolean;
     awarded_supplier_name?: string;
     awarded_po_number?: string;
     po_status_indicator?: 'Pending Purchase Order' | 'Waiting for Delivery' | 'Rejected Purchase Order' | 'Delivered' | 'Approval Pending' | null;

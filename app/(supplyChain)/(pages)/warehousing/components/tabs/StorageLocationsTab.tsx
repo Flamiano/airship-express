@@ -183,17 +183,17 @@ export function StorageLocationsTab({
         const normName = zName.replace(/[^a-z0-9]/g, "");
 
         return items.filter((item) => {
-            if (item.warehouse_storage_zone_id && String(item.warehouse_storage_zone_id) === String(zone.id)) {
-                return true;
+            if (item.warehouse_storage_zone_id) {
+                return String(item.warehouse_storage_zone_id) === String(zone.id);
             }
             const itemLoc = (item.storage_location || "").toLowerCase().trim();
             if (!itemLoc) return false;
             const normLoc = itemLoc.replace(/[^a-z0-9]/g, "");
             return (
-                (zCode && itemLoc.includes(zCode)) ||
-                (zName && itemLoc.includes(zName)) ||
-                (normCode && (normLoc.includes(normCode) || normCode.includes(normLoc))) ||
-                (normName && (normLoc.includes(normName) || normName.includes(normLoc)))
+                (zCode && (itemLoc === zCode || itemLoc.includes(zCode))) ||
+                (zName && (itemLoc === zName || itemLoc.includes(zName))) ||
+                (normCode && (normLoc === normCode || normLoc.includes(normCode) || normCode.includes(normLoc))) ||
+                (normName && (normLoc === normName || normLoc.includes(normName) || normName.includes(normLoc)))
             );
         });
     }, []);
@@ -204,7 +204,7 @@ export function StorageLocationsTab({
         const totalUtil = zones.reduce((acc, zone) => {
             const itemsInZone = getZoneItems(zone, inventoryItems);
             const stockSum = itemsInZone.reduce((sum, item) => sum + Math.max(0, Number(item.current_stock) || 0), 0);
-            return acc + (itemsInZone.length > 0 ? stockSum : Math.max(0, Number(zone.current_utilized_units) || 0));
+            return acc + stockSum;
         }, 0);
         const pct = totalCap > 0 ? Math.min(100, Math.round((totalUtil / totalCap) * 100)) : 0;
         return {
@@ -216,24 +216,22 @@ export function StorageLocationsTab({
 
     // Keep database current_utilized_units synchronized with inventory items
     useEffect(() => {
-        if (zones.length === 0 || inventoryItems.length === 0) return;
+        if (zones.length === 0) return;
 
         zones.forEach(async (zone) => {
             const itemsInZone = getZoneItems(zone, inventoryItems);
-            if (itemsInZone.length > 0) {
-                const stockSum = itemsInZone.reduce((sum, item) => sum + Math.max(0, Number(item.current_stock) || 0), 0);
-                if (Number(zone.current_utilized_units) !== stockSum) {
-                    try {
-                        await supabaseWarehouseDb
-                            .from("warehouse_storage_zones")
-                            .update({
-                                current_utilized_units: stockSum,
-                                updated_at: new Date().toISOString(),
-                            })
-                            .eq("id", zone.id);
-                    } catch {
-                        // ignore background sync errors
-                    }
+            const stockSum = itemsInZone.reduce((sum, item) => sum + Math.max(0, Number(item.current_stock) || 0), 0);
+            if (Number(zone.current_utilized_units) !== stockSum) {
+                try {
+                    await supabaseWarehouseDb
+                        .from("warehouse_storage_zones")
+                        .update({
+                            current_utilized_units: stockSum,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", zone.id);
+                } catch {
+                    // ignore background sync errors
                 }
             }
         });
@@ -304,13 +302,45 @@ export function StorageLocationsTab({
             if (!matchedInv) throw new Error("Item not found");
 
             const currentInStock = Math.max(0, Number(matchedInv.current_stock) || 0);
-            const moveUnits = currentInStock > 0 
-                ? Math.min(currentInStock, Math.max(1, Number(relocateForm.quantity) || 1)) 
-                : 0;
 
-            // 1. Update inventory_items storage_location
+            // 1. Identify target and source storage zones
+            const normNew = relocateForm.newLocation.toLowerCase().replace(/[^a-z0-9]/g, "");
+            const normOld = (matchedInv.storage_location || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+            const targetZone = zones.find((z) => {
+                const normCode = (z.zone_code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const normName = (z.zone_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                return (
+                    normNew === normCode ||
+                    normNew === normName ||
+                    (normCode && normNew.includes(normCode)) ||
+                    (normName && normNew.includes(normName)) ||
+                    (normCode && normCode.includes(normNew))
+                );
+            });
+
+            const sourceZone = zones.find((z) => {
+                if (matchedInv.warehouse_storage_zone_id && String(z.id) === String(matchedInv.warehouse_storage_zone_id)) {
+                    return true;
+                }
+                const normCode = (z.zone_code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                const normName = (z.zone_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                return normOld && (
+                    normOld === normCode ||
+                    normOld === normName ||
+                    (normCode && normOld.includes(normCode)) ||
+                    (normName && normOld.includes(normName)) ||
+                    (normCode && normCode.includes(normOld))
+                );
+            });
+
+            const newZoneId = targetZone ? targetZone.id : null;
+            const newStorageLocation = targetZone ? targetZone.zone_code : relocateForm.newLocation.trim();
+
+            // 2. Update inventory_items storage_location AND warehouse_storage_zone_id
             const updatePayload: any = {
-                storage_location: relocateForm.newLocation.trim(),
+                storage_location: newStorageLocation,
+                warehouse_storage_zone_id: newZoneId,
                 updated_at: new Date().toISOString(),
             };
 
@@ -323,50 +353,66 @@ export function StorageLocationsTab({
                 throw new Error(invErr.message || "Failed to update item location.");
             }
 
-            // 2. Identify target and source storage zones
-            const normNew = relocateForm.newLocation.toLowerCase().replace(/[^a-z0-9]/g, "");
-            const normOld = (matchedInv.storage_location || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-
-            const targetZone = zones.find((z) => {
-                const normCode = (z.zone_code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                const normName = (z.zone_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                return normNew.includes(normCode) || normNew.includes(normName) || normCode.includes(normNew);
+            // 3. Compute updated items list to accurately calculate new utilized units for each zone
+            const updatedItems = inventoryItems.map((item) => {
+                if (String(item.id) === String(matchedInv.id)) {
+                    return {
+                        ...item,
+                        storage_location: newStorageLocation,
+                        warehouse_storage_zone_id: newZoneId,
+                    };
+                }
+                return item;
             });
 
-            const sourceZone = zones.find((z) => {
-                const normCode = (z.zone_code || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                const normName = (z.zone_name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                return normOld && (normOld.includes(normCode) || normOld.includes(normName) || normCode.includes(normOld));
-            });
-
-            // 3. Update target zone capacity in warehouse_storage_zones
-            if (targetZone && moveUnits > 0) {
-                const newUtilized = Math.min(
-                    Number(targetZone.total_capacity_units) || 999999,
-                    (Number(targetZone.current_utilized_units) || 0) + moveUnits
-                );
+            // 4. Update source zone capacity in warehouse_storage_zones (DEDUCT from previous location)
+            if (sourceZone && (!targetZone || String(sourceZone.id) !== String(targetZone.id))) {
+                const sourceItems = getZoneItems(sourceZone, updatedItems);
+                const sourceStockSum = sourceItems.reduce((acc, i) => acc + Math.max(0, Number(i.current_stock) || 0), 0);
                 await supabaseWarehouseDb
                     .from("warehouse_storage_zones")
                     .update({
-                        current_utilized_units: newUtilized,
-                        updated_at: new Date().toISOString(),
-                    })
-                    .eq("id", targetZone.id);
-            }
-
-            // 4. Update source zone capacity if distinct
-            if (sourceZone && (!targetZone || sourceZone.id !== targetZone.id) && moveUnits > 0) {
-                const reducedUtilized = Math.max(0, (Number(sourceZone.current_utilized_units) || 0) - moveUnits);
-                await supabaseWarehouseDb
-                    .from("warehouse_storage_zones")
-                    .update({
-                        current_utilized_units: reducedUtilized,
+                        current_utilized_units: sourceStockSum,
                         updated_at: new Date().toISOString(),
                     })
                     .eq("id", sourceZone.id);
             }
 
-            toast.success(`"${matchedInv.item_name}" relocated to ${relocateForm.newLocation}!`);
+            // 5. Update target zone capacity in warehouse_storage_zones (ADD to target location)
+            if (targetZone) {
+                const targetItems = getZoneItems(targetZone, updatedItems);
+                const targetStockSum = targetItems.reduce((acc, i) => acc + Math.max(0, Number(i.current_stock) || 0), 0);
+                await supabaseWarehouseDb
+                    .from("warehouse_storage_zones")
+                    .update({
+                        current_utilized_units: targetStockSum,
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("id", targetZone.id);
+            }
+
+            // 6. Immediately update local zones state so UI reflects capacity deduction without delay
+            setZones((prevZones) =>
+                prevZones.map((z) => {
+                    if (sourceZone && String(z.id) === String(sourceZone.id) && (!targetZone || String(sourceZone.id) !== String(targetZone.id))) {
+                        const sourceItems = getZoneItems(z, updatedItems);
+                        return {
+                            ...z,
+                            current_utilized_units: sourceItems.reduce((acc, i) => acc + Math.max(0, Number(i.current_stock) || 0), 0),
+                        };
+                    }
+                    if (targetZone && String(z.id) === String(targetZone.id)) {
+                        const targetItems = getZoneItems(z, updatedItems);
+                        return {
+                            ...z,
+                            current_utilized_units: targetItems.reduce((acc, i) => acc + Math.max(0, Number(i.current_stock) || 0), 0),
+                        };
+                    }
+                    return z;
+                })
+            );
+
+            toast.success(`"${matchedInv.item_name}" relocated to ${newStorageLocation}! Capacity updated.`);
             setIsRelocateModalOpen(false);
 
             // Re-fetch zones and invoke parent refresh to keep everything in sync
@@ -652,7 +698,7 @@ export function StorageLocationsTab({
                             );
 
                             // Utilized units reflects the live stock in this zone
-                            const actualUtilizedUnits = itemsInZone.length > 0 ? stockFromItems : Math.max(0, Number(zone.current_utilized_units) || 0);
+                            const actualUtilizedUnits = stockFromItems;
 
                             const totalCap = Number(zone.total_capacity_units) || 0;
                             const utilizationPct = totalCap > 0
@@ -1339,7 +1385,7 @@ export function StorageLocationsTab({
                             {(() => {
                                 const zoneStock = viewingZoneItems.reduce((acc, it) => acc + Math.max(0, Number(it.current_stock) || 0), 0);
                                 const zoneCap = Number(viewingZone.total_capacity_units) || 0;
-                                const zoneUtilized = viewingZoneItems.length > 0 ? zoneStock : Math.max(0, Number(viewingZone.current_utilized_units) || 0);
+                                const zoneUtilized = zoneStock;
                                 const zonePct = zoneCap > 0 ? Math.min(100, Math.round((zoneUtilized / zoneCap) * 100)) : 0;
                                 const zoneAvailable = Math.max(0, zoneCap - zoneUtilized);
                                 const isHigh = zonePct >= 90;

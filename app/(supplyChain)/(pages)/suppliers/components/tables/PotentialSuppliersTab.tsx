@@ -28,7 +28,7 @@ import {
     Sparkles, 
     Store, 
     Check, 
-    RefreshCw, 
+    Loader2, 
     AlertCircle, 
     ArrowUpRight,
     FileText,
@@ -48,7 +48,10 @@ import {
     RotateCw,
     Video,
     LayoutGrid,
-    Table
+    Table,
+    CheckSquare,
+    Square,
+    Users
 } from "lucide-react";
 import { AIRSHIP_HQ, calculateDistanceKm, resolveDestinationCoords } from "../../../inventory/utils/geo-locations";
 import { supabase } from "../../../../lib/services/client/supabase";
@@ -249,6 +252,26 @@ export function PotentialSuppliersTab({
     // Sourced Vendor Leads Pagination State per requisition group (5 leads per page)
     const [leadsPageByGroup, setLeadsPageByGroup] = useState<Record<string, number>>({});
     const LEADS_PER_PAGE = 5;
+
+    // Bulk Selection State per Requisition Group
+    const [selectedSuppliersByGroup, setSelectedSuppliersByGroup] = useState<Record<string, Set<string>>>({});
+
+    // Bulk RFQ Email Modal State
+    const [bulkEmailModalData, setBulkEmailModalData] = useState<{
+        group: RequestSupplierGroup;
+        suppliers: PotentialSupplierItem[];
+    } | null>(null);
+    const [bulkEmailMessage, setBulkEmailMessage] = useState<string>("");
+    const [isSendingBulkEmail, setIsSendingBulkEmail] = useState<boolean>(false);
+    const [bulkEmailProgress, setBulkEmailProgress] = useState<{ current: number; total: number; currentSupplierName?: string } | null>(null);
+
+    // Bulk Delete Leads Modal State
+    const [bulkDeleteModalData, setBulkDeleteModalData] = useState<{
+        group: RequestSupplierGroup;
+        supplierIds: string[];
+        supplierNames: string[];
+    } | null>(null);
+    const [isBulkDeleting, setIsBulkDeleting] = useState<boolean>(false);
 
     // Helper to check if a supplier is the previous supplier that won the bid with the same item name
     const isPreviousBidWinner = useCallback((itemName: string, supplierName?: string | null, supplierId?: string | number | null, quote?: any | null): boolean => {
@@ -1029,6 +1052,28 @@ export function PotentialSuppliersTab({
 
     // Remove / unlink a potential supplier
     const handleRemoveSupplier = async (supplierId: string, supplierName: string, group?: RequestSupplierGroup) => {
+        const isAwarded = group && Boolean(
+            (group.status || "").toLowerCase().includes("award") ||
+            (group.status || "").toLowerCase().includes("complete") ||
+            (group.status || "").toLowerCase().includes("ordered") ||
+            group.quotations?.some((q) => {
+                const st = (q.status || "").toLowerCase().trim();
+                return st === "accepted" || st === "awarded" || (q as any).purchase_order_id != null;
+            }) ||
+            group.potentialSuppliers?.some((s) => {
+                if (s.id === supplierId || String(s.dbSupplierId) === supplierId) {
+                    const st = (s.submittedQuote?.status || "").toLowerCase().trim();
+                    return st === "accepted" || st === "awarded" || (s.submittedQuote as any)?.purchase_order_id != null;
+                }
+                return false;
+            })
+        );
+
+        if (isAwarded) {
+            toast.warning("Cannot remove supplier lead: A procurement bid has already been awarded.");
+            return;
+        }
+
         if (!confirm(`Are you sure you want to remove "${supplierName}" from Potential Suppliers${group ? ` for "${group.itemName}"` : ''}?`)) {
             return;
         }
@@ -1808,6 +1853,348 @@ export function PotentialSuppliersTab({
         }
     };
 
+    // Bulk Selection Helpers per Requisition Group
+    const toggleSelectSupplier = (groupKey: string, supplierId: string) => {
+        setSelectedSuppliersByGroup((prev) => {
+            const current = new Set(prev[groupKey] || []);
+            if (current.has(supplierId)) {
+                current.delete(supplierId);
+            } else {
+                current.add(supplierId);
+            }
+            return {
+                ...prev,
+                [groupKey]: current,
+            };
+        });
+    };
+
+    const toggleSelectAllInGroup = (group: RequestSupplierGroup, onlyWithEmail: boolean = false) => {
+        setSelectedSuppliersByGroup((prev) => {
+            const current = prev[group.groupKey] || new Set<string>();
+            const eligible = onlyWithEmail
+                ? group.potentialSuppliers.filter((s) => s.email && s.email.includes("@"))
+                : group.potentialSuppliers;
+
+            const allSelected = eligible.length > 0 && eligible.every((s) => current.has(s.id));
+            const nextSet = new Set(current);
+
+            if (allSelected) {
+                eligible.forEach((s) => nextSet.delete(s.id));
+            } else {
+                eligible.forEach((s) => nextSet.add(s.id));
+            }
+
+            return {
+                ...prev,
+                [group.groupKey]: nextSet,
+            };
+        });
+    };
+
+    const clearGroupSelection = (groupKey: string) => {
+        setSelectedSuppliersByGroup((prev) => {
+            const next = { ...prev };
+            delete next[groupKey];
+            return next;
+        });
+    };
+
+    // Bulk RFQ Email Modal Handlers
+    const handleOpenBulkEmailModal = (group: RequestSupplierGroup, specificSuppliers?: PotentialSupplierItem[]) => {
+        const targetSuppliers = specificSuppliers && specificSuppliers.length > 0
+            ? specificSuppliers
+            : group.potentialSuppliers;
+
+        if (targetSuppliers.length === 0) {
+            toast.warning("No potential suppliers available in this requisition group.");
+            return;
+        }
+
+        const suppliersWithEmail = targetSuppliers.filter((s) => s.email && s.email.includes("@"));
+        if (suppliersWithEmail.length === 0) {
+            toast.error("None of the selected suppliers have a valid email address. Please add an email address first.");
+            return;
+        }
+
+        setBulkEmailModalData({ group, suppliers: targetSuppliers });
+        setBulkEmailMessage(
+            `Good day,\n\nWe are reaching out from Airship Express Logistics & Warehousing. We are currently evaluating potential suppliers for our purchase requisition #${group.requestNumber} (${group.quantityRequested} ${group.unit} of ${group.itemName}).\n\nPlease submit your quotation, item availability, delivery lead time, and service inclusions using the link below.`
+        );
+    };
+
+    const handleSendBulkRFQEmail = async () => {
+        if (!bulkEmailModalData) return;
+        const { group, suppliers } = bulkEmailModalData;
+        const eligibleSuppliers = suppliers.filter((s) => s.email && s.email.includes("@"));
+
+        if (eligibleSuppliers.length === 0) {
+            toast.error("No valid email recipients found.");
+            return;
+        }
+
+        setIsSendingBulkEmail(true);
+        setBulkEmailProgress({ current: 0, total: eligibleSuppliers.length });
+
+        const baseAppUrl = (
+            process.env.NEXT_PUBLIC_SUPPLYCHAIN_APP_URL ||
+            (typeof window !== "undefined" ? window.location.origin : "https://sc.airship-express.com")
+        ).replace(/\/+$/, "");
+
+        let sentCount = 0;
+        let failedCount = 0;
+        const todayFormatted = new Date().toLocaleDateString();
+        const sentSupplierIds = new Set<string>();
+
+        for (let i = 0; i < eligibleSuppliers.length; i++) {
+            const supplier = eligibleSuppliers[i];
+            setBulkEmailProgress({ current: i + 1, total: eligibleSuppliers.length, currentSupplierName: supplier.name });
+
+            try {
+                const quotePortalUrl = `${baseAppUrl}/supplier-portal/quote?req=${encodeURIComponent(group.requestNumber)}&supplier=${encodeURIComponent(supplier.name)}&item=${encodeURIComponent(group.itemName)}&qty=${group.quantityRequested}&unit=${encodeURIComponent(group.unit)}&cat=${encodeURIComponent(supplier.category || group.category || "")}&loc=${encodeURIComponent(supplier.location || "")}`;
+
+                const isFollowUp = supplier.hasRfqSent;
+                const emailSubject = isFollowUp
+                    ? `Follow-up: Request for Quotation & Partnership Inquiry: ${group.requestNumber} - ${group.itemName}`
+                    : `Request for Quotation & Partnership Inquiry: ${group.requestNumber} - ${group.itemName}`;
+
+                const personalizedMessage = bulkEmailMessage
+                    ? bulkEmailMessage.replace(/Good day(?:\s+[^,\n]+)?/i, `Good day ${supplier.contact_person || supplier.name}`)
+                    : `Good day ${supplier.contact_person || supplier.name},\n\nWe are reaching out from Airship Express Logistics & Warehousing. We are evaluating potential suppliers for our purchase requisition #${group.requestNumber} (${group.quantityRequested} ${group.unit} of ${group.itemName}). Please submit your quotation using the link below.`;
+
+                const emailHtml = `
+                    <div style="font-family: Arial, sans-serif; max-width: 620px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <div style="background: linear-gradient(135deg, #db2777 0%, #e11d48 100%); padding: 24px; color: #ffffff;">
+                            <h2 style="margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.5px;">AIRSHIP EXPRESS PHILIPPINES</h2>
+                            <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">Supply Chain Management & Procurement Office</p>
+                        </div>
+                        
+                        <div style="padding: 28px; color: #1e293b; line-height: 1.6;">
+                            <p style="font-size: 14px; margin-top: 0;">Dear <strong>${supplier.contact_person || supplier.name}</strong>,</p>
+                            
+                            <p style="font-size: 13px; color: #334155; white-space: pre-line;">${personalizedMessage}</p>
+
+                            <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px; margin: 20px 0;">
+                                <h4 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; color: #db2777; font-weight: 800;">Requisition Specification:</h4>
+                                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                                    <tr>
+                                        <td style="padding: 6px 0; color: #64748b; width: 140px;">Request Number:</td>
+                                        <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${group.requestNumber}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; color: #64748b;">Item Description:</td>
+                                        <td style="padding: 6px 0; font-weight: bold; color: #0f172a;">${group.itemName}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; color: #64748b;">Required Quantity:</td>
+                                        <td style="padding: 6px 0; font-weight: bold; color: #db2777;">${group.quantityRequested} ${group.unit}</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="padding: 6px 0; color: #64748b;">Delivery Destination:</td>
+                                        <td style="padding: 6px 0; color: #0f172a;">Airship Express HQ (Binondo, Manila)</td>
+                                    </tr>
+                                </table>
+                            </div>
+
+                            <div style="text-align: center; margin: 30px 0 20px 0;">
+                                <a href="${quotePortalUrl}" style="background-color: #db2777; color: #ffffff; padding: 14px 28px; border-radius: 10px; font-weight: 800; font-size: 14px; text-decoration: none; display: inline-block; box-shadow: 0 4px 12px rgba(219, 39, 119, 0.35);">
+                                    Submit Quotation & Service Proposal →
+                                </a>
+                            </div>
+
+                            <p style="font-size: 12px; color: #64748b; text-align: center; margin-bottom: 0;">
+                                Click the button above to enter your unit price, stock availability, and service details.
+                            </p>
+                        </div>
+
+                        <div style="background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #64748b; border-top: 1px solid #e2e8f0;">
+                            Airship Express Inc. • Procurement & Supply Chain Dept • Binondo, Manila, Philippines
+                        </div>
+                    </div>
+                `;
+
+                const res = await fetch("/api/send-email", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        to: supplier.email,
+                        subject: emailSubject,
+                        html: emailHtml,
+                        text: personalizedMessage,
+                        senderName: "Airship Express Procurement",
+                    }),
+                });
+
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    sentCount++;
+                    sentSupplierIds.add(supplier.id);
+
+                    if (supplier.dbSupplierId || (!isNaN(Number(supplier.id)) && Number(supplier.id) > 0)) {
+                        const targetId = supplier.dbSupplierId || Number(supplier.id);
+                        const tag = `[RFQ Sent: ${todayFormatted}]`;
+                        const existingNotes = supplier.notes || "";
+                        if (!existingNotes.toLowerCase().includes("rfq sent")) {
+                            const newNotes = existingNotes ? `${existingNotes} | ${tag}` : tag;
+                            await supabase.from("suppliers").update({ notes: newNotes }).eq("id", targetId);
+                        }
+                    }
+                } else {
+                    failedCount++;
+                    console.warn(`Failed sending RFQ to ${supplier.email}:`, data.error);
+                }
+            } catch (emailErr) {
+                failedCount++;
+                console.warn(`Error sending RFQ to ${supplier.email}:`, emailErr);
+            }
+        }
+
+        if (sentSupplierIds.size > 0) {
+            setRequestGroups((prev) =>
+                prev.map((g) => {
+                    if (g.requestId === group.requestId) {
+                        return {
+                            ...g,
+                            potentialSuppliers: g.potentialSuppliers.map((s) => {
+                                if (sentSupplierIds.has(s.id)) {
+                                    return {
+                                        ...s,
+                                        hasRfqSent: true,
+                                        rfqSentAt: todayFormatted,
+                                    };
+                                }
+                                return s;
+                            }),
+                        };
+                    }
+                    return g;
+                })
+            );
+        }
+
+        if (sentCount > 0) {
+            toast.success(`Bulk RFQ complete: ${sentCount} email(s) sent successfully!${failedCount > 0 ? ` (${failedCount} failed)` : ""}`);
+        } else {
+            toast.error(`Failed to send bulk RFQs (${failedCount} failed). Please check email configuration.`);
+        }
+
+        clearGroupSelection(group.groupKey);
+        setBulkEmailModalData(null);
+        setIsSendingBulkEmail(false);
+        setBulkEmailProgress(null);
+    };
+
+    // Bulk Delete Leads Modal Handlers
+    const handleOpenBulkDeleteModal = (group: RequestSupplierGroup, specificSupplierIds?: string[]) => {
+        const isGroupBidAwarded = Boolean(
+            (group.status || "").toLowerCase().includes("award") ||
+            (group.status || "").toLowerCase().includes("complete") ||
+            (group.status || "").toLowerCase().includes("ordered") ||
+            group.quotations?.some((q) => {
+                const st = (q.status || "").toLowerCase().trim();
+                return st === "accepted" || st === "awarded" || (q as any).purchase_order_id != null;
+            }) ||
+            group.potentialSuppliers?.some((s) => {
+                const st = (s.submittedQuote?.status || "").toLowerCase().trim();
+                return st === "accepted" || st === "awarded" || (s.submittedQuote as any)?.purchase_order_id != null;
+            })
+        );
+
+        if (isGroupBidAwarded) {
+            toast.warning("Cannot delete supplier leads: A procurement bid has already been awarded for this requisition.");
+            return;
+        }
+
+        const ids = specificSupplierIds && specificSupplierIds.length > 0
+            ? specificSupplierIds
+            : group.potentialSuppliers.map((s) => s.id);
+
+        if (ids.length === 0) {
+            toast.warning("No suppliers available to delete in this group.");
+            return;
+        }
+
+        const supplierNames = group.potentialSuppliers
+            .filter((s) => ids.includes(s.id))
+            .map((s) => s.name);
+
+        setBulkDeleteModalData({
+            group,
+            supplierIds: ids,
+            supplierNames,
+        });
+    };
+
+    const handleExecuteBulkDelete = async () => {
+        if (!bulkDeleteModalData) return;
+        const { group, supplierIds } = bulkDeleteModalData;
+
+        const isGroupBidAwarded = Boolean(
+            (group.status || "").toLowerCase().includes("award") ||
+            (group.status || "").toLowerCase().includes("complete") ||
+            (group.status || "").toLowerCase().includes("ordered") ||
+            group.quotations?.some((q) => {
+                const st = (q.status || "").toLowerCase().trim();
+                return st === "accepted" || st === "awarded" || (q as any).purchase_order_id != null;
+            }) ||
+            group.potentialSuppliers?.some((s) => {
+                const st = (s.submittedQuote?.status || "").toLowerCase().trim();
+                return st === "accepted" || st === "awarded" || (s.submittedQuote as any)?.purchase_order_id != null;
+            })
+        );
+
+        if (isGroupBidAwarded) {
+            toast.warning("Cannot delete supplier leads: A procurement bid has already been awarded.");
+            setBulkDeleteModalData(null);
+            return;
+        }
+
+        setIsBulkDeleting(true);
+        const targetIdsSet = new Set(supplierIds);
+
+        try {
+            const promises = supplierIds.map(async (supId) => {
+                if (!isNaN(Number(supId))) {
+                    return await removePotentialSupplierLinkage({
+                        supplierId: Number(supId),
+                        requestId: group.requestId,
+                        itemId: group.itemId,
+                        itemName: group.itemName,
+                    });
+                }
+                return { success: true };
+            });
+
+            await Promise.allSettled(promises);
+
+            toast.success(`Removed ${supplierIds.length} supplier lead(s) from Requisition #${group.requestNumber}.`);
+
+            setRequestGroups((prev) =>
+                prev
+                    .map((g) => {
+                        if (g.groupKey !== group.groupKey) {
+                            return g;
+                        }
+                        return {
+                            ...g,
+                            potentialSuppliers: g.potentialSuppliers.filter(
+                                (s) => !targetIdsSet.has(s.id) && !targetIdsSet.has(String(s.dbSupplierId))
+                            ),
+                        };
+                    })
+                    .filter((g) => g.potentialSuppliers.length > 0 || (g.quotations && g.quotations.length > 0))
+            );
+
+            clearGroupSelection(group.groupKey);
+            setBulkDeleteModalData(null);
+        } catch (err: any) {
+            console.error("Error bulk removing suppliers:", err);
+            toast.error(err?.message || "Failed to remove selected suppliers.");
+        } finally {
+            setIsBulkDeleting(false);
+        }
+    };
+
     // Remove scheduled supplier meeting
     const handleRemoveMeeting = async (meetingId: string, supplierName: string) => {
         if (!confirm(`Are you sure you want to remove the scheduled meeting with ${supplierName}?`)) {
@@ -2154,6 +2541,30 @@ export function PotentialSuppliersTab({
                         const leadsStartIndex = (currentLeadsPage - 1) * LEADS_PER_PAGE;
                         const paginatedLeads = group.potentialSuppliers.slice(leadsStartIndex, leadsStartIndex + LEADS_PER_PAGE);
 
+                        // Requisition group selection variables
+                        const currentGroupSelected = selectedSuppliersByGroup[group.groupKey] || new Set<string>();
+                        const selectedCount = currentGroupSelected.size;
+                        const suppliersWithEmail = group.potentialSuppliers.filter((s) => s.email && s.email.includes("@"));
+                        const selectedWithEmailCount = group.potentialSuppliers.filter(
+                            (s) => currentGroupSelected.has(s.id) && s.email && s.email.includes("@")
+                        ).length;
+                        const isAllGroupSelected = group.potentialSuppliers.length > 0 && group.potentialSuppliers.every((s) => currentGroupSelected.has(s.id));
+
+                        // Check if a bid has been awarded for this requisition group
+                        const isGroupBidAwarded = Boolean(
+                            (group.status || "").toLowerCase().includes("award") ||
+                            (group.status || "").toLowerCase().includes("complete") ||
+                            (group.status || "").toLowerCase().includes("ordered") ||
+                            group.quotations?.some((q) => {
+                                const st = (q.status || "").toLowerCase().trim();
+                                return st === "accepted" || st === "awarded" || (q as any).purchase_order_id != null;
+                            }) ||
+                            group.potentialSuppliers?.some((s) => {
+                                const st = (s.submittedQuote?.status || "").toLowerCase().trim();
+                                return st === "accepted" || st === "awarded" || (s.submittedQuote as any)?.purchase_order_id != null;
+                            })
+                        );
+
                         return (
                             <div
                                 key={group.groupKey}
@@ -2280,6 +2691,67 @@ export function PotentialSuppliersTab({
                                                     </h4>
                                                 </div>
                                                 <div className="flex items-center gap-2 flex-wrap">
+                                                    {/* Bulk Requisition Group Actions */}
+                                                    {group.potentialSuppliers.length > 0 && (
+                                                        <div className="flex items-center gap-1.5">
+                                                            {/* Bulk Send RFQ Button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (selectedCount > 0) {
+                                                                        const selectedList = group.potentialSuppliers.filter((s) => currentGroupSelected.has(s.id));
+                                                                        handleOpenBulkEmailModal(group, selectedList);
+                                                                    } else {
+                                                                        handleOpenBulkEmailModal(group);
+                                                                    }
+                                                                }}
+                                                                disabled={selectedCount > 0 ? selectedWithEmailCount === 0 : suppliersWithEmail.length === 0}
+                                                                className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-500 text-white text-[11px] font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-[-2px_-2px_6px_rgba(255,255,255,0.4),_2px_2px_8px_rgba(219,39,119,0.35)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.2)] disabled:opacity-40 disabled:cursor-not-allowed"
+                                                                title={
+                                                                    selectedCount > 0
+                                                                        ? `Send RFQ emails to ${selectedWithEmailCount} selected supplier(s)`
+                                                                        : `Send RFQ emails to all ${suppliersWithEmail.length} candidate supplier(s) with email`
+                                                                }
+                                                            >
+                                                                <Mail className="w-3.5 h-3.5" />
+                                                                <span>
+                                                                    {selectedCount > 0
+                                                                        ? `Bulk Send RFQ (${selectedWithEmailCount})`
+                                                                        : `Bulk Send RFQ (${suppliersWithEmail.length})`}
+                                                                </span>
+                                                            </button>
+
+                                                            {/* Bulk Delete Button */}
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    if (isGroupBidAwarded) return;
+                                                                    if (selectedCount > 0) {
+                                                                        handleOpenBulkDeleteModal(group, Array.from(currentGroupSelected));
+                                                                    } else {
+                                                                        handleOpenBulkDeleteModal(group);
+                                                                    }
+                                                                }}
+                                                                disabled={isGroupBidAwarded}
+                                                                className={`px-3 py-1.5 rounded-xl text-white text-[11px] font-black flex items-center gap-1.5 transition-all ${
+                                                                    isGroupBidAwarded
+                                                                        ? "bg-slate-400/50 dark:bg-slate-700/50 text-slate-200 dark:text-slate-400 cursor-not-allowed opacity-50 shadow-none"
+                                                                        : "bg-rose-600/90 hover:bg-rose-600 cursor-pointer shadow-[-2px_-2px_6px_rgba(255,255,255,0.4),_2px_2px_8px_rgba(225,29,72,0.35)] active:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.2)]"
+                                                                }`}
+                                                                title={
+                                                                    isGroupBidAwarded
+                                                                        ? "Bid already awarded: leads cannot be deleted from this requisition"
+                                                                        : selectedCount > 0
+                                                                        ? `Remove ${selectedCount} selected supplier lead(s)`
+                                                                        : `Remove all ${group.potentialSuppliers.length} supplier lead(s) from this requisition`
+                                                                }
+                                                            >
+                                                                <Trash2 className="w-3.5 h-3.5" />
+                                                                <span>{selectedCount > 0 ? `Delete (${selectedCount})` : "Delete Leads"}</span>
+                                                            </button>
+                                                        </div>
+                                                    )}
+
                                                     {/* View Mode Toggle Switch (Cards vs Table) */}
                                                     <div className="flex items-center p-0.5 rounded-xl bg-[#e2e8f0] dark:bg-[#12131f] border border-white/60 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.35),_inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.5)]">
                                                         <button
@@ -2321,11 +2793,58 @@ export function PotentialSuppliersTab({
                                                         <PlusCircle className="w-3.5 h-3.5" />
                                                         <span>Add Lead</span>
                                                     </button>
-                                                    <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-                                                        Send RFQ emails or call stores to collect quotations
-                                                    </span>
                                                 </div>
                                             </div>
+
+                                            {/* Active Selection Banner for this Requisition Group */}
+                                            {selectedCount > 0 && (
+                                                <div className="p-3 rounded-2xl bg-gradient-to-r from-pink-500/[0.08] via-purple-500/[0.08] to-pink-500/[0.08] dark:from-pink-500/[0.15] dark:via-purple-500/[0.15] dark:to-pink-500/[0.15] border border-pink-500/30 flex items-center justify-between gap-3 flex-wrap shadow-sm animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="w-6 h-6 rounded-lg bg-pink-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                                                            {selectedCount}
+                                                        </span>
+                                                        <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                                                            {selectedCount} lead{selectedCount > 1 ? "s" : ""} selected for Requisition #{group.requestNumber}
+                                                            <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 ml-1.5">
+                                                                ({selectedWithEmailCount} have quotation email)
+                                                            </span>
+                                                        </span>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        {/* Quick Action: Select all with email */}
+                                                        {suppliersWithEmail.length > 0 && selectedWithEmailCount < suppliersWithEmail.length && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleSelectAllInGroup(group, true)}
+                                                                className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-pink-600 dark:text-pink-400 hover:text-pink-700 text-xs font-bold border border-pink-300/60 dark:border-pink-800/40 transition-all cursor-pointer"
+                                                            >
+                                                                Select All with Email ({suppliersWithEmail.length})
+                                                            </button>
+                                                        )}
+
+                                                        {/* Select All */}
+                                                        {!isAllGroupSelected && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleSelectAllInGroup(group, false)}
+                                                                className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 hover:text-slate-900 text-xs font-bold border border-white/80 dark:border-white/10 transition-all cursor-pointer"
+                                                            >
+                                                                Select All ({group.potentialSuppliers.length})
+                                                            </button>
+                                                        )}
+
+                                                        {/* Deselect All */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => clearGroupSelection(group.groupKey)}
+                                                            className="px-2.5 py-1 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 text-xs font-bold border border-white/80 dark:border-white/10 transition-all cursor-pointer"
+                                                        >
+                                                            Deselect
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
 
                                             {leadsViewMode === "cards" ? (
                                             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
@@ -2334,12 +2853,20 @@ export function PotentialSuppliersTab({
                                                 const isDeleting = deletingSupplierId === supplier.id;
                                                 const isPromoting = promotingSupplierId === supplier.id;
                                                 const hasQuote = Boolean(supplier.submittedQuote);
+                                                const isSelected = currentGroupSelected.has(supplier.id);
+                                                const isSupplierAwarded = isGroupBidAwarded || Boolean(
+                                                    (supplier.submittedQuote?.status || "").toLowerCase().trim() === "accepted" ||
+                                                    (supplier.submittedQuote?.status || "").toLowerCase().trim() === "awarded" ||
+                                                    (supplier.submittedQuote as any)?.purchase_order_id != null
+                                                );
 
                                                 return (
                                                     <div
                                                         key={supplier.id}
                                                         className={`rounded-3xl bg-[#e8eef6] dark:bg-[#161826] transition-all p-4 sm:p-5 flex flex-col justify-between space-y-4 group relative overflow-hidden ${
-                                                            hasQuote
+                                                            isSelected
+                                                                ? "border-2 border-pink-500 ring-2 ring-pink-500/30 shadow-[-6px_-6px_16px_rgba(255,255,255,0.9),_6px_6px_16px_rgba(236,72,153,0.3)]"
+                                                                : hasQuote
                                                                 ? "border-2 border-pink-500/80 shadow-[-6px_-6px_16px_rgba(255,255,255,0.9),_6px_6px_16px_rgba(236,72,153,0.25)] dark:shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),_4px_4px_16px_rgba(236,72,153,0.2)]"
                                                                 : "border border-white/60 dark:border-white/[0.06] shadow-[-6px_-6px_16px_rgba(255,255,255,0.85),_6px_6px_16px_rgba(163,177,198,0.35)] dark:shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),_4px_4px_12px_rgba(0,0,0,0.45)]"
                                                         } hover:shadow-[-8px_-8px_20px_rgba(255,255,255,0.95),_8px_8px_20px_rgba(163,177,198,0.45)] dark:hover:shadow-[-5px_-5px_15px_rgba(255,255,255,0.05),_5px_5px_15px_rgba(0,0,0,0.6)]`}
@@ -2349,7 +2876,15 @@ export function PotentialSuppliersTab({
                                                             {/* Top Card Header */}
                                                             <div>
                                                                 <div className="flex items-start justify-between gap-2 mb-2">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={isSelected}
+                                                                            onChange={() => toggleSelectSupplier(group.groupKey, supplier.id)}
+                                                                            className="w-4 h-4 rounded-md border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600 shrink-0"
+                                                                            title={`Select ${supplier.name} for bulk actions`}
+                                                                        />
+
                                                                         <StatusBadge tone="amber" size="xs" dot>
                                                                             Pending Evaluation
                                                                         </StatusBadge>
@@ -2364,13 +2899,24 @@ export function PotentialSuppliersTab({
                                                                         {/* Remove Potential Supplier Button */}
                                                                         <button
                                                                             type="button"
-                                                                            onClick={() => handleRemoveSupplier(supplier.id, supplier.name, group)}
-                                                                            disabled={isDeleting}
-                                                                            className="p-1.5 rounded-xl text-slate-400 hover:text-rose-600 bg-[#e8eef6] dark:bg-[#161826] shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),_1px_1px_4px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.2)] transition-all cursor-pointer border border-white/50 dark:border-white/[0.04]"
-                                                                            title={`Remove from Potential Suppliers for ${group.itemName}`}
+                                                                            onClick={() => {
+                                                                                if (isSupplierAwarded) return;
+                                                                                handleRemoveSupplier(supplier.id, supplier.name, group);
+                                                                            }}
+                                                                            disabled={isDeleting || isSupplierAwarded}
+                                                                            className={`p-1.5 rounded-xl transition-all border ${
+                                                                                isSupplierAwarded
+                                                                                    ? "text-slate-300 dark:text-slate-600 bg-slate-100/60 dark:bg-slate-800/40 border-slate-200/40 dark:border-white/[0.02] cursor-not-allowed opacity-40 shadow-none"
+                                                                                    : "text-slate-400 hover:text-rose-600 bg-[#e8eef6] dark:bg-[#161826] shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_4px_rgba(255,255,255,0.03),_1px_1px_4px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.2)] cursor-pointer border-white/50 dark:border-white/[0.04]"
+                                                                            }`}
+                                                                            title={
+                                                                                isSupplierAwarded
+                                                                                    ? "Bid already awarded: lead deletion disabled"
+                                                                                    : `Remove from Potential Suppliers for ${group.itemName}`
+                                                                            }
                                                                         >
                                                                             {isDeleting ? (
-                                                                                <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                                                                                <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
                                                                             ) : (
                                                                                 <Trash2 className="w-4 h-4" />
                                                                             )}
@@ -2750,7 +3296,7 @@ export function PotentialSuppliersTab({
                                                                                     title={`Remove scheduled meeting with ${supplier.name}`}
                                                                                 >
                                                                                     {removingMeetingId === currentMeeting.id ? (
-                                                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-rose-600" />
+                                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-600" />
                                                                                     ) : (
                                                                                         <Trash2 className="w-3.5 h-3.5" />
                                                                                     )}
@@ -2783,7 +3329,7 @@ export function PotentialSuppliersTab({
                                                                     title="Award bid to this vendor"
                                                                 >
                                                                     {awardingQuoteId === supplier.submittedQuote.id ? (
-                                                                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                                                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                                                     ) : (
                                                                         <Sparkles className="w-3.5 h-3.5" />
                                                                     )}
@@ -2863,6 +3409,15 @@ export function PotentialSuppliersTab({
                                             <table className="table-pro w-full min-w-[1450px] text-left text-xs border-collapse p-1">
                                                 <thead className="bg-[#e4ebf5] dark:bg-[#14151c] border-b border-slate-200/80 dark:border-slate-800 text-slate-600 dark:text-slate-400 font-bold uppercase tracking-wider text-[11px] sticky top-0 z-10">
                                                     <tr>
+                                                        <th className="py-3.5 px-3 w-[44px]">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isAllGroupSelected && group.potentialSuppliers.length > 0}
+                                                                onChange={() => toggleSelectAllInGroup(group, false)}
+                                                                className="w-4 h-4 rounded-md border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600"
+                                                                title="Select all suppliers in this requisition"
+                                                            />
+                                                        </th>
                                                         <th className="py-3.5 px-4 w-[200px] min-w-[180px]">Vendor / Supplier</th>
                                                         <th className="py-3.5 px-4 w-[130px] min-w-[120px]">Category</th>
                                                         <th className="py-3.5 px-4 w-[200px] min-w-[180px]">Products &amp; Specs</th>
@@ -2876,7 +3431,7 @@ export function PotentialSuppliersTab({
                                                 <tbody className="divide-y divide-slate-200/60 dark:divide-slate-800/60 text-xs">
                                                     {group.potentialSuppliers.length === 0 ? (
                                                         <tr>
-                                                            <td colSpan={8} className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
+                                                            <td colSpan={9} className="py-12 text-center text-slate-400 dark:text-slate-500 font-medium">
                                                                 No vendor leads added for this requisition yet. Click &quot;Add Lead&quot; to source vendors.
                                                             </td>
                                                         </tr>
@@ -2885,15 +3440,34 @@ export function PotentialSuppliersTab({
                                                                 const hasEmail = Boolean(supplier.email && supplier.email.includes("@"));
                                                                 const isDeleting = deletingSupplierId === supplier.id;
                                                                 const hasQuote = Boolean(supplier.submittedQuote);
+                                                                const isSelected = currentGroupSelected.has(supplier.id);
+                                                const isSupplierAwarded = isGroupBidAwarded || Boolean(
+                                                    (supplier.submittedQuote?.status || "").toLowerCase().trim() === "accepted" ||
+                                                    (supplier.submittedQuote?.status || "").toLowerCase().trim() === "awarded" ||
+                                                    (supplier.submittedQuote as any)?.purchase_order_id != null
+                                                );
                                                                 const cardMeeting = getSupplierActiveMeeting(supplier, group);
 
                                                                 return (
                                                                     <tr
                                                                         key={supplier.id}
                                                                         className={`transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40 ${
-                                                                            hasQuote ? "bg-pink-500/[0.02]" : ""
+                                                                            isSelected
+                                                                                ? "bg-pink-500/[0.08] dark:bg-pink-500/[0.12]"
+                                                                                : hasQuote
+                                                                                ? "bg-pink-500/[0.02]"
+                                                                                : ""
                                                                         }`}
                                                                     >
+                                                                        <td className="py-3.5 px-3 align-middle w-[44px]">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={isSelected}
+                                                                                onChange={() => toggleSelectSupplier(group.groupKey, supplier.id)}
+                                                                                className="w-4 h-4 rounded-md border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-pink-600 focus:ring-pink-500/20 focus:ring-2 transition-all cursor-pointer accent-pink-600"
+                                                                                title={`Select ${supplier.name}`}
+                                                                            />
+                                                                        </td>
                                                                         {/* 1. Vendor Name & Source */}
                                                                         <td data-label="Vendor" className="py-3.5 px-4 align-top w-[200px] min-w-[180px]">
                                                                             <div className="space-y-1">
@@ -3210,10 +3784,22 @@ export function PotentialSuppliersTab({
                                                                                 {/* Remove Lead Button */}
                                                                                 <CrudActionButton
                                                                                     action="delete"
-                                                                                    ariaLabel={`Remove ${supplier.name} from leads`}
-                                                                                    disabled={isDeleting}
+                                                                                    ariaLabel={
+                                                                                        isSupplierAwarded
+                                                                                            ? "Bid awarded: lead deletion disabled"
+                                                                                            : `Remove ${supplier.name} from leads`
+                                                                                    }
+                                                                                    title={
+                                                                                        isSupplierAwarded
+                                                                                            ? "Bid already awarded: deletion disabled"
+                                                                                            : undefined
+                                                                                    }
+                                                                                    disabled={isDeleting || isSupplierAwarded}
                                                                                     isLoading={isDeleting}
-                                                                                    onClick={() => handleRemoveSupplier(supplier.id, supplier.name, group)}
+                                                                                    onClick={() => {
+                                                                                        if (isSupplierAwarded) return;
+                                                                                        handleRemoveSupplier(supplier.id, supplier.name, group);
+                                                                                    }}
                                                                                 />
                                                                             </div>
                                                                         </td>
@@ -3466,7 +4052,7 @@ export function PotentialSuppliersTab({
                                 >
                                     {isSendingEmail ? (
                                         <>
-                                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
                                             <span>Sending Email...</span>
                                         </>
                                     ) : emailModalData.supplier.hasRfqSent ? (
@@ -3611,7 +4197,7 @@ export function PotentialSuppliersTab({
                                     className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.5),_3px_3px_8px_rgba(16,185,129,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                                 >
                                     {awardingQuoteId === awardConfirmation.quote.id ? (
-                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        <Loader2 className="w-4 h-4 animate-spin" />
                                     ) : (
                                         <Award className="w-4 h-4 text-amber-300" />
                                     )}
@@ -3755,7 +4341,7 @@ export function PotentialSuppliersTab({
                                     className="px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.5),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                                 >
                                     {isSavingEmail ? (
-                                        <RefreshCw className="w-4 h-4 animate-spin" />
+                                        <Loader2 className="w-4 h-4 animate-spin" />
                                     ) : (
                                         <Send className="w-3.5 h-3.5" />
                                     )}
@@ -3844,6 +4430,307 @@ export function PotentialSuppliersTab({
                     loadPotentialSuppliersData(true);
                 }}
             />
+
+            {/* Modal 8: Bulk Send RFQ Email Modal */}
+            {bulkEmailModalData && (
+                <Portal>
+                    <div
+                        className="fixed inset-0 bg-slate-950/75 dark:bg-black/85 backdrop-blur-sm z-[110] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+                        onClick={() => !isSendingBulkEmail && setBulkEmailModalData(null)}
+                    >
+                        <div
+                            className="relative w-full max-w-2xl bg-[#ebf0f7] dark:bg-[#161826] rounded-3xl border border-white/80 dark:border-white/10 shadow-[-8px_-8px_20px_rgba(255,255,255,0.9),_8px_8px_20px_rgba(163,177,198,0.45)] dark:shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),_6px_6px_16px_rgba(0,0,0,0.6)] overflow-hidden my-auto flex flex-col max-h-[92vh]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="p-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#141624]">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-pink-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(219,39,119,0.4)]">
+                                        <Mail className="w-5 h-5 drop-shadow" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-base text-slate-900 dark:text-white">
+                                            Bulk Send RFQ &amp; Quotation Inquiries
+                                        </h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            Requisition: <strong className="text-pink-600 dark:text-pink-400">{bulkEmailModalData.group.requestNumber}</strong> • {bulkEmailModalData.group.itemName}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {!isSendingBulkEmail && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkEmailModalData(null)}
+                                        className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Body */}
+                            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                                {/* Progress indicator during bulk send */}
+                                {isSendingBulkEmail && bulkEmailProgress && (
+                                    <div className="p-4 rounded-2xl bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-pink-500/10 border border-pink-500/40 shadow-sm space-y-2.5 animate-in fade-in duration-200">
+                                        <div className="flex items-center justify-between text-xs font-bold text-pink-700 dark:text-pink-300">
+                                            <span className="flex items-center gap-2.5">
+                                                <span className="relative flex h-5 w-5 items-center justify-center">
+                                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-60"></span>
+                                                    <Loader2 className="relative w-4 h-4 animate-spin text-pink-600 dark:text-pink-400" />
+                                                </span>
+                                                <span className="font-extrabold">
+                                                    {bulkEmailProgress.currentSupplierName ? (
+                                                        <>Dispatching to <span className="underline decoration-pink-500 decoration-2">{bulkEmailProgress.currentSupplierName}</span>...</>
+                                                    ) : (
+                                                        "Sending RFQ Emails..."
+                                                    )}
+                                                </span>
+                                            </span>
+                                            <span className="font-mono text-[11px] px-2 py-0.5 rounded-lg bg-pink-500/15 text-pink-700 dark:text-pink-300 border border-pink-500/30">
+                                                {bulkEmailProgress.current} of {bulkEmailProgress.total}
+                                            </span>
+                                        </div>
+                                        <div className="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden p-0.5 border border-pink-500/20">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-pink-500 to-rose-500 rounded-full transition-all duration-300 shadow-sm"
+                                                style={{ width: `${(bulkEmailProgress.current / bulkEmailProgress.total) * 100}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Requisition Meta */}
+                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] border border-white/80 dark:border-white/10 shadow-[-3px_-3px_7px_rgba(255,255,255,0.8),_3px_3px_7px_rgba(163,177,198,0.3)] dark:shadow-[-2px_-2px_5px_rgba(255,255,255,0.03),_3px_3px_6px_rgba(0,0,0,0.4)] space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="font-mono text-xs font-black text-pink-600 dark:text-pink-400">
+                                            {bulkEmailModalData.group.requestNumber}
+                                        </span>
+                                        <span className="text-[11px] font-bold text-slate-500">
+                                            Required Qty: {bulkEmailModalData.group.quantityRequested} {bulkEmailModalData.group.unit}
+                                        </span>
+                                    </div>
+                                    <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
+                                        {bulkEmailModalData.group.itemName}
+                                    </p>
+                                </div>
+
+                                {/* Recipient Suppliers List */}
+                                {(() => {
+                                    const withEmail = bulkEmailModalData.suppliers.filter((s) => s.email && s.email.includes("@"));
+                                    const withoutEmail = bulkEmailModalData.suppliers.filter((s) => !s.email || !s.email.includes("@"));
+
+                                    return (
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="font-bold text-slate-700 dark:text-slate-300 mb-1.5 block">
+                                                    Email Recipients ({withEmail.length} vendor{withEmail.length !== 1 ? "s" : ""}):
+                                                </label>
+                                                <div className="max-h-36 overflow-y-auto rounded-2xl bg-[#e2e8f0]/60 dark:bg-[#12131f]/60 p-2.5 space-y-1.5 border border-slate-200/60 dark:border-white/[0.05]">
+                                                    {withEmail.map((sup) => (
+                                                        <div
+                                                            key={sup.id}
+                                                            className="p-2 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] flex items-center justify-between gap-2 shadow-[inset_1px_1px_2px_rgba(163,177,198,0.25)] border border-white/60 dark:border-white/[0.04]"
+                                                        >
+                                                            <div className="min-w-0">
+                                                                <span className="font-bold text-slate-900 dark:text-white block truncate">
+                                                                    {sup.name}
+                                                                </span>
+                                                                <span className="text-[10px] text-pink-600 dark:text-pink-400 font-mono block truncate">
+                                                                    {sup.email}
+                                                                </span>
+                                                            </div>
+                                                            {sup.hasRfqSent ? (
+                                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 shrink-0">
+                                                                    Follow-up
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-md bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 shrink-0">
+                                                                    New RFQ
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {withoutEmail.length > 0 && (
+                                                <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-300 space-y-1">
+                                                    <div className="flex items-center gap-1.5 font-bold text-[11px]">
+                                                        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                                                        <span>{withoutEmail.length} supplier(s) skipped (no email configured):</span>
+                                                    </div>
+                                                    <p className="text-[10.5px] text-amber-600/90 dark:text-amber-400/90 leading-relaxed">
+                                                        {withoutEmail.map((s) => s.name).join(", ")}
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Message */}
+                                <div className="space-y-1.5">
+                                    <label className="font-bold text-slate-700 dark:text-slate-300">
+                                        Custom RFQ Message (Personalized with each supplier&apos;s name):
+                                    </label>
+                                    <textarea
+                                        rows={4}
+                                        value={bulkEmailMessage}
+                                        onChange={(e) => setBulkEmailMessage(e.target.value)}
+                                        disabled={isSendingBulkEmail}
+                                        className="w-full p-3.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131e] border-0 text-xs font-medium text-slate-800 dark:text-slate-100 shadow-[inset_2px_2px_5px_rgba(163,177,198,0.4),_inset_-2px_-2px_5px_rgba(255,255,255,0.85)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6),_inset_-1px_-1px_3px_rgba(255,255,255,0.04)] focus:outline-none focus:ring-2 focus:ring-pink-500/40 transition-all leading-relaxed"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-4 border-t border-slate-300/80 dark:border-white/10 flex items-center justify-end gap-3 bg-[#ebf0f7] dark:bg-[#141624]">
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkEmailModalData(null)}
+                                    disabled={isSendingBulkEmail}
+                                    className="px-4 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_5px_rgba(255,255,255,0.03),_2px_2px_5px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+
+                                {(() => {
+                                    const count = bulkEmailModalData.suppliers.filter((s) => s.email && s.email.includes("@")).length;
+                                    return (
+                                        <button
+                                            type="button"
+                                            onClick={handleSendBulkRFQEmail}
+                                            disabled={isSendingBulkEmail || count === 0}
+                                            className="px-5 py-2.5 rounded-2xl bg-pink-600 hover:bg-pink-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.5),_3px_3px_8px_rgba(219,39,119,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                                        >
+                                            {isSendingBulkEmail ? (
+                                                <>
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                    <span>Dispatching Emails...</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Send className="w-3.5 h-3.5" />
+                                                    <span>Send RFQ to {count} Supplier{count !== 1 ? "s" : ""}</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    );
+                                })()}
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            )}
+
+            {/* Modal 9: Bulk Delete Leads Confirmation Modal */}
+            {bulkDeleteModalData && (
+                <Portal>
+                    <div
+                        className="fixed inset-0 bg-slate-950/75 dark:bg-black/85 backdrop-blur-sm z-[110] flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200"
+                        onClick={() => !isBulkDeleting && setBulkDeleteModalData(null)}
+                    >
+                        <div
+                            className="relative w-full max-w-lg bg-[#ebf0f7] dark:bg-[#161826] rounded-3xl border border-white/80 dark:border-white/10 shadow-[-8px_-8px_20px_rgba(255,255,255,0.9),_8px_8px_20px_rgba(163,177,198,0.45)] dark:shadow-[-4px_-4px_12px_rgba(255,255,255,0.03),_6px_6px_16px_rgba(0,0,0,0.6)] overflow-hidden my-auto flex flex-col max-h-[90vh]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="p-5 border-b border-slate-300/80 dark:border-white/10 flex items-center justify-between bg-[#ebf0f7] dark:bg-[#141624]">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-[-2px_-2px_6px_rgba(255,255,255,0.8),_2px_2px_6px_rgba(225,29,72,0.4)]">
+                                        <Trash2 className="w-5 h-5 drop-shadow" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-base text-slate-900 dark:text-white">
+                                            Confirm Bulk Lead Removal
+                                        </h3>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                                            Requisition: <strong className="text-pink-600 dark:text-pink-400">{bulkDeleteModalData.group.requestNumber}</strong>
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {!isBulkDeleting && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setBulkDeleteModalData(null)}
+                                        className="w-8 h-8 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center justify-center border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.04),_2px_2px_4px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] cursor-pointer transition-all"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Body */}
+                            <div className="p-5 overflow-y-auto space-y-4 text-xs">
+                                <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 space-y-1.5">
+                                    <div className="flex items-center gap-2 font-bold text-sm">
+                                        <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                                        <span>Remove {bulkDeleteModalData.supplierIds.length} Supplier Lead(s)?</span>
+                                    </div>
+                                    <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                                        Are you sure you want to remove these vendor leads from Requisition <strong>#{bulkDeleteModalData.group.requestNumber}</strong> ({bulkDeleteModalData.group.itemName})?
+                                    </p>
+                                </div>
+
+                                <div>
+                                    <label className="font-bold text-slate-700 dark:text-slate-300 mb-2 block text-xs">
+                                        Suppliers to be removed:
+                                    </label>
+                                    <div className="max-h-48 overflow-y-auto rounded-2xl bg-[#e2e8f0]/60 dark:bg-[#12131f]/60 p-2.5 space-y-1 border border-slate-200/60 dark:border-white/[0.05]">
+                                        {bulkDeleteModalData.supplierNames.map((name, i) => (
+                                            <div
+                                                key={i}
+                                                className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#161826] text-xs font-semibold text-slate-800 dark:text-slate-200 flex items-center gap-2 shadow-[inset_1px_1px_2px_rgba(163,177,198,0.25)] border border-white/60 dark:border-white/[0.04]"
+                                            >
+                                                <Store className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                <span className="truncate">{name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 italic">
+                                    Note: Unlinked temporary leads will be removed. Registered active suppliers in your vendor directory will remain intact and will only be unlinked from this requisition.
+                                </p>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="p-4 border-t border-slate-300/80 dark:border-white/10 flex items-center justify-end gap-3 bg-[#ebf0f7] dark:bg-[#141624]">
+                                <button
+                                    type="button"
+                                    onClick={() => setBulkDeleteModalData(null)}
+                                    disabled={isBulkDeleting}
+                                    className="px-4 py-2.5 rounded-2xl bg-[#ebf0f7] dark:bg-[#161826] text-slate-700 dark:text-slate-300 text-xs font-bold border border-white/80 dark:border-white/10 shadow-[-2px_-2px_5px_rgba(255,255,255,0.85),_2px_2px_5px_rgba(163,177,198,0.35)] dark:shadow-[-2px_-2px_5px_rgba(255,255,255,0.03),_2px_2px_5px_rgba(0,0,0,0.4)] active:shadow-[inset_1px_1px_3px_rgba(163,177,198,0.4)] hover:text-slate-900 dark:hover:text-white transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={handleExecuteBulkDelete}
+                                    disabled={isBulkDeleting}
+                                    className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-[-2px_-2px_6px_rgba(255,255,255,0.5),_3px_3px_8px_rgba(225,29,72,0.45)] active:shadow-[inset_1px_1px_3px_rgba(0,0,0,0.3)] flex items-center gap-2 cursor-pointer transition-all disabled:opacity-50"
+                                >
+                                    {isBulkDeleting ? (
+                                        <>
+                                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            <span>Removing Leads...</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <span>Confirm &amp; Delete ({bulkDeleteModalData.supplierIds.length})</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </Portal>
+            )}
         </div>
     );
 }

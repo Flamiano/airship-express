@@ -181,19 +181,117 @@ export function SupplierViewModal({
 
     const rawOtherProducts: any[] = useMemo(() => {
         if (!supplier) return [];
-        if (Array.isArray(supplier.other_products_offer)) {
-            return supplier.other_products_offer;
-        }
-        if (typeof supplier.other_products_offer === 'string') {
+        let list: any[] = [];
+        if (Array.isArray(supplier.other_products_offer) && supplier.other_products_offer.length > 0) {
+            list = [...supplier.other_products_offer];
+        } else if (typeof supplier.other_products_offer === 'string') {
             try {
                 const parsed = JSON.parse(supplier.other_products_offer);
-                return Array.isArray(parsed) ? parsed : [];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    list = [...parsed];
+                }
             } catch {
-                return [];
+                list = [];
             }
         }
-        return [];
-    }, [supplier]);
+
+        // If list is empty, aggregate from supplierQuotations (awarded item + other_products_offer)
+        if (list.length === 0 && supplierQuotations && supplierQuotations.length > 0) {
+            supplierQuotations.forEach((quote: any) => {
+                // 1. Quoted / requested primary item
+                const primaryItem = (quote?.item_name || quote?.products || "").trim();
+                if (primaryItem) {
+                    const existing = list.find((p) => (p.item_name || "").toLowerCase() === primaryItem.toLowerCase());
+                    if (!existing) {
+                        list.push({
+                            id: `quote_${quote.id || Date.now()}`,
+                            item_name: primaryItem,
+                            unit: quote.unit || "unit",
+                            unit_price: Number(quote.unit_price || 0),
+                            discount: Number(quote.discount || 0),
+                            shipping_fee: Number(quote.shipping_fee || 0),
+                            tax_rate: Number(quote.tax_rate ?? 12),
+                            tax_type: quote.tax_type || "vatable",
+                            currency: quote.currency || "PHP",
+                            source: "Quotation Item",
+                        });
+                    }
+                }
+
+                // 2. other_products_offer inside quote
+                const quoteOthers = Array.isArray(quote?.other_products_offer)
+                    ? quote.other_products_offer
+                    : (typeof quote?.other_products_offer === 'string'
+                        ? (() => { try { return JSON.parse(quote.other_products_offer); } catch { return []; } })()
+                        : []);
+
+                if (Array.isArray(quoteOthers)) {
+                    quoteOthers.forEach((item: any, idx: number) => {
+                        const itemName = (item?.item_name || item?.name || item?.product_name || "").trim();
+                        if (itemName) {
+                            const existing = list.find((p) => (p.item_name || "").toLowerCase() === itemName.toLowerCase());
+                            if (!existing) {
+                                list.push({
+                                    id: item.id || `quote_other_${quote.id}_${idx}`,
+                                    item_name: itemName,
+                                    unit: item.unit || "unit",
+                                    unit_price: Number(item.unit_price ?? item.price ?? 0),
+                                    discount: Number(item.discount || 0),
+                                    shipping_fee: Number(item.shipping_fee || 0),
+                                    tax_rate: item.tax_rate !== undefined ? Number(item.tax_rate) : 12,
+                                    tax_type: item.tax_type || item.tax_classification || "vatable",
+                                    currency: item.currency || quote.currency || "PHP",
+                                    source: "Quotation Offer",
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+        }
+
+        // Also check if supplier has submittedQuote or quote attached directly
+        const directQuote = (supplier as any).submittedQuote || (supplier as any).quote;
+        if (list.length === 0 && directQuote) {
+            const primaryItem = (directQuote?.item_name || directQuote?.products || "").trim();
+            if (primaryItem) {
+                list.push({
+                    id: `quote_${directQuote.id || Date.now()}`,
+                    item_name: primaryItem,
+                    unit: directQuote.unit || "unit",
+                    unit_price: Number(directQuote.unit_price || 0),
+                    discount: Number(directQuote.discount || 0),
+                    shipping_fee: Number(directQuote.shipping_fee || 0),
+                    tax_rate: Number(directQuote.tax_rate ?? 12),
+                    tax_type: directQuote.tax_type || "vatable",
+                    currency: directQuote.currency || "PHP",
+                    source: "Quotation Item",
+                });
+            }
+            const directOthers = Array.isArray(directQuote?.other_products_offer)
+                ? directQuote.other_products_offer
+                : [];
+            directOthers.forEach((item: any, idx: number) => {
+                const itemName = (item?.item_name || item?.name || item?.product_name || "").trim();
+                if (itemName) {
+                    list.push({
+                        id: item.id || `quote_other_${directQuote.id}_${idx}`,
+                        item_name: itemName,
+                        unit: item.unit || "unit",
+                        unit_price: Number(item.unit_price ?? item.price ?? 0),
+                        discount: Number(item.discount || 0),
+                        shipping_fee: Number(item.shipping_fee || 0),
+                        tax_rate: item.tax_rate !== undefined ? Number(item.tax_rate) : 12,
+                        tax_type: item.tax_type || item.tax_classification || "vatable",
+                        currency: item.currency || directQuote.currency || "PHP",
+                        source: "Quotation Offer",
+                    });
+                }
+            });
+        }
+
+        return list;
+    }, [supplier, supplierQuotations]);
 
     useEffect(() => {
         if (isOpen && supplier?.id) {

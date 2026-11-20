@@ -16,6 +16,7 @@ import Cards from "../../components/global/Cards";
 import dynamic from "next/dynamic";
 import AiQuestions from "../../components/global/AiQuestions";
 import { user } from "../../lib/services/Class/user";
+import { createNotification } from "../../lib/services/notifications";
 import { buildEmailTemplate } from "../procurement/api/send-email/template";
 import {
     VerificationJob,
@@ -350,61 +351,43 @@ export default function PurchaseOrders() {
     // deep linking
     useEffect(() => {
         const poParam = searchParams.get('po_id');
+        const poNumParam = searchParams.get('poNumber') || searchParams.get('po');
         const verificationParam = searchParams.get('verification');
-        if (!poParam && !verificationParam)
+        const actionParam = searchParams.get('action');
+
+        if (!poParam && !poNumParam && !verificationParam)
             return;
-        const deepLinkKey = `${poParam || ''}_${verificationParam || ''}`;
+
+        const deepLinkKey = `${poParam || ''}_${poNumParam || ''}_${verificationParam || ''}_${actionParam || ''}`;
         if (handledDeepLinkRef.current === deepLinkKey)
             return;
+
         const combinedList = [...purchaseOrders, ...allOrders];
         if (combinedList.length === 0)
             return;
+
         handledDeepLinkRef.current = deepLinkKey;
-        if (poParam) {
-            const target = combinedList.find(p => p.id === poParam);
-            if (target) {
-                // handle verified status
-                if (target.verification?.match_result === 'matched' ||
-                    target.verification?.match_result === 'forced' ||
-                    target.paid ||
-                    target.document) {
-                    setViewingDocData({
-                        id: target.document?.id || target.verification?.id,
-                        title: target.document?.title || `Receipt - PO #${target.po_number}`,
-                        fileName: target.document?.file_name || `receipt_${target.po_number}.png`,
-                        fileUrl: target.verification?.uploaded_file_url,
-                        storagePath: target.document?.storage_path,
-                        fileType: target.document?.file_type,
-                        poNumber: target.po_number,
-                        supplierName: target.supplier_name,
-                        verifiedStatus: target.verification?.match_result || (target.paid ? 'matched' : null),
-                        totalAmount: target.total_amount,
-                        notes: target.document?.notes || (target.verification?.match_result === 'matched' ? 'OCR Verified Matched' : undefined),
-                        uploadedBy: target.document?.uploaded_by,
-                    });
-                    setIsDocViewerOpen(true);
-                }
-                else if (target.verification?.match_result === 'mismatched' || verificationParam) {
-                    // mismatch modal
-                    setReceiptModalPO(target);
-                    setReceiptVerificationId(target.verification?.id || verificationParam || null);
-                    setIsReceiptModalOpen(true);
-                }
-                else {
-                    // upload required
-                    setReceiptModalPO(target);
-                    setReceiptVerificationId(null);
-                    setIsReceiptModalOpen(true);
-                }
-            }
-        }
-        else if (verificationParam) {
+
+        // If verification param is present, handle OCR / receipt verification modal
+        if (verificationParam) {
             setReceiptVerificationId(verificationParam);
-            const target = combinedList.find(p => p.verification?.id === verificationParam) || combinedList[0];
+            const target = combinedList.find(p => p.verification?.id === verificationParam || (poParam && String(p.id) === String(poParam))) || combinedList[0];
             if (target) {
                 setReceiptModalPO(target);
             }
             setIsReceiptModalOpen(true);
+            return;
+        }
+
+        // If poNumber or po_id is present without verification, open the PO manage/approval modal!
+        if (poNumParam || poParam) {
+            const target = combinedList.find(p => 
+                (poParam && String(p.id) === String(poParam)) ||
+                (poNumParam && (p.po_number === poNumParam || p.po_number?.toLowerCase() === poNumParam.toLowerCase()))
+            );
+            if (target) {
+                openOrderModal(target, actionParam === 'details' ? 'details' : 'manage');
+            }
         }
     }, [searchParams, purchaseOrders, allOrders]);
     // fetch supplier and load cached AI message
@@ -617,7 +600,13 @@ export default function PurchaseOrders() {
                 .select('*', { count: 'exact' });
 
             if (activeStatusFilter !== 'all') {
-                query = query.eq('status', activeStatusFilter);
+                if (activeStatusFilter === 'Pending') {
+                    query = query.in('status', ['Pending', 'Draft', 'Sent']);
+                } else if (activeStatusFilter === 'Issued') {
+                    query = query.in('status', ['Issued', 'Confirmed']);
+                } else {
+                    query = query.eq('status', activeStatusFilter);
+                }
             }
 
             if (selectedMonth !== 'all') {
@@ -861,7 +850,7 @@ export default function PurchaseOrders() {
                 };
             });
 
-            const initialStatus = orderData.status || 'Draft';
+            const initialStatus = orderData.status || 'Pending';
             const subtotal = Number(orderData.subtotal || orderData.total_amount || 0);
             const discount = Number(orderData.discount || 0);
             const shippingFee = Number(orderData.shipping_fee || 0);
@@ -891,7 +880,7 @@ export default function PurchaseOrders() {
                     items: sanitizedItems,
                     paid: false,
                     fully_received: false,
-                    admin_approval: orderData.admin_approval || 'Approved',
+                    admin_approval: orderData.admin_approval || 'Pending',
                     financial_approval: orderData.financial_approval || 'Pending',
                 })
                 .select()
@@ -905,6 +894,8 @@ export default function PurchaseOrders() {
                 id: Date.now().toString(),
                 paid: false,
                 status: initialStatus,
+                admin_approval: orderData.admin_approval || 'Pending',
+                financial_approval: orderData.financial_approval || 'Pending',
                 created_at: new Date().toISOString(),
             };
 
@@ -943,6 +934,7 @@ export default function PurchaseOrders() {
             // Pop up digital printable receipt modal
             setDigitalReceiptPO(newPoRecord);
             setIsDigitalReceiptModalOpen(true);
+            return newPoRecord;
         }
         catch (error) {
             console.error('Error creating purchase order:', error);
@@ -952,8 +944,8 @@ export default function PurchaseOrders() {
     const handleDeleteOrder = async (id: string) => {
         const targetOrder = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id) || (actionModalOrder?.id === id ? actionModalOrder : null);
         const orderStatusLower = (targetOrder?.status || '').toLowerCase();
-        if (['sent', 'confirmed', 'delivered', 'completed'].includes(orderStatusLower)) {
-            toast.error(`Cannot delete PO #${targetOrder?.po_number || id} because its status is "${targetOrder?.status}". Orders in Sent, Confirmed, or Delivered status are locked and cannot be deleted.`);
+        if (['issued', 'delivered', 'completed', 'sent', 'confirmed'].includes(orderStatusLower)) {
+            toast.error(`Cannot delete PO #${targetOrder?.po_number || id} because its status is "${targetOrder?.status}". Orders in Issued or Delivered status are locked and cannot be deleted.`);
             return;
         }
 
@@ -1000,18 +992,18 @@ export default function PurchaseOrders() {
         }
 
         const selectedOrders = datasetOrders.filter(po => selectedIds.has(po.id));
-        const lockedOrders = selectedOrders.filter(po => ['sent', 'confirmed', 'delivered', 'completed'].includes((po.status || '').toLowerCase()));
-        const eligibleOrders = selectedOrders.filter(po => !['sent', 'confirmed', 'delivered', 'completed'].includes((po.status || '').toLowerCase()));
+        const lockedOrders = selectedOrders.filter(po => ['issued', 'delivered', 'completed', 'sent', 'confirmed'].includes((po.status || '').toLowerCase()));
+        const eligibleOrders = selectedOrders.filter(po => !['issued', 'delivered', 'completed', 'sent', 'confirmed'].includes((po.status || '').toLowerCase()));
 
         if (eligibleOrders.length === 0) {
-            toast.error("Cannot delete selected purchase orders: All selected orders are in Sent, Confirmed, or Delivered status and are permanently locked.");
+            toast.error("Cannot delete selected purchase orders: All selected orders are in Issued or Delivered status and are permanently locked.");
             return;
         }
 
         if (lockedOrders.length > 0) {
             const confirmedSkip = await confirm({
                 title: "Locked Orders Detected",
-                message: `${lockedOrders.length} selected purchase order(s) are in Sent, Confirmed, or Delivered status and cannot be deleted. Do you want to proceed with deleting only the ${eligibleOrders.length} Draft order(s)?`,
+                message: `${lockedOrders.length} selected purchase order(s) are in Issued or Delivered status and cannot be deleted. Do you want to proceed with deleting only the ${eligibleOrders.length} eligible Pending order(s)?`,
                 confirmText: `Delete ${eligibleOrders.length} Eligible`,
                 cancelText: "Cancel",
                 confirmVariant: "danger",
@@ -1058,8 +1050,8 @@ export default function PurchaseOrders() {
             toast.error("Permission denied: Only Purchase Officers, Executives, and Admins can update purchase order status.");
             return;
         }
-        if (newStatus === 'Confirmed' && !isAdmin && !isExecutive) {
-            toast.error("Permission denied: Only Administrators and Executives can set the 'Confirmed' status of purchase orders.");
+        if (newStatus === 'Issued' && !isAdmin && !isExecutive) {
+            toast.error("Permission denied: Only Administrators and Executives can set the 'Issued' status of purchase orders.");
             return;
         }
         if (selectedIds.size === 0) {
@@ -1160,27 +1152,34 @@ export default function PurchaseOrders() {
             return;
         }
         const targetOrder = purchaseOrders.find(p => p.id === id) || allOrders.find(p => p.id === id) || (actionModalOrder?.id === id ? actionModalOrder : null);
-        const currentStatus = targetOrder?.status || 'Draft';
+        const currentStatus = targetOrder?.status || 'Pending';
         if (currentStatus === newStatus)
             return;
 
-        const STATUS_ORDER = ['Draft', 'Sent', 'Confirmed', 'Delivered', 'Completed'];
-        const currentIndex = STATUS_ORDER.indexOf(currentStatus);
-        const targetIndex = STATUS_ORDER.indexOf(newStatus);
+        const STATUS_ORDER = ['Pending', 'Issued', 'Delivered', 'Completed'];
+        const normalizeStatusRank = (st: string) => {
+            const lower = st.toLowerCase();
+            if (lower === 'draft' || lower === 'sent' || lower === 'pending') return 'Pending';
+            if (lower === 'confirmed' || lower === 'issued') return 'Issued';
+            if (lower === 'delivered') return 'Delivered';
+            if (lower === 'completed') return 'Completed';
+            return st;
+        };
+        const currentIndex = STATUS_ORDER.indexOf(normalizeStatusRank(currentStatus));
+        const targetIndex = STATUS_ORDER.indexOf(normalizeStatusRank(newStatus));
 
         if (currentIndex !== -1 && targetIndex !== -1 && targetIndex < currentIndex) {
             toast.warning(`Cannot revert order status from "${currentStatus}" back to "${newStatus}".`);
             return;
         }
 
-        if (newStatus === 'Cancelled' && (currentStatus.toLowerCase() === 'delivered' || currentStatus.toLowerCase() === 'completed')) {
-            toast.warning(`Cannot cancel purchase order #${targetOrder?.po_number || id} because it has already been delivered.`);
+        if (newStatus === 'Delivered' && normalizeStatusRank(currentStatus) === 'Pending') {
+            toast.warning(`PO #${targetOrder?.po_number || id} must receive administrative & financial approval (Issued) before marking as Delivered.`);
             return;
         }
 
-        // admin / exec check: Setting Confirmed status requires Admin or Executive
-        if (newStatus === 'Confirmed' && !isAdmin && !isExecutive) {
-            toast.error("Permission denied: Only Administrators and Executives can set the 'Confirmed' status of a purchase order.");
+        if (newStatus === 'Cancelled' && (currentStatus.toLowerCase() === 'delivered' || currentStatus.toLowerCase() === 'completed')) {
+            toast.warning(`Cannot cancel purchase order #${targetOrder?.po_number || id} because it has already been delivered.`);
             return;
         }
         if (!options?.skipConfirm) {
@@ -1242,6 +1241,179 @@ export default function PurchaseOrders() {
             setPendingRowId(null);
         }
     };
+
+    const handleAdminApprovePO = async (order: PurchaseOrder) => {
+        if (!isAdmin) {
+            toast.error("Permission denied: Only Administrators can provide administrative approval.");
+            return;
+        }
+        const confirmed = await confirm({
+            title: "Approve Purchase Order (Admin)",
+            message: `Are you sure you want to approve PO #${order.po_number}? Once administratively approved, it will be forwarded for financial approval and issuance.`,
+            confirmText: "Approve as Admin",
+            cancelText: "Cancel",
+            confirmVariant: "info",
+        });
+        if (!confirmed) return;
+
+        setPendingRowId(order.id);
+        try {
+            const now = new Date().toISOString();
+            const approver = user.getEmail() || user.getName() || 'Admin';
+            const { error } = await supabase
+                .from('purchase_orders')
+                .update({
+                    admin_approval: 'Approved',
+                    admin_approved_at: now,
+                    admin_approved_by: approver,
+                    status: 'Pending',
+                    updated_at: now,
+                })
+                .eq('id', order.id);
+
+            if (error) throw error;
+
+            try {
+                await createNotification({
+                    title: `PO ${order.po_number} Approved by Admin`,
+                    message: `Purchase Order ${order.po_number} has received administrative approval and is awaiting financial approval & issuance.`,
+                    type: 'info',
+                    role: ['Executive', 'Superadmin', 'Admin'],
+                    link: `/purchase-orders?status=Pending`,
+                    creatorName: user.getName() || 'Admin',
+                    creatorEmail: user.getEmail() || 'admin@airship.express',
+                });
+            } catch (notifErr) {
+                console.warn('Failed to send admin approval notification:', notifErr);
+            }
+
+            setPurchaseOrders(prev => prev.map(po => po.id === order.id ? {
+                ...po,
+                admin_approval: 'Approved',
+                admin_approved_at: now,
+                admin_approved_by: approver,
+            } : po));
+            setAllOrders(prev => prev.map(po => po.id === order.id ? {
+                ...po,
+                admin_approval: 'Approved',
+                admin_approved_at: now,
+                admin_approved_by: approver,
+            } : po));
+            if (actionModalOrder && actionModalOrder.id === order.id) {
+                setActionModalOrder(prev => prev ? {
+                    ...prev,
+                    admin_approval: 'Approved',
+                    admin_approved_at: now,
+                    admin_approved_by: approver,
+                } : null);
+            }
+            toast.success(`PO #${order.po_number} administratively approved! Forwarded for financial approval.`);
+        } catch (err: any) {
+            console.error('Error in administrative approval:', err);
+            toast.error(err?.message || 'Failed to approve purchase order');
+        } finally {
+            setPendingRowId(null);
+        }
+    };
+
+    const handleFinancialApproveAndIssue = async (order: PurchaseOrder) => {
+        if (!isExecutive && !isAdmin) {
+            toast.error("Permission denied: Only Financial Executives or Admins can approve and issue purchase orders.");
+            return;
+        }
+        if (order.admin_approval !== 'Approved') {
+            toast.warning(`PO #${order.po_number} requires Administrative Approval before financial approval and issuance.`);
+            return;
+        }
+
+        const confirmed = await confirm({
+            title: "Approve Financial & Issue PO",
+            message: `Are you sure you want to approve and issue PO #${order.po_number}? This will set the order status to "Issued" and automatically email the official purchase order to ${order.supplier_name}.`,
+            confirmText: "Approve & Issue PO",
+            cancelText: "Cancel",
+            confirmVariant: "info",
+        });
+        if (!confirmed) return;
+
+        setPendingRowId(order.id);
+        setIsSendingActionComm(true);
+        const toastId = toast.loading(`Approving PO #${order.po_number} & issuing to supplier...`, {
+            position: 'top-center',
+        });
+
+        try {
+            const approver = user.getEmail() || user.getName() || 'Finance';
+            const response = await fetch('/api/purchase-orders/approve-financial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    po_id: order.id,
+                    po_number: order.po_number,
+                    financial_approval: 'Approved',
+                    approved_by: approver,
+                }),
+            });
+
+            const resData = await response.json();
+            if (!resData.success) {
+                throw new Error(resData.error || 'Failed to approve and issue purchase order');
+            }
+
+            const now = new Date().toISOString();
+            try {
+                await createNotification({
+                    title: `PO ${order.po_number} Officially Issued`,
+                    message: `Purchase Order ${order.po_number} has received financial approval, is officially issued, and dispatched to ${order.supplier_name}.`,
+                    type: 'success',
+                    role: ['Purchase Officer', 'Procurement Officer', 'Admin', 'Superadmin'],
+                    link: `/purchase-orders?status=Issued`,
+                    creatorName: user.getName() || 'Finance',
+                    creatorEmail: user.getEmail() || 'finance@airship.express',
+                });
+            } catch (notifErr) {
+                console.warn('Failed to send issue notification:', notifErr);
+            }
+
+            setPurchaseOrders(prev => prev.map(po => po.id === order.id ? {
+                ...po,
+                financial_approval: 'Approved',
+                financial_approved_at: now,
+                financial_approved_by: approver,
+                status: 'Issued',
+            } : po));
+            setAllOrders(prev => prev.map(po => po.id === order.id ? {
+                ...po,
+                financial_approval: 'Approved',
+                financial_approved_at: now,
+                financial_approved_by: approver,
+                status: 'Issued',
+            } : po));
+            if (actionModalOrder && actionModalOrder.id === order.id) {
+                setActionModalOrder(prev => prev ? {
+                    ...prev,
+                    financial_approval: 'Approved',
+                    financial_approved_at: now,
+                    financial_approved_by: approver,
+                    status: 'Issued',
+                } : null);
+            }
+
+            toast.success(`PO #${order.po_number} approved and officially issued! Email dispatched to supplier.`, {
+                id: toastId,
+                duration: 6000,
+            });
+        } catch (err: any) {
+            console.error('Error approving and issuing PO:', err);
+            toast.error(err?.message || 'Failed to approve and issue purchase order', {
+                id: toastId,
+                duration: 8000,
+            });
+        } finally {
+            setPendingRowId(null);
+            setIsSendingActionComm(false);
+        }
+    };
+
     const handleTogglePaid = async (id: string, currentPaid: boolean, poNumber?: string, status?: string) => {
         if (currentPaid) {
             toast.info(`Purchase order #${poNumber || id} is already paid & verified via receipt.`);
@@ -1259,7 +1431,7 @@ export default function PurchaseOrders() {
             }
         }
         else {
-            toast.warning(`Cannot verify payment for PO #${poNumber || id} until status is Delivered (currently ${status || 'Draft'}).`);
+            toast.warning(`Cannot verify payment for PO #${poNumber || id} until status is Delivered (currently ${status || 'Pending'}).`);
         }
     };
     const getActionModalFullMessage = () => {
@@ -1375,9 +1547,10 @@ export default function PurchaseOrders() {
             });
             const data = await response.json();
             if (data.success) {
-                // update status
-                await handleUpdateStatus(actionModalOrder.id, 'Sent', { skipConfirm: true });
-                toast.success(`Email sent to ${emailTo} and status updated to Sent!`, {
+                if (actionModalOrder.status !== 'Issued' && actionModalOrder.status !== 'Delivered') {
+                    await handleUpdateStatus(actionModalOrder.id, 'Issued', { skipConfirm: true });
+                }
+                toast.success(`Email dispatched to ${emailTo}!`, {
                     id: toastId,
                     duration: 6000,
                 });
@@ -1458,34 +1631,27 @@ export default function PurchaseOrders() {
                 return;
 
             const normalizeStatus = (rawStatus?: string): string => {
-                if (!rawStatus) return 'Draft';
+                if (!rawStatus) return 'Pending';
                 const s = rawStatus.trim().toLowerCase();
-                if (s === 'draft') return 'Draft';
-                if (s === 'sent') return 'Sent';
-                if (s === 'confirmed') return 'Confirmed';
+                if (s === 'draft' || s === 'sent' || s === 'pending') return 'Pending';
+                if (s === 'confirmed' || s === 'issued' || s === 'approved') return 'Issued';
                 if (s === 'delivered') return 'Delivered';
                 if (s === 'cancelled' || s === 'canceled') return 'Cancelled';
                 if (s === 'rejected') return 'Rejected';
-                if (s === 'pending') return 'Sent';
-                if (s === 'approved') return 'Confirmed';
                 return rawStatus.charAt(0).toUpperCase() + rawStatus.slice(1);
             };
 
             const statusData: Record<string, number> = {
-                'Draft': 0,
-                'Sent': 0,
-                'Confirmed': 0,
+                'Pending': 0,
+                'Issued': 0,
                 'Delivered': 0,
                 'Cancelled': 0,
-                'Rejected': 0,
             };
             const statusOrders: Record<string, PurchaseOrder[]> = {
-                'Draft': [],
-                'Sent': [],
-                'Confirmed': [],
+                'Pending': [],
+                'Issued': [],
                 'Delivered': [],
                 'Cancelled': [],
-                'Rejected': [],
             };
 
             datasetOrders.forEach(order => {
@@ -1497,7 +1663,7 @@ export default function PurchaseOrders() {
                 statusOrders[normalized].push(order);
             });
 
-            const standardStatuses = ['Draft', 'Sent', 'Confirmed', 'Delivered', 'Cancelled', 'Rejected'];
+            const standardStatuses = ['Pending', 'Issued', 'Delivered', 'Cancelled'];
             const allKeys = Array.from(new Set([...standardStatuses, ...Object.keys(statusData)]));
             const hasAnyData = Object.values(statusData).some(count => count > 0);
             const sortedLabels = hasAnyData
@@ -1508,14 +1674,11 @@ export default function PurchaseOrders() {
 
             // color mapping
             const colorMap: Record<string, string> = {
-                'Draft': '#64748B',      // Slate
-                'Sent': '#6366F1',       // Indigo
-                'Confirmed': '#8B5CF6',  // Violet / Purple
-                'Delivered': '#EC4899',  // Vibrant Pink
-                'Cancelled': '#F43F5E',  // Rose
-                'Rejected': '#E11D48',   // Deep Rose / Red
                 'Pending': '#F59E0B',    // Amber
-                'Approved': '#10B981'    // Emerald
+                'Issued': '#6366F1',     // Indigo
+                'Delivered': '#10B981',  // Emerald
+                'Cancelled': '#F43F5E',  // Rose
+                'Rejected': '#E11D48',   // Deep Rose
             };
             const backgroundColor = sortedLabels.map((label: string) => colorMap[label] || '#94A3B8');
 
@@ -1657,7 +1820,16 @@ export default function PurchaseOrders() {
     const filteredOrders = useMemo(() => {
         const query = (debouncedSearch || '').toLowerCase().trim();
         return purchaseOrders.filter((order) => {
-            const matchesStatus = activeStatusFilter === 'all' || order.status === activeStatusFilter;
+            let matchesStatus = activeStatusFilter === 'all';
+            if (!matchesStatus) {
+                if (activeStatusFilter === 'Pending') {
+                    matchesStatus = ['pending', 'draft', 'sent'].includes((order.status || '').toLowerCase());
+                } else if (activeStatusFilter === 'Issued') {
+                    matchesStatus = ['issued', 'confirmed'].includes((order.status || '').toLowerCase());
+                } else {
+                    matchesStatus = (order.status || '').toLowerCase() === activeStatusFilter.toLowerCase();
+                }
+            }
             if (!matchesStatus) return false;
             if (selectedMonth !== 'all') {
                 if (!order.created_at || !order.created_at.startsWith(selectedMonth)) {
@@ -1690,9 +1862,10 @@ export default function PurchaseOrders() {
 
         for (let i = 0; i < source.length; i++) {
             const o = source[i];
-            if (o.status === 'Sent' || o.status === 'Draft') pending++;
-            else if (o.status === 'Confirmed') transit++;
-            else if (o.status === 'Delivered') done++;
+            const s = (o.status || '').toLowerCase();
+            if (s === 'pending' || s === 'draft' || s === 'sent') pending++;
+            else if (s === 'issued' || s === 'confirmed') transit++;
+            else if (s === 'delivered') done++;
 
             if (o.paid === true) {
                 spend += Number(o.total_amount) || 0;
@@ -1761,7 +1934,7 @@ export default function PurchaseOrders() {
             {loading ? (<CardsSkeleton count={4} className="grid-cols-2 lg:grid-cols-4" />) : (<div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <Cards frontIcon="fa-solid fa-file-invoice" header="Total POs" data={String(totalOrders)} arrow="fa-solid fa-arrow-up" description={selectedMonth !== 'all' ? selectedMonthLabel : "All orders"} backBg="bg-ink dark:bg-ink/90" backHeader="Overview" headerTextColor="text-muted dark:text-white/80" backDescription={`Total Purchase Orders: ${totalOrders}\nPending: ${pendingConfirmation}\nCompleted: ${completed}`} tooltip="View all POs" tooltipLink="/purchase-orders" frontTextColor="text-pink-500 dark:text-pink-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
-                <Cards frontIcon="fa-solid fa-clock" header="Pending" data={String(pendingConfirmation)} arrow="fa-solid fa-hourglass-half" description="Awaiting confirmation" backBg="bg-ink dark:bg-ink/90" backHeader="Pending Orders" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting supplier confirmation' : 'No pending orders'}`} tooltip="View pending orders" tooltipLink="/purchase-orders?status=Sent" badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
+                <Cards frontIcon="fa-solid fa-clock" header="Pending" data={String(pendingConfirmation)} arrow="fa-solid fa-hourglass-half" description="Awaiting approval" backBg="bg-ink dark:bg-ink/90" backHeader="Pending Orders" headerTextColor="text-muted dark:text-white/80" backDescription={`Pending: ${pendingConfirmation}\n${pendingConfirmation > 0 ? 'Awaiting administrative or financial approval' : 'No pending orders'}`} tooltip="View pending orders" tooltipLink="/purchase-orders?status=Pending" badge={pendingConfirmation > 0 ? `${pendingConfirmation} waiting` : undefined} frontTextColor="text-amber-500 dark:text-amber-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
                 <Cards frontIcon="fa-solid fa-circle-check" header="Completed" data={String(completed)} arrow="fa-solid fa-check-double" description="Delivered" backBg="bg-ink dark:bg-ink/90" backHeader="Completed" headerTextColor="text-muted dark:text-white/80" backDescription={`Completed: ${completed}\n${completed > 0 ? 'Orders successfully delivered' : 'No completed orders'}`} tooltip="View completed orders" tooltipLink="/purchase-orders?status=Delivered" frontTextColor="text-emerald-500 dark:text-emerald-400" descriptionTextColor="text-slate-500 dark:text-slate-400" />
 
@@ -1969,11 +2142,10 @@ export default function PurchaseOrders() {
                             <div className="inline-flex items-center gap-1 bg-[#ebf0f7] dark:bg-[#14151c] p-1 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-[inset_2px_2px_5px_rgba(166,175,195,0.35),inset_-2px_-2px_5px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_6px_rgba(0,0,0,0.65)] min-w-max">
                                 {[
                                     { key: "all", label: "All", count: totalOrders },
-                                    { key: "Draft", label: "Draft", count: monthScopedOrders.filter(o => o.status === 'Draft').length },
-                                    { key: "Sent", label: "Sent", count: monthScopedOrders.filter(o => o.status === 'Sent').length },
-                                    { key: "Confirmed", label: "Confirmed", count: monthScopedOrders.filter(o => o.status === 'Confirmed').length },
-                                    { key: "Delivered", label: "Delivered", count: monthScopedOrders.filter(o => o.status === 'Delivered').length },
-                                    { key: "Cancelled", label: "Cancelled", count: monthScopedOrders.filter(o => o.status === 'Cancelled').length },
+                                    { key: "Pending", label: "Pending", count: monthScopedOrders.filter(o => ['pending', 'draft', 'sent'].includes((o.status || '').toLowerCase())).length },
+                                    { key: "Issued", label: "Issued", count: monthScopedOrders.filter(o => ['issued', 'confirmed'].includes((o.status || '').toLowerCase())).length },
+                                    { key: "Delivered", label: "Delivered", count: monthScopedOrders.filter(o => (o.status || '').toLowerCase() === 'delivered').length },
+                                    { key: "Cancelled", label: "Cancelled", count: monthScopedOrders.filter(o => (o.status || '').toLowerCase() === 'cancelled').length },
                                 ].map((tab) => {
                                     const isActive = activeStatusFilter === tab.key;
                                     return (<button key={tab.key} className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0 active:scale-95 ${isActive
@@ -2033,14 +2205,11 @@ export default function PurchaseOrders() {
                                 <option value="" disabled className="bg-white dark:bg-[#1e202e] text-slate-400 dark:text-slate-500 font-normal">
                                     Change Status...
                                 </option>
-                                <option value="Draft" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
-                                    Draft
+                                <option value="Pending" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
+                                    Pending
                                 </option>
-                                <option value="Sent" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
-                                    Sent
-                                </option>
-                                <option value="Confirmed" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
-                                    Confirmed
+                                <option value="Issued" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
+                                    Issued
                                 </option>
                                 <option value="Delivered" className="bg-white dark:bg-[#1e202e] text-slate-800 dark:text-slate-100 font-semibold py-1">
                                     Delivered
@@ -2799,173 +2968,314 @@ export default function PurchaseOrders() {
                                     </>
                                 ) : (
                                     <>
-                                        {/* Send options (for draft orders) */}
-                                        {actionModalOrder.status === 'Draft' && (
-                                            <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
-                                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="w-6 h-6 rounded-lg bg-pink-50 dark:bg-pink-950/50 border border-pink-200/60 dark:border-pink-900/40 flex items-center justify-center text-pink-500 dark:text-pink-400 text-[10px]">
-                                                            <i className="fas fa-paper-plane" />
-                                                        </span>
-                                                        <div>
-                                                            <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                                                                Send PO to Supplier
-                                                            </h3>
-                                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 block">
-                                                                Select template mode & dispatch via Gmail
-                                                            </span>
-                                                        </div>
-                                                    </div>
+                                        {/* Purchase Order Sequential Lifecycle Stepper */}
+                                        <div className="bg-[#ebf0f7] dark:bg-[#14151e] rounded-2xl p-4 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                                                    <i className="fas fa-route text-pink-500" />
+                                                    Approval & Dispatch Lifecycle
+                                                </span>
+                                                <StatusBadge tone={getPOStatusTone(actionModalOrder.status)} size="xs">
+                                                    {actionModalOrder.status}
+                                                </StatusBadge>
+                                            </div>
 
+                                            <div className="grid grid-cols-4 gap-1.5 text-center pt-1">
+                                                {/* Step 1: Created */}
+                                                <div className="flex flex-col items-center">
+                                                    <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold text-xs border border-emerald-500/30">
+                                                        <i className="fas fa-check text-[10px]" />
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 mt-1">1. Created</span>
+                                                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium">Completed</span>
+                                                </div>
+
+                                                {/* Step 2: Admin Approval */}
+                                                <div className="flex flex-col items-center">
+                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs border ${
+                                                        actionModalOrder.admin_approval === 'Approved'
+                                                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                                            : 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border-amber-500/30 animate-pulse'
+                                                    }`}>
+                                                        {actionModalOrder.admin_approval === 'Approved' ? (
+                                                            <i className="fas fa-check text-[10px]" />
+                                                        ) : (
+                                                            <i className="fas fa-shield-halved text-[10px]" />
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 mt-1">2. Admin</span>
+                                                    <span className={`text-[9px] font-medium ${
+                                                        actionModalOrder.admin_approval === 'Approved'
+                                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                                            : 'text-amber-600 dark:text-amber-400'
+                                                    }`}>
+                                                        {actionModalOrder.admin_approval === 'Approved' ? 'Approved' : 'Pending'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Step 3: Financial & Issue */}
+                                                <div className="flex flex-col items-center">
+                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs border ${
+                                                        actionModalOrder.financial_approval === 'Approved' || actionModalOrder.status === 'Issued' || actionModalOrder.status === 'Delivered'
+                                                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                                            : actionModalOrder.admin_approval === 'Approved'
+                                                                ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border-indigo-500/30 animate-pulse'
+                                                                : 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700'
+                                                    }`}>
+                                                        {actionModalOrder.financial_approval === 'Approved' || actionModalOrder.status === 'Issued' || actionModalOrder.status === 'Delivered' ? (
+                                                            <i className="fas fa-check text-[10px]" />
+                                                        ) : (
+                                                            <i className="fas fa-stamp text-[10px]" />
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 mt-1">3. Finance & Email</span>
+                                                    <span className={`text-[9px] font-medium ${
+                                                        actionModalOrder.financial_approval === 'Approved' || actionModalOrder.status === 'Issued' || actionModalOrder.status === 'Delivered'
+                                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                                            : actionModalOrder.admin_approval === 'Approved'
+                                                                ? 'text-indigo-600 dark:text-indigo-400'
+                                                                : 'text-slate-400'
+                                                    }`}>
+                                                        {actionModalOrder.financial_approval === 'Approved' || actionModalOrder.status === 'Issued' || actionModalOrder.status === 'Delivered'
+                                                            ? 'Issued'
+                                                            : 'Pending'}
+                                                    </span>
+                                                </div>
+
+                                                {/* Step 4: Delivered */}
+                                                <div className="flex flex-col items-center">
+                                                    <div className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs border ${
+                                                        actionModalOrder.status === 'Delivered'
+                                                            ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/30'
+                                                            : 'bg-slate-200 dark:bg-slate-800 text-slate-400 border-slate-300 dark:border-slate-700'
+                                                    }`}>
+                                                        {actionModalOrder.status === 'Delivered' ? (
+                                                            <i className="fas fa-check text-[10px]" />
+                                                        ) : (
+                                                            <i className="fas fa-truck text-[10px]" />
+                                                        )}
+                                                    </div>
+                                                    <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 mt-1">4. Delivered</span>
+                                                    <span className={`text-[9px] font-medium ${
+                                                        actionModalOrder.status === 'Delivered'
+                                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                                            : 'text-slate-400'
+                                                    }`}>
+                                                        {actionModalOrder.status === 'Delivered' ? 'Delivered' : 'Pending'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Stage Action Cards */}
+                                        {actionModalOrder.status === 'Cancelled' ? (
+                                            <div className="bg-rose-50/60 dark:bg-rose-950/30 border border-rose-200/80 dark:border-rose-800/40 rounded-2xl p-4 flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                                                    <i className="fas fa-ban text-sm" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                                                        Purchase Order Voided / Cancelled
+                                                    </h4>
+                                                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                                        This purchase order has been cancelled and can no longer be processed.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : actionModalOrder.admin_approval !== 'Approved' ? (
+                                            /* Stage 1: Awaiting Admin Approval */
+                                            <div className="bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-800/40 rounded-2xl p-4 space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/30">
+                                                        <i className="fas fa-user-shield text-sm" />
+                                                    </div>
                                                     <div>
-                                                        {actionEmailMode === 'ai' ? (
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/40">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-                                                                <span>AI Content Active</span>
-                                                            </span>
+                                                        <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                                                            Stage 1: Awaiting Administrative Approval
+                                                        </h4>
+                                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                                            PO #{actionModalOrder.po_number} has been created and requires Administrative review before financial clearance and supplier dispatch.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {isAdmin ? (
+                                                    <button
+                                                        type="button"
+                                                        disabled={pendingRowId === actionModalOrder.id}
+                                                        onClick={() => handleAdminApprovePO(actionModalOrder)}
+                                                        className="w-full py-2.5 px-4 text-xs font-bold text-white bg-gradient-to-r from-pink-500 to-rose-600 hover:from-pink-600 hover:to-rose-700 border border-pink-400/80 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                                                    >
+                                                        {pendingRowId === actionModalOrder.id ? (
+                                                            <i className="fas fa-spinner fa-spin text-xs" />
                                                         ) : (
-                                                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                                                                <span>Standard Template</span>
-                                                            </span>
+                                                            <i className="fas fa-check-double text-xs" />
                                                         )}
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/60 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setActionEmailMode('standard')}
-                                                        className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                                            actionEmailMode === 'standard'
-                                                                ? 'bg-white dark:bg-[#1c1e2b] text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700'
-                                                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
-                                                        }`}
-                                                    >
-                                                        <span>Standard</span>
+                                                        <span>Approve Purchase Order (Admin)</span>
                                                     </button>
-
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            setActionEmailMode('ai');
-                                                            if (!actionModalAiMessage && !isGeneratingActionAI) {
-                                                                handleGenerateActionAIMessage();
-                                                            }
-                                                        }}
-                                                        className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                                                            actionEmailMode === 'ai'
-                                                                ? 'bg-white dark:bg-[#1c1e2b] text-indigo-600 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800/40'
-                                                                : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
-                                                        }`}
-                                                    >
-                                                        <span>AI Compose</span>
-                                                    </button>
-                                                </div>
-
-                                                {actionEmailMode === 'standard' ? (
-                                                    <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-white/60 dark:border-white/[0.04] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-700 dark:text-slate-300">
-                                                        <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
-                                                            "Hello <strong>{actionModalOrder.supplier_name}</strong>, please review and accept this official purchase order for the listed items. Confirm availability at your earliest convenience."
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
-                                                            <i className="fas fa-check-circle text-emerald-500 text-[9px]" />
-                                                            Includes line items breakdown & confirmation link.
-                                                        </p>
-                                                    </div>
                                                 ) : (
-                                                    <div className="bg-[#e9eef6] dark:bg-[#13141d] rounded-xl p-3.5 border border-indigo-100/80 dark:border-indigo-900/40 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.6)] text-xs text-slate-800 dark:text-slate-200 leading-relaxed">
-                                                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-300/60 dark:border-white/[0.06]">
-                                                            <span className="text-[10px] font-bold uppercase text-indigo-700 dark:text-indigo-300 flex items-center gap-1">
-                                                                <i className="fas fa-robot text-[9px]" /> AI Explanation
-                                                            </span>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={handleGenerateActionAIMessage}
-                                                                    disabled={isGeneratingActionAI || isSendingActionComm}
-                                                                    className="px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-white dark:bg-[#1c1e2b] rounded-lg border border-indigo-200 dark:border-indigo-800/40 cursor-pointer disabled:opacity-50"
-                                                                >
-                                                                    {isGeneratingActionAI ? <i className="fas fa-spinner fa-spin mr-1" /> : <i className="fas fa-arrows-rotate mr-1" />}
-                                                                    {isGeneratingActionAI ? 'Generating...' : 'Regenerate'}
-                                                                </button>
-                                                                {actionModalAiMessage && (
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={handleActionCopyOnly}
-                                                                        disabled={isSendingActionComm}
-                                                                        className="w-5 h-5 rounded-md bg-white dark:bg-[#1c1e2b] text-slate-600 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-800 cursor-pointer"
-                                                                        title="Copy"
-                                                                    >
-                                                                        <i className="fas fa-copy text-[9px]" />
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {isGeneratingActionAI ? (
-                                                            <div className="flex items-center justify-center h-16 text-indigo-600 dark:text-indigo-400 gap-1.5 font-semibold text-xs">
-                                                                <i className="fas fa-spinner fa-spin" />
-                                                                <span>Drafting tailored supplier message...</span>
-                                                            </div>
-                                                        ) : actionModalAiMessage ? (
-                                                            <div className="space-y-1.5">
-                                                                <textarea
-                                                                    value={actionModalAiMessage}
-                                                                    onChange={(e) => {
-                                                                        setActionModalAiMessage(e.target.value);
-                                                                        const cacheKey = `po_ai_compose_${actionModalOrder.id || actionModalOrder.po_number}`;
-                                                                        if (typeof window !== 'undefined') {
-                                                                            sessionStorage.setItem(cacheKey, e.target.value);
-                                                                            try { localStorage.removeItem(cacheKey); } catch {}
-                                                                        }
-                                                                    }}
-                                                                    rows={4}
-                                                                    className="w-full bg-white dark:bg-[#181924] p-2.5 rounded-lg border border-indigo-200/80 dark:border-indigo-800/50 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-sans transition-all resize-y leading-relaxed"
-                                                                />
-                                                            </div>
-                                                        ) : (
-                                                            <div className="text-center py-3">
-                                                                <p className="text-slate-400 dark:text-slate-500 italic text-[11px] mb-1">
-                                                                    Click AI Compose to generate custom notes.
-                                                                </p>
-                                                            </div>
-                                                        )}
+                                                    <div className="text-[11px] font-medium text-amber-700 dark:text-amber-300 bg-amber-100/50 dark:bg-amber-900/30 px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800/40 flex items-center gap-2">
+                                                        <i className="fas fa-lock text-xs text-amber-600" />
+                                                        <span>Waiting for Administrator (Admin / Superadmin) review.</span>
                                                     </div>
                                                 )}
-
-                                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
-                                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                                                        {actionSupplierEmail ? (
-                                                            <span className="truncate block font-medium" title={actionSupplierEmail}>
-                                                                <i className="fas fa-envelope text-pink-500 mr-1.5" />
-                                                                {actionSupplierEmail}
-                                                            </span>
-                                                        ) : (
-                                                            <span className="text-amber-600 dark:text-amber-400 font-medium">
-                                                                <i className="fas fa-exclamation-triangle mr-1.5" />
-                                                                No supplier email configured
-                                                            </span>
-                                                        )}
+                                            </div>
+                                        ) : (actionModalOrder.financial_approval !== 'Approved' && actionModalOrder.status !== 'Issued' && actionModalOrder.status !== 'Delivered') ? (
+                                            /* Stage 2: Admin Approved — Awaiting Financial Approval & Issuance */
+                                            <div className="bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/40 rounded-2xl p-4 space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 border border-indigo-500/30">
+                                                        <i className="fas fa-stamp text-sm" />
                                                     </div>
-
-                                                    <div className="flex items-center gap-2 justify-end">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleActionEmail}
-                                                            title="Send Email via Gmail"
-                                                            disabled={isSendingActionComm || !actionSupplierEmail}
-                                                            className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 border border-pink-400/80 rounded-xl shadow-[0_2px_8px_rgba(236,72,153,0.35)] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-                                                        >
-                                                            {isSendingActionComm ? (
-                                                                <i className="fas fa-spinner fa-spin text-white" />
-                                                            ) : (
-                                                                <i className="fas fa-paper-plane text-white text-[11px]" />
-                                                            )}
-                                                            <span>{isSendingActionComm ? 'Sending...' : 'Send via Gmail'}</span>
-                                                        </button>
+                                                    <div>
+                                                        <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                                            <span>Stage 2: Admin Approved — Awaiting Financial Approval</span>
+                                                            <span className="text-[9px] font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800">
+                                                                Admin ✓
+                                                            </span>
+                                                        </h4>
+                                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                                            Administratively approved{actionModalOrder.admin_approved_by ? ` by ${actionModalOrder.admin_approved_by}` : ''}. Approving financial review will set status to <strong>Issued</strong> and automatically email the official purchase order to <strong>{actionSupplierEmail || actionModalOrder.supplier_name}</strong>.
+                                                        </p>
                                                     </div>
                                                 </div>
+                                                {(isExecutive || isAdmin) ? (
+                                                    <button
+                                                        type="button"
+                                                        disabled={pendingRowId === actionModalOrder.id || isSendingActionComm}
+                                                        onClick={() => handleFinancialApproveAndIssue(actionModalOrder)}
+                                                        className="w-full py-2.5 px-4 text-xs font-bold text-white bg-gradient-to-r from-indigo-500 to-pink-600 hover:from-indigo-600 hover:to-pink-700 border border-indigo-400/80 rounded-xl shadow-[0_2px_8px_rgba(99,102,241,0.35)] transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                                                    >
+                                                        {isSendingActionComm ? (
+                                                            <i className="fas fa-spinner fa-spin text-xs" />
+                                                        ) : (
+                                                            <i className="fas fa-paper-plane text-xs" />
+                                                        )}
+                                                        <span>Approve Financial & Issue PO (Dispatches Email)</span>
+                                                    </button>
+                                                ) : (
+                                                    <div className="text-[11px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-100/50 dark:bg-indigo-900/30 px-3 py-2 rounded-xl border border-indigo-200 dark:border-indigo-800/40 flex items-center gap-2">
+                                                        <i className="fas fa-lock text-xs text-indigo-600" />
+                                                        <span>Waiting for Financial Executive / Administrator approval.</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : actionModalOrder.status === 'Delivered' ? (
+                                            /* Stage 4: Delivered */
+                                            <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 rounded-2xl p-4 flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                                                    <i className="fas fa-box-open text-sm" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                                                        Order Delivered & Stocked
+                                                    </h4>
+                                                    <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                                                        Items have been fully received at the facility and inventory stock has been updated.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            /* Stage 3: Officially Issued & Dispatched */
+                                            <div className="bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/40 rounded-2xl p-4 space-y-3">
+                                                <div className="flex items-start gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                                                        <i className="fas fa-check-circle text-sm" />
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <h4 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                                            <span>✓ Officially Issued & Dispatched to Supplier</span>
+                                                        </h4>
+                                                        <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                                                            Financial approval granted{actionModalOrder.financial_approved_by ? ` by ${actionModalOrder.financial_approved_by}` : ''}. The purchase order was officially issued and dispatched to <strong className="text-slate-800 dark:text-slate-200">{actionSupplierEmail || 'supplier email'}</strong>.
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Drawer for resending or composing email */}
+                                                <details className="text-xs group">
+                                                    <summary className="cursor-pointer text-[11px] font-semibold text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 flex items-center gap-1.5 select-none pt-1">
+                                                        <i className="fas fa-chevron-right text-[9px] transition-transform group-open:rotate-90 text-pink-500" />
+                                                        <span>Resend or Compose Custom Message via Gmail</span>
+                                                    </summary>
+                                                    <div className="mt-3 pt-3 border-t border-emerald-200/60 dark:border-emerald-800/40 space-y-2.5">
+                                                        <div className="grid grid-cols-2 gap-1 p-1 bg-slate-200/60 dark:bg-slate-900 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setActionEmailMode('standard')}
+                                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                                    actionEmailMode === 'standard'
+                                                                        ? 'bg-white dark:bg-[#1c1e2b] text-slate-900 dark:text-white shadow-xs border border-slate-200/80 dark:border-slate-700'
+                                                                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                                                                }`}
+                                                            >
+                                                                <span>Standard Template</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    setActionEmailMode('ai');
+                                                                    if (!actionModalAiMessage && !isGeneratingActionAI) {
+                                                                        handleGenerateActionAIMessage();
+                                                                    }
+                                                                }}
+                                                                className={`py-1.5 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                                                                    actionEmailMode === 'ai'
+                                                                        ? 'bg-white dark:bg-[#1c1e2b] text-indigo-600 dark:text-indigo-400 shadow-xs border border-indigo-200 dark:border-indigo-800/40'
+                                                                        : 'text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400'
+                                                                }`}
+                                                            >
+                                                                <span>AI Compose</span>
+                                                            </button>
+                                                        </div>
+
+                                                        {actionEmailMode === 'ai' && (
+                                                            <div className="space-y-1.5">
+                                                                <div className="flex items-center justify-between">
+                                                                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                                                                        <i className="fas fa-robot text-[9px]" /> AI Custom Message
+                                                                    </span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={handleGenerateActionAIMessage}
+                                                                        disabled={isGeneratingActionAI || isSendingActionComm}
+                                                                        className="text-[10px] font-bold text-indigo-600 hover:underline cursor-pointer disabled:opacity-50"
+                                                                    >
+                                                                        {isGeneratingActionAI ? 'Generating...' : 'Regenerate'}
+                                                                    </button>
+                                                                </div>
+                                                                <textarea
+                                                                    value={actionModalAiMessage}
+                                                                    onChange={(e) => setActionModalAiMessage(e.target.value)}
+                                                                    rows={3}
+                                                                    placeholder="Custom notes or message to supplier..."
+                                                                    className="w-full bg-white dark:bg-[#181924] p-2.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-xs text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 font-sans"
+                                                                />
+                                                            </div>
+                                                        )}
+
+                                                        <div className="flex items-center justify-between pt-1">
+                                                            <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                                                                {actionSupplierEmail ? (
+                                                                    <span className="truncate block font-medium" title={actionSupplierEmail}>
+                                                                        <i className="fas fa-envelope text-pink-500 mr-1.5" />
+                                                                        {actionSupplierEmail}
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="text-amber-600 font-medium">No email configured</span>
+                                                                )}
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleActionEmail}
+                                                                disabled={isSendingActionComm || !actionSupplierEmail}
+                                                                className="px-4 py-1.5 text-xs font-bold text-white bg-gradient-to-b from-pink-500 to-pink-600 hover:from-pink-400 hover:to-pink-500 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                                                            >
+                                                                {isSendingActionComm ? <i className="fas fa-spinner fa-spin" /> : <i className="fas fa-paper-plane text-[11px]" />}
+                                                                <span>{isSendingActionComm ? 'Sending...' : 'Resend via Gmail'}</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </details>
                                             </div>
                                         )}
 
@@ -2994,7 +3304,11 @@ export default function PurchaseOrders() {
                                                     const isRestricted = !canUpdateStatus;
                                                     const isOrderDelivered = ['delivered', 'completed'].includes((actionModalOrder.status || '').toLowerCase());
                                                     const isCancelDisabledAfterDelivered = status === 'Cancelled' && isOrderDelivered;
-                                                    const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isSendingActionComm || isOrderCancelled || isCancelDisabledAfterDelivered;
+                                                    const isDeliveredDisabled = status === 'Delivered' && (
+                                                        (actionModalOrder.status || '').toLowerCase() === 'pending' ||
+                                                        actionModalOrder.financial_approval !== 'Approved'
+                                                    );
+                                                    const isDisabled = pendingRowId === actionModalOrder.id || isCurrent || isRestricted || isSendingActionComm || isOrderCancelled || isCancelDisabledAfterDelivered || isDeliveredDisabled;
 
                                                     const getStatusIcon = () => {
                                                         switch (status) {
@@ -3006,7 +3320,9 @@ export default function PurchaseOrders() {
 
                                                     const getStatusSubtitle = () => {
                                                         switch (status) {
-                                                            case 'Delivered': return 'Mark items received at facility';
+                                                            case 'Delivered':
+                                                                if (isDeliveredDisabled) return 'Requires Admin & Financial Approval (Issued) first';
+                                                                return 'Mark items received at facility';
                                                             case 'Cancelled':
                                                                 if (isCancelDisabledAfterDelivered) return 'Cannot cancel delivered purchase order';
                                                                 return 'Void / Cancel purchase order';
@@ -3033,7 +3349,7 @@ export default function PurchaseOrders() {
                                                             onClick={() => handleUpdateStatus(actionModalOrder.id, status)}
                                                             className={`group w-full px-3.5 py-2.5 rounded-2xl text-xs transition-all flex items-center justify-between border ${isCurrent
                                                                 ? 'bg-[#e2e8f0]/80 dark:bg-[#101118] border-pink-400/60 dark:border-pink-500/50 shadow-[inset_2px_2px_4px_rgba(166,175,195,0.4)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] cursor-default'
-                                                                : isRestricted || isOrderCancelled || isCancelDisabledAfterDelivered
+                                                                : isRestricted || isOrderCancelled || isCancelDisabledAfterDelivered || isDeliveredDisabled
                                                                     ? 'bg-[#ebf0f7]/50 dark:bg-[#14151e]/50 border-slate-200/40 dark:border-slate-800/40 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.15)]'
                                                                     : 'bg-[#f0f3f8] dark:bg-[#1a1b26] border-white/80 dark:border-[#2a2b38] shadow-[3px_3px_7px_rgba(166,175,195,0.35),-3px_-3px_7px_rgba(255,255,255,0.9)] dark:shadow-[3px_3px_8px_rgba(0,0,0,0.55),-2px_-2px_6px_rgba(255,255,255,0.03)] hover:border-pink-300 dark:hover:border-pink-500/40 hover:text-pink-600 dark:hover:text-pink-400 text-slate-700 dark:text-slate-200 active:scale-[0.98] cursor-pointer'
                                                                 }`}
@@ -3051,6 +3367,10 @@ export default function PurchaseOrders() {
                                                             {isCurrent ? (
                                                                 <span className="text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-xl bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-300/80 dark:border-pink-900/50 tracking-wider shadow-xs">
                                                                     Current ✓
+                                                                </span>
+                                                            ) : isDeliveredDisabled ? (
+                                                                <span className="text-[10px] font-medium text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                                                                    <i className="fas fa-lock text-[9px]" /> Awaiting Approval
                                                                 </span>
                                                             ) : isRestricted ? (
                                                                 <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
@@ -3078,7 +3398,7 @@ export default function PurchaseOrders() {
 
                                         {/* Delete purchase order button */}
                                         {(() => {
-                                            const isPOLocked = ['sent', 'confirmed', 'delivered', 'completed'].includes((actionModalOrder.status || '').toLowerCase());
+                                            const isPOLocked = ['issued', 'delivered', 'completed', 'sent', 'confirmed'].includes((actionModalOrder.status || '').toLowerCase());
                                             return (
                                                 <div className="pt-2">
                                                     <button

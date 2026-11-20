@@ -25,7 +25,8 @@ import {
     ArrowUpDown,
     Tag,
     X,
-    ExternalLink
+    ExternalLink,
+    Pencil
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "../../../../lib/services/client/supabase";
@@ -35,6 +36,7 @@ import { Pagination } from "../../../../components/global/pagination";
 import { SetSupplierMeetingModal } from "../../../procurement/components/SetSupplierMeetingModal";
 import { fetchSupplierMeetingsAction } from "../../../procurement/server/meeting-actions";
 import { SupplierViewModal } from "../modals/SupplierViewModal";
+import { SupplierEditModal } from "../modals/SupplierEditModal";
 import { SupplierReviewModal } from "../modals/SupplierReviewModal";
 import type { PotentialSupplierItem } from "./PotentialSuppliersTab";
 
@@ -70,6 +72,11 @@ export function InactiveUnofficialSuppliersTab({
     const [selectedViewSupplier, setSelectedViewSupplier] = useState<Supplier | null>(null);
     const [isViewModalOpen, setIsViewModalOpen] = useState(false);
 
+    // Edit Supplier & SOW Modal State
+    const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+    const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
     // Supplier Review & Activation Modal State (Stage 3 equivalent)
     const [reviewActivationSupplier, setReviewActivationSupplier] = useState<PotentialSupplierItem | null>(null);
 
@@ -79,6 +86,75 @@ export function InactiveUnofficialSuppliersTab({
     const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
 
     const [isUpdatingStatusId, setIsUpdatingStatusId] = useState<number | null>(null);
+
+    // Handle updating supplier details and SOW in database
+    const handleUpdateSupplier = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingSupplier) return;
+        const trimmedName = editingSupplier.name?.trim();
+        if (!trimmedName) {
+            toast.error("Supplier name is required.");
+            return;
+        }
+
+        setIsSubmittingEdit(true);
+        try {
+            const updatePayload: any = {
+                name: trimmedName,
+                category: editingSupplier.category || "General Supplies",
+                contact_person: editingSupplier.contact_person?.trim() || "Store Contact",
+                phone: editingSupplier.phone?.trim() || "+63 2 8000 0000",
+                email: editingSupplier.email?.trim() || null,
+                location: editingSupplier.location || "Metro Manila, Philippines",
+                products: editingSupplier.products || "",
+                notes: editingSupplier.notes || "",
+                fb_link: editingSupplier.fb_link || "",
+                is_active: editingSupplier.is_active,
+                updated_at: new Date().toISOString(),
+            };
+
+            if (editingSupplier.payment_terms !== undefined) updatePayload.payment_terms = editingSupplier.payment_terms;
+            if (editingSupplier.payment_method !== undefined) updatePayload.payment_method = editingSupplier.payment_method;
+            if (editingSupplier.delivery_terms !== undefined) updatePayload.delivery_terms = editingSupplier.delivery_terms;
+            if (editingSupplier.warranty !== undefined) updatePayload.warranty = editingSupplier.warranty;
+            if (editingSupplier.lead_time !== undefined) updatePayload.lead_time = editingSupplier.lead_time;
+            if (editingSupplier.moq !== undefined) updatePayload.moq = editingSupplier.moq;
+            if (editingSupplier.return_policy !== undefined) updatePayload.return_policy = editingSupplier.return_policy;
+            if (editingSupplier.terms_and_conditions !== undefined) updatePayload.terms_and_conditions = editingSupplier.terms_and_conditions;
+            if (editingSupplier.tin !== undefined) updatePayload.tin = editingSupplier.tin;
+            if (editingSupplier.tax_id !== undefined) updatePayload.tax_id = editingSupplier.tax_id;
+            if (editingSupplier.tax_type !== undefined) updatePayload.tax_type = editingSupplier.tax_type;
+            if (editingSupplier.bank_name !== undefined) updatePayload.bank_name = editingSupplier.bank_name;
+            if (editingSupplier.bank_account_name !== undefined) updatePayload.bank_account_name = editingSupplier.bank_account_name;
+            if (editingSupplier.bank_account_number !== undefined) updatePayload.bank_account_number = editingSupplier.bank_account_number;
+            if (editingSupplier.other_products_offer !== undefined) {
+                updatePayload.other_products_offer = Array.isArray(editingSupplier.other_products_offer) 
+                    ? editingSupplier.other_products_offer 
+                    : [];
+            }
+
+            const { error } = await supabase
+                .from("suppliers")
+                .update(updatePayload)
+                .eq("id", editingSupplier.id);
+
+            if (error) throw error;
+
+            toast.success(`Supplier "${trimmedName}" updated successfully!`);
+            setIsEditModalOpen(false);
+            setEditingSupplier(null);
+            if (selectedViewSupplier && selectedViewSupplier.id === editingSupplier.id) {
+                setSelectedViewSupplier({ ...selectedViewSupplier, ...updatePayload });
+            }
+            loadInactiveSuppliersData(true);
+            onRefreshParent?.();
+        } catch (error: any) {
+            console.error("Error updating supplier:", error);
+            toast.error(error.message || "Failed to update supplier.");
+        } finally {
+            setIsSubmittingEdit(false);
+        }
+    };
 
     // Fetch inactive and unofficial suppliers alongside POs and Quotations
     const loadInactiveSuppliersData = async (silent = false) => {
@@ -665,6 +741,20 @@ export function InactiveUnofficialSuppliersTab({
                                                             <span className="hidden xl:inline">Details</span>
                                                         </button>
 
+                                                        {/* Edit Supplier & SOW */}
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setEditingSupplier({ ...supplier });
+                                                                setIsEditModalOpen(true);
+                                                            }}
+                                                            className="px-2.5 py-1.5 rounded-xl bg-[#e8ecf4] dark:bg-[#1a1c2d] text-slate-700 dark:text-slate-200 hover:text-pink-600 dark:hover:text-pink-400 text-xs font-bold transition-all shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_5px_rgba(163,177,198,0.3)] active:shadow-[inset_1px_1px_2px_rgba(163,177,198,0.4)] flex items-center gap-1 cursor-pointer border border-white/60 dark:border-white/10"
+                                                            title="Edit Supplier Details & SOW Contract"
+                                                        >
+                                                            <Pencil className="w-3.5 h-3.5 text-pink-500" />
+                                                            <span className="hidden xl:inline">Edit</span>
+                                                        </button>
+
                                                         {/* Meeting */}
                                                         <button
                                                             type="button"
@@ -774,7 +864,11 @@ export function InactiveUnofficialSuppliersTab({
                         setIsViewModalOpen(false);
                         setSelectedViewSupplier(null);
                     }}
-                    onEdit={() => {}}
+                    onEdit={(supplier) => {
+                        setIsViewModalOpen(false);
+                        setEditingSupplier({ ...supplier });
+                        setIsEditModalOpen(true);
+                    }}
                     onDelete={async (id, name) => {
                         try {
                             const { error } = await supabase.from("suppliers").delete().eq("id", id);
@@ -842,6 +936,20 @@ export function InactiveUnofficialSuppliersTab({
                     }}
                 />
             )}
+
+            {/* Edit Supplier Modal (Includes SOW Contract Terms & Specifications) */}
+            <SupplierEditModal
+                isOpen={isEditModalOpen}
+                isSubmitting={isSubmittingEdit}
+                editingSupplier={editingSupplier}
+                categories={categories}
+                setEditingSupplier={setEditingSupplier}
+                onClose={() => {
+                    setIsEditModalOpen(false);
+                    setEditingSupplier(null);
+                }}
+                onSubmit={handleUpdateSupplier}
+            />
         </div>
     );
 }

@@ -186,21 +186,23 @@ export function StatusBadge({
  */
 export function getPOStatusTone(status: string): BadgeTone {
   switch (status) {
+    case "Pending":
+      return "amber";
+    case "Issued":
+      return "indigo";
+    case "Delivered":
+      return "emerald";
+    case "Cancelled":
+    case "Rejected":
+      return "rose";
     case "Draft":
       return "neutral";
     case "Sent":
       return "indigo";
     case "Confirmed":
       return "purple";
-    case "Delivered":
-      return "emerald";
-    case "Cancelled":
-    case "Rejected":
-      return "rose";
     case "Approved":
       return "emerald";
-    case "Pending":
-      return "amber";
     default:
       return "neutral";
   }

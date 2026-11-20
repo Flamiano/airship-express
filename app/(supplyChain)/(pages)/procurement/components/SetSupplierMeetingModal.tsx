@@ -1,7 +1,7 @@
 // app/(supplyChain)/(pages)/procurement/components/SetSupplierMeetingModal.tsx
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { 
     Calendar, 
     Clock, 
@@ -23,11 +23,14 @@ import {
     Layers,
     ExternalLink,
     Clipboard,
-    Trash2
+    Trash2,
+    Search,
+    ChevronDown
 } from "lucide-react";
 import { toast } from "sonner";
 import Portal from "../../../components/client/Portal";
 import { user } from "../../../lib/services/Class/user";
+import { supabase } from "../../../lib/services/client/supabase";
 import { scheduleSupplierMeetingAction, removeSupplierMeetingAction } from "../server/meeting-actions";
 
 export interface SetSupplierMeetingModalProps {
@@ -56,6 +59,7 @@ export interface SetSupplierMeetingModalProps {
     } | null;
     onMeetingScheduled?: (result: any) => void;
     onMeetingRemoved?: (meetingId: string) => void;
+    allowSupplierSelection?: boolean;
 }
 
 export function SetSupplierMeetingModal({
@@ -67,6 +71,7 @@ export function SetSupplierMeetingModal({
     initialQuote,
     onMeetingScheduled,
     onMeetingRemoved,
+    allowSupplierSelection,
 }: SetSupplierMeetingModalProps) {
     const [supplierName, setSupplierName] = useState("");
     const [supplierEmail, setSupplierEmail] = useState("");
@@ -84,6 +89,96 @@ export function SetSupplierMeetingModal({
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isRemoving, setIsRemoving] = useState(false);
     const [copiedLink, setCopiedLink] = useState(false);
+
+    // Searchable supplier selector states (used in /suppliers?tab=meetings)
+    const [availableSuppliers, setAvailableSuppliers] = useState<any[]>([]);
+    const [isLoadingSuppliers, setIsLoadingSuppliers] = useState(false);
+    const [supplierSearchQuery, setSupplierSearchQuery] = useState("");
+    const [supplierStatusFilter, setSupplierStatusFilter] = useState<"all" | "active" | "inactive">("all");
+    const [selectedSupplierFromList, setSelectedSupplierFromList] = useState<any | null>(null);
+
+    // Fetch suppliers directory when searchable selection is enabled
+    useEffect(() => {
+        if (isOpen && allowSupplierSelection && !meeting) {
+            let isMounted = true;
+            const fetchSuppliersList = async () => {
+                setIsLoadingSuppliers(true);
+                try {
+                    const { data, error } = await supabase
+                        .from("suppliers")
+                        .select("id, name, email, phone, contact_person, category, location, is_active")
+                        .order("name", { ascending: true });
+                    if (error) throw error;
+                    if (isMounted && data) {
+                        setAvailableSuppliers(data);
+                        if (supplier?.id || supplier?.name) {
+                            const matched = data.find((s) => 
+                                (supplier.id && (s.id === supplier.id || s.id === Number(supplier.id))) ||
+                                (supplier.name && s.name.toLowerCase() === supplier.name.toLowerCase())
+                            );
+                            if (matched) {
+                                setSelectedSupplierFromList(matched);
+                            } else if (supplier.name) {
+                                setSelectedSupplierFromList({ ...supplier });
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error("Error loading suppliers for meeting selector:", err);
+                } finally {
+                    if (isMounted) setIsLoadingSuppliers(false);
+                }
+            };
+            fetchSuppliersList();
+            return () => { isMounted = false; };
+        } else if (!isOpen) {
+            setSelectedSupplierFromList(null);
+            setSupplierSearchQuery("");
+        }
+    }, [isOpen, allowSupplierSelection, meeting, supplier]);
+
+    // Filter suppliers by query and status
+    const filteredSuppliers = useMemo(() => {
+        return availableSuppliers.filter((s) => {
+            if (supplierStatusFilter === "active" && s.is_active === false) return false;
+            if (supplierStatusFilter === "inactive" && s.is_active !== false) return false;
+
+            if (!supplierSearchQuery.trim()) return true;
+            const q = supplierSearchQuery.toLowerCase().trim();
+            return (
+                (s.name && s.name.toLowerCase().includes(q)) ||
+                (s.category && s.category.toLowerCase().includes(q)) ||
+                (s.contact_person && s.contact_person.toLowerCase().includes(q)) ||
+                (s.email && s.email.toLowerCase().includes(q)) ||
+                (s.phone && s.phone.toLowerCase().includes(q))
+            );
+        });
+    }, [availableSuppliers, supplierSearchQuery, supplierStatusFilter]);
+
+    const handleSelectSupplier = (s: any) => {
+        setSelectedSupplierFromList(s);
+        setSupplierName(s.name || "");
+        setSupplierEmail(s.email || "");
+        setContactPerson(s.contact_person || "");
+        setContactPhone(s.phone || "");
+        setSupplierSearchQuery("");
+
+        setTitle((prev) => {
+            if (!prev || prev.includes("Procurement Sourcing & Supply Discussion") || prev.includes("Quotation & Terms Clarification")) {
+                return `Procurement Sourcing & Supply Discussion - ${s.name || "Vendor"}`;
+            }
+            return prev;
+        });
+    };
+
+    const handleClearSelectedSupplier = () => {
+        setSelectedSupplierFromList(null);
+        setSupplierName("");
+        setSupplierEmail("");
+        setContactPerson("");
+        setContactPhone("");
+        setSupplierSearchQuery("");
+    };
 
     // Initialize values when modal opens (prefill from existing meeting if editing)
     useEffect(() => {
@@ -202,6 +297,11 @@ export function SetSupplierMeetingModal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        if (allowSupplierSelection && !meeting && !selectedSupplierFromList && !supplierName.trim()) {
+            toast.error("Please search and select a supplier partner to schedule this meeting.");
+            return;
+        }
+
         if (!supplierEmail.trim()) {
             toast.error("Please provide the supplier's email address to send the invitation.");
             return;
@@ -227,7 +327,7 @@ export function SetSupplierMeetingModal({
         try {
             const organizerName = user.getName() || "Procurement Specialist";
             const organizerEmail = user.getEmail() || "procurement@airship-express.com";
-            const resolvedSupplierId = supplier?.dbSupplierId || supplier?.id || meeting?.supplier_id || null;
+            const resolvedSupplierId = selectedSupplierFromList?.id || supplier?.dbSupplierId || supplier?.id || meeting?.supplier_id || null;
 
             const result = await scheduleSupplierMeetingAction({
                 meetingId: meeting?.id,
@@ -389,29 +489,206 @@ export function SetSupplierMeetingModal({
                     {/* Form Body */}
                     <form onSubmit={handleSubmit} className="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs">
                         <fieldset disabled={isBusy} className="space-y-4 contents">
-                            {/* 1. Supplier & Requisition Overview Banner */}
-                            <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-[#12131f]/70 border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between gap-3 flex-wrap">
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-8 h-8 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-xs">
-                                        <Building2 className="w-4 h-4" />
+                            {/* 1. Supplier & Requisition Overview or Searchable Selector */}
+                            {allowSupplierSelection && !meeting ? (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <label className="block text-[11px] font-black uppercase text-slate-700 dark:text-slate-300">
+                                            Select Supplier Partner <span className="text-pink-600">*</span>
+                                        </label>
+                                        {!selectedSupplierFromList && (
+                                            <span className="text-[10px] text-slate-400">
+                                                Showing {filteredSuppliers.length} of {availableSuppliers.length} vendors (including inactive)
+                                            </span>
+                                        )}
                                     </div>
-                                    <div>
-                                        <div className="font-extrabold text-slate-900 dark:text-white text-xs">
-                                            {supplierName || "Selected Vendor"}
-                                        </div>
-                                        <div className="text-[10px] text-slate-500 dark:text-slate-400">
-                                            {contactPerson ? `Contact: ${contactPerson}` : "Procurement Vendor Partner"}
-                                        </div>
-                                    </div>
-                                </div>
 
-                                {(group?.requestNumber || meeting?.request_number) && (
-                                    <div className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-[#181926] border border-slate-200 dark:border-white/[0.06] font-mono text-[10px] text-slate-700 dark:text-slate-300">
-                                        Ref: <span className="font-bold text-pink-600 dark:text-pink-400">{group?.requestNumber || meeting?.request_number}</span>
-                                        {(group?.itemName || meeting?.item_name) && ` (${group?.itemName || meeting?.item_name})`}
+                                    {selectedSupplierFromList || supplierName ? (
+                                        /* Selected Supplier Card */
+                                        <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-[#12131f]/80 border border-pink-500/30 dark:border-pink-500/40 shadow-[-2px_-2px_5px_rgba(255,255,255,0.7),_2px_2px_6px_rgba(219,39,119,0.15)] flex items-center justify-between gap-3 flex-wrap">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-9 h-9 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-sm shrink-0">
+                                                    <Building2 className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="font-extrabold text-slate-900 dark:text-white text-xs sm:text-sm">
+                                                            {selectedSupplierFromList?.name || supplierName}
+                                                        </span>
+                                                        {selectedSupplierFromList?.category && (
+                                                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40">
+                                                                {selectedSupplierFromList.category}
+                                                            </span>
+                                                        )}
+                                                        {selectedSupplierFromList?.is_active !== undefined && (
+                                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                                                selectedSupplierFromList.is_active
+                                                                    ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800"
+                                                                    : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-800"
+                                                            }`}>
+                                                                {selectedSupplierFromList.is_active ? "Registered Partner" : "Potential / Inactive"}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-3 mt-0.5 flex-wrap">
+                                                        {contactPerson && <span>Contact: <strong>{contactPerson}</strong></span>}
+                                                        {supplierEmail && <span>Email: <strong>{supplierEmail}</strong></span>}
+                                                        {contactPhone && <span>Phone: <strong>{contactPhone}</strong></span>}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <button
+                                                type="button"
+                                                onClick={handleClearSelectedSupplier}
+                                                className="px-3 py-1.5 rounded-xl bg-[#ebf0f7] dark:bg-[#181a2b] hover:bg-pink-50 dark:hover:bg-pink-950/50 text-slate-600 dark:text-slate-300 hover:text-pink-600 dark:hover:text-pink-400 border border-slate-200/80 dark:border-white/10 text-xs font-bold transition-all shadow-[-2px_-2px_4px_rgba(255,255,255,0.7),_2px_2px_4px_rgba(163,177,198,0.3)] active:scale-95 flex items-center gap-1.5 cursor-pointer ml-auto"
+                                            >
+                                                <RefreshCw className="w-3.5 h-3.5 text-pink-500" />
+                                                <span>Change Supplier</span>
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        /* Open Visible Supplier Selector with Filters & Search */
+                                        <div className="space-y-2.5 p-3 rounded-2xl bg-white/60 dark:bg-[#141624] border border-slate-200/80 dark:border-white/10 shadow-[inset_1.5px_1.5px_3px_rgba(163,177,198,0.25)]">
+                                            {/* Search Bar & Filter Chips */}
+                                            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                                                <div className="relative flex-1">
+                                                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                                                    <input
+                                                        type="text"
+                                                        value={supplierSearchQuery}
+                                                        onChange={(e) => setSupplierSearchQuery(e.target.value)}
+                                                        placeholder="Search supplier by name, category, contact, email..."
+                                                        className="w-full bg-[#ebf0f7] dark:bg-[#10121b] border-0 rounded-xl pl-9 pr-9 py-2 text-xs font-bold text-slate-900 dark:text-white shadow-[inset_2px_2px_4px_rgba(163,177,198,0.35),_inset_-2px_-2px_4px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.6)] focus:outline-none focus:ring-2 focus:ring-pink-500/40"
+                                                    />
+                                                    {supplierSearchQuery && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setSupplierSearchQuery("")}
+                                                            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                                                        >
+                                                            <X className="w-3.5 h-3.5" />
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSupplierStatusFilter("all")}
+                                                        className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                                            supplierStatusFilter === "all"
+                                                                ? "bg-pink-600 text-white shadow-xs"
+                                                                : "bg-[#ebf0f7] dark:bg-[#1a1c2d] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#25283d]"
+                                                        }`}
+                                                    >
+                                                        All ({availableSuppliers.length})
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSupplierStatusFilter("active")}
+                                                        className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                                            supplierStatusFilter === "active"
+                                                                ? "bg-emerald-600 text-white shadow-xs"
+                                                                : "bg-[#ebf0f7] dark:bg-[#1a1c2d] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#25283d]"
+                                                        }`}
+                                                    >
+                                                        Active ({availableSuppliers.filter(s => s.is_active).length})
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setSupplierStatusFilter("inactive")}
+                                                        className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                                                            supplierStatusFilter === "inactive"
+                                                                ? "bg-amber-600 text-white shadow-xs"
+                                                                : "bg-[#ebf0f7] dark:bg-[#1a1c2d] text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-[#25283d]"
+                                                        }`}
+                                                    >
+                                                        Inactive ({availableSuppliers.filter(s => !s.is_active).length})
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Scrollable Supplier Directory List */}
+                                            <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
+                                                {isLoadingSuppliers ? (
+                                                    <div className="p-6 text-center text-xs text-slate-500 flex items-center justify-center gap-2">
+                                                        <RefreshCw className="w-4 h-4 animate-spin text-pink-500" />
+                                                        <span>Loading all registered & inactive suppliers...</span>
+                                                    </div>
+                                                ) : filteredSuppliers.length === 0 ? (
+                                                    <div className="p-6 text-center text-xs text-slate-500 rounded-xl bg-slate-50 dark:bg-black/20">
+                                                        No suppliers found matching your filter &quot;{supplierSearchQuery}&quot;
+                                                    </div>
+                                                ) : (
+                                                    filteredSuppliers.map((s) => (
+                                                        <div
+                                                            key={s.id}
+                                                            className="p-2.5 rounded-xl bg-[#ebf0f7] dark:bg-[#191b2c] border border-slate-200/80 dark:border-white/5 flex items-center justify-between gap-3 transition-all hover:border-pink-500/40"
+                                                        >
+                                                            <div className="min-w-0 flex-1">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <span className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                                                                        {s.name}
+                                                                    </span>
+                                                                    {s.category && (
+                                                                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-pink-100 dark:bg-pink-950/60 text-pink-700 dark:text-pink-300">
+                                                                            {s.category}
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                                                        s.is_active
+                                                                            ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300"
+                                                                            : "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300"
+                                                                    }`}>
+                                                                        {s.is_active ? "Registered" : "Inactive / Potential"}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-2.5 mt-0.5 truncate">
+                                                                    {s.contact_person && <span>Contact: <strong>{s.contact_person}</strong></span>}
+                                                                    {s.email && <span>Email: <strong>{s.email}</strong></span>}
+                                                                    {s.location && <span>Loc: {s.location}</span>}
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleSelectSupplier(s)}
+                                                                className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs shadow-[-1px_-1px_3px_rgba(255,255,255,0.4),_1px_1px_4px_rgba(219,39,119,0.3)] transition-all cursor-pointer shrink-0 active:scale-95"
+                                                            >
+                                                                Select
+                                                            </button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Standard Supplier & Requisition Overview Banner */
+                                <div className="p-3.5 rounded-2xl bg-white/70 dark:bg-[#12131f]/70 border border-slate-200/80 dark:border-white/[0.08] flex items-center justify-between gap-3 flex-wrap">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-xl bg-pink-500/10 text-pink-600 dark:text-pink-400 flex items-center justify-center font-bold text-xs">
+                                            <Building2 className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <div className="font-extrabold text-slate-900 dark:text-white text-xs">
+                                                {supplierName || "Selected Vendor"}
+                                            </div>
+                                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                                                {contactPerson ? `Contact: ${contactPerson}` : "Procurement Vendor Partner"}
+                                            </div>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
+
+                                    {(group?.requestNumber || meeting?.request_number) && (
+                                        <div className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-[#181926] border border-slate-200 dark:border-white/[0.06] font-mono text-[10px] text-slate-700 dark:text-slate-300">
+                                            Ref: <span className="font-bold text-pink-600 dark:text-pink-400">{group?.requestNumber || meeting?.request_number}</span>
+                                            {(group?.itemName || meeting?.item_name) && ` (${group?.itemName || meeting?.item_name})`}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* 2. Meeting Title */}
                             <div>

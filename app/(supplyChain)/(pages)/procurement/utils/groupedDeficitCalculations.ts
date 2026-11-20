@@ -222,6 +222,70 @@ export function calculateGroupedStockShortages({
     const deliveredReqCoverageMap = new Map<string, number>();
     const awardedBidMap = new Map<string, { supplierName?: string; poNumber?: string }>();
 
+    // Identify delivered, completed, cancelled, or rejected PO keys
+    const deadOrDeliveredPoKeys = new Set<string>();
+    const deliveredItemKeys = new Set<string>();
+
+    purchaseOrders.forEach((po: any) => {
+        const poSt = String(po.status || "").trim().toLowerCase();
+        const adminApp = String(po.admin_approval || "").trim().toLowerCase();
+        const isDeadOrDelivered =
+            poSt === "delivered" ||
+            poSt === "completed" ||
+            poSt === "received" ||
+            poSt === "fulfilled" ||
+            adminApp === "delivered" ||
+            po.fully_received === true ||
+            poSt === "cancelled" ||
+            poSt === "rejected" ||
+            adminApp === "rejected";
+
+        if (isDeadOrDelivered) {
+            if (po.id) deadOrDeliveredPoKeys.add(String(po.id).toLowerCase());
+            if (po.po_number) deadOrDeliveredPoKeys.add(String(po.po_number).toLowerCase());
+            if (po.suppliers_qoutation_bid) deadOrDeliveredPoKeys.add(String(po.suppliers_qoutation_bid));
+            if (po.request_id) deadOrDeliveredPoKeys.add(String(po.request_id).toLowerCase());
+            if (Array.isArray(po.items)) {
+                po.items.forEach((it: any) => {
+                    const itName = it.name || it.item_name;
+                    if (itName) deliveredItemKeys.add(getCanonicalGroupKey(itName));
+                });
+            }
+        }
+    });
+
+    // Index active in-progress quotations ONLY (exclude delivered / dead POs)
+    if (Array.isArray(quotations)) {
+        quotations.forEach((q: any) => {
+            const st = String(q.status || "").trim().toLowerCase();
+            if (st === "accepted" || st === "awarded" || st === "selected" || q.is_awarded === true) {
+                const qId = String(q.id);
+                const qPoId = q.purchase_order_id ? String(q.purchase_order_id).toLowerCase() : "";
+                const qReqId = q.request_id ? String(q.request_id).toLowerCase() : "";
+                const qReqNum = q.request_number ? String(q.request_number).toLowerCase() : "";
+
+                if (
+                    deadOrDeliveredPoKeys.has(qId) ||
+                    (qPoId && deadOrDeliveredPoKeys.has(qPoId)) ||
+                    (qReqId && deadOrDeliveredPoKeys.has(qReqId)) ||
+                    (qReqNum && deadOrDeliveredPoKeys.has(qReqNum))
+                ) {
+                    return;
+                }
+
+                const qItem = q.item_name || q.name;
+                if (qItem) {
+                    const canonicalKey = getCanonicalGroupKey(qItem);
+                    if (canonicalKey && !deliveredItemKeys.has(canonicalKey) && !awardedBidMap.has(canonicalKey)) {
+                        awardedBidMap.set(canonicalKey, {
+                            supplierName: q.supplier_name,
+                        });
+                    }
+                }
+            }
+        });
+    }
+
     purchaseOrders.forEach((po: any) => {
         const poSt = String(po.status || "").trim().toLowerCase();
         const adminApp = String(po.admin_approval || "").trim().toLowerCase();
@@ -322,19 +386,21 @@ export function calculateGroupedStockShortages({
             entry.deliveredCoverageQty += deliveredQty;
             entry.totalCoverageQty += itemCoverageQty;
 
-            entry.orders.push({
-                id: String(po.id),
-                po_number: poNum || `PO-${po.id}`,
-                supplier_name: po.supplier_name || "Assigned Supplier",
-                quantity: itemCoverageQty,
-                covered_quantity: isDeliveredOrFullyReceived ? 0 : itemCoverageQty,
-                status: po.status || (isDeliveredOrFullyReceived ? "Delivered" : "Pending"),
-                admin_approval: po.admin_approval || "Pending",
-                created_at: po.created_at,
-            });
+            if (!isDeliveredOrFullyReceived) {
+                entry.orders.push({
+                    id: String(po.id),
+                    po_number: poNum || `PO-${po.id}`,
+                    supplier_name: po.supplier_name || "Assigned Supplier",
+                    quantity: itemCoverageQty,
+                    covered_quantity: itemCoverageQty,
+                    status: po.status || "Pending",
+                    admin_approval: po.admin_approval || "Pending",
+                    created_at: po.created_at,
+                });
+            }
 
-            // Map awarded bid info
-            if (po.supplier_name && !awardedBidMap.has(canonicalKey)) {
+            // Map active awarded bid info (only if PO is in progress, never if delivered/dead)
+            if (!isDeliveredOrFullyReceived && po.supplier_name && !awardedBidMap.has(canonicalKey)) {
                 awardedBidMap.set(canonicalKey, {
                     supplierName: po.supplier_name,
                     poNumber: poNum || `PO-${po.id}`,
@@ -495,9 +561,10 @@ export function calculateGroupedStockShortages({
         });
     });
 
-    // Pre-populate groupMap for any PO items that have active or delivered coverage
+    // Pre-populate groupMap ONLY for PO items that have active in-progress coverage (never delivered POs)
     activePoCoverageMap.forEach((entry, canonicalKey) => {
         if (canonicalKey.startsWith("cat:") || canonicalKey.startsWith("code:")) return;
+        if (entry.activeCoverageQty <= 0) return; // Do NOT pre-populate if PO is already delivered!
         if (!groupMap.has(canonicalKey)) {
             const invEntry = inventoryMap.get(canonicalKey);
             const reprName = invEntry?.displayName || (canonicalKey.charAt(0).toUpperCase() + canonicalKey.slice(1));
@@ -644,8 +711,27 @@ export function calculateGroupedStockShortages({
         // Net deficit after accounting for active purchase order coverage
         const remainingDeficit = Math.max(0, grossRequirement - activePoCoverage);
 
-        // If onlyActionable is requested, skip items where deficit is 0
-        if (onlyActionable && remainingDeficit === 0) {
+        // Check if there are active undelivered purchase orders covering this item
+        const hasUndeliveredPo = coveringOrders.some((order: any) => {
+            const st = String(order.status || "").trim().toLowerCase();
+            const adm = String(order.admin_approval || "").trim().toLowerCase();
+            return (
+                st !== "delivered" &&
+                st !== "completed" &&
+                st !== "received" &&
+                st !== "fulfilled" &&
+                adm !== "delivered" &&
+                st !== "rejected" &&
+                st !== "cancelled"
+            );
+        });
+
+        const awardInfo = awardedBidMap.get(canonicalKey);
+        const isBidAwarded = Boolean(awardInfo);
+        const hasActiveAwardOrPo = hasUndeliveredPo || isBidAwarded;
+
+        // If onlyActionable is requested, skip items where deficit is 0 UNLESS there is an active undelivered PO or awarded bid awaiting delivery
+        if (onlyActionable && remainingDeficit === 0 && !hasActiveAwardOrPo) {
             return;
         }
 
@@ -655,27 +741,49 @@ export function calculateGroupedStockShortages({
         let matchingPoId: string | null = null;
 
         if (coveringOrders.length > 0) {
-            const latestPo = coveringOrders[coveringOrders.length - 1];
-            matchingPoNumber = latestPo.po_number;
-            matchingPoId = latestPo.id;
+            // Find active undelivered PO in progress
+            const activePo = coveringOrders
+                .slice()
+                .reverse()
+                .find((o: any) => {
+                    const st = String(o.status || "").trim().toLowerCase();
+                    const adm = String(o.admin_approval || "").trim().toLowerCase();
+                    return (
+                        st !== "delivered" &&
+                        st !== "completed" &&
+                        st !== "received" &&
+                        st !== "fulfilled" &&
+                        adm !== "delivered" &&
+                        st !== "rejected" &&
+                        st !== "cancelled"
+                    );
+                });
 
-            const st = String(latestPo.status || "").trim().toLowerCase();
-            const adm = String(latestPo.admin_approval || "").trim().toLowerCase();
-            if (st === "delivered" || st === "completed") {
-                poStatusIndicator = remainingDeficit === 0 ? "Delivered" : null;
-            } else if (st === "rejected" || adm === "rejected") {
-                poStatusIndicator = "Rejected Purchase Order";
-            } else if (st === "issued") {
-                poStatusIndicator = "Waiting for Delivery";
-            } else if (st === "pending" || adm === "pending") {
-                poStatusIndicator = "Approval Pending";
+            if (activePo) {
+                matchingPoNumber = activePo.po_number;
+                matchingPoId = activePo.id;
+
+                const st = String(activePo.status || "").trim().toLowerCase();
+                const adm = String(activePo.admin_approval || "").trim().toLowerCase();
+                if (st === "issued") {
+                    poStatusIndicator = "Waiting for Delivery";
+                } else {
+                    poStatusIndicator = "Approval Pending";
+                }
             } else {
-                poStatusIndicator = "Approval Pending";
+                // If all POs are delivered, rejected, or cancelled: do NOT show PO status or PO indicator
+                poStatusIndicator = null;
+                matchingPoNumber = null;
+                matchingPoId = null;
             }
         }
 
-        const awardInfo = awardedBidMap.get(canonicalKey);
-        const isBidAwarded = Boolean(awardInfo);
+        if (!poStatusIndicator && isBidAwarded) {
+            poStatusIndicator = "Approval Pending";
+            if (awardInfo?.poNumber) {
+                matchingPoNumber = awardInfo.poNumber;
+            }
+        }
 
         // Price estimation: If recorded in inventory, use it; otherwise use official supplier price or fallback
         const recordedPrice = Number(invData?.price || invData?.invRecord?.purchase_price || 0);
@@ -738,9 +846,10 @@ export function calculateGroupedStockShortages({
             is_from_request: group.totalApprovedDemand > 0,
             available_ratio: `${usableStock}/${group.totalApprovedDemand || effectiveMinStock || 1}`,
             request_id: primaryReqId,
-            is_bid_awarded: isBidAwarded && remainingDeficit === 0,
+            is_bid_awarded: isBidAwarded,
+            has_active_po: hasActiveAwardOrPo,
             awarded_supplier_name: awardInfo?.supplierName,
-            awarded_po_number: awardInfo?.poNumber,
+            awarded_po_number: awardInfo?.poNumber || matchingPoNumber || undefined,
             po_status_indicator: poStatusIndicator,
             matching_po_number: matchingPoNumber,
             matching_po_id: matchingPoId,

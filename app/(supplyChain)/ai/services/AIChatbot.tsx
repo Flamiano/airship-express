@@ -8,7 +8,7 @@ import { calculateGrabbableCollision } from "../../lib/grabbablePhysics";
 // Import robot components
 import { RobotAvatar, RobotHeader } from "../components";
 import AppButton from "../../components/ui/AppButton";
-import { StatusBadge } from "../../components/ui/StatusBadge";
+import { StatusBadge, getPOStatusTone } from "../../components/ui/StatusBadge";
 import { user } from "../../lib/services/Class/user";
 import { settingsService } from "../../lib/services/settingsService";
 import { ShieldAlert, Clock, AlertTriangle, GripVertical, Minus, Maximize2, Minimize2, X, Sparkles, Eye, Download, ExternalLink, ZoomIn, ZoomOut, RotateCw, FileText, Image as ImageIcon, FileCheck, Layers, Search, RefreshCw, Copy, Check, Trophy, ChevronRight } from "lucide-react";
@@ -1793,7 +1793,7 @@ export default function AIChatbot({ isOpen, onClose }: AIChatbotProps) {
                                     <span className="text-xs font-bold text-slate-900 dark:text-white">
                                         {po.po_number}
                                     </span>
-                                    <StatusBadge tone={po.status === 'Sent' ? 'blue' : 'amber'} size="xs">
+                                    <StatusBadge tone={getPOStatusTone(po.status)} size="xs">
                                         {po.status}
                                     </StatusBadge>
                                 </div>

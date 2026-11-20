@@ -26,7 +26,8 @@ import {
     Tag,
     X,
     Clock,
-    Sparkles
+    Sparkles,
+    Info
 } from 'lucide-react';
 
 interface InternalRequestModalProps {
@@ -648,7 +649,7 @@ export function InternalRequestModal({
                                             key={idx}
                                             className="p-3.5 rounded-2xl bg-[#ebf0f7]/70 dark:bg-[#13141d]/70 border border-white/80 dark:border-white/[0.06] shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.25),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.8)] dark:shadow-[inset_2px_2px_4px_rgba(0,0,0,0.4)] space-y-3"
                                         >
-                                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end">
+                                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
                                                 {/* Item Name / Catalog Select */}
                                                 <div className="sm:col-span-4">
                                                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -683,7 +684,14 @@ export function InternalRequestModal({
                                                 {/* Category - Dynamic from Suppliers table with SearchableDropdown */}
                                                 <div className="sm:col-span-3">
                                                     <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
-                                                        <span>Category <span className="text-pink-500">*</span></span>
+                                                        <span className="flex items-center gap-1.5">
+                                                            <span>Category <span className="text-pink-500">*</span></span>
+                                                            {(item.category === '__other__' || item.category === 'Others' || item.isCustomCategory) && (
+                                                                <span className="inline-flex items-center px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/50">
+                                                                    Custom
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                         {isLoadingCategories && (
                                                             <span className="text-[10px] text-slate-400 font-normal">Loading...</span>
                                                         )}
@@ -708,23 +716,6 @@ export function InternalRequestModal({
                                                         emptyValue=""
                                                         title={`Category for item #${idx + 1}`}
                                                     />
-
-                                                    {/* Custom Category Input if selected __other__ */}
-                                                    {(item.category === '__other__' || item.category === 'Others' || item.isCustomCategory) && (
-                                                        <div className="mt-2 space-y-1 animate-in fade-in duration-150">
-                                                            <input
-                                                                type="text"
-                                                                className="w-full bg-[#f0f3f8] dark:bg-[#161722] border border-pink-400 dark:border-pink-500/60 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] focus:outline-none focus:ring-2 focus:ring-pink-500/20"
-                                                                placeholder="Type custom category name (e.g. Lab Supplies)..."
-                                                                value={item.customCategoryText || ''}
-                                                                onChange={(e) => handleItemChange(idx, 'customCategoryText', e.target.value)}
-                                                                required
-                                                            />
-                                                            <p className="text-[9.5px] text-amber-600 dark:text-amber-400 font-medium">
-                                                                Custom category will route to potential supplier discovery if not in active suppliers.
-                                                            </p>
-                                                        </div>
-                                                    )}
                                                 </div>
 
                                                 {/* Quantity */}
@@ -762,7 +753,7 @@ export function InternalRequestModal({
                                                 </div>
 
                                                 {/* Delete Row */}
-                                                <div className="sm:col-span-1 flex justify-center pb-1">
+                                                <div className="sm:col-span-1 flex justify-center sm:pt-6 pb-1">
                                                     {items.length > 1 && (
                                                         <button
                                                             type="button"
@@ -776,16 +767,71 @@ export function InternalRequestModal({
                                                 </div>
                                             </div>
 
-                                            {/* Specs / Notes row */}
-                                            <div className="grid grid-cols-1 gap-2 items-center">
-                                                <div>
+                                            {/* Dedicated Custom Category Sub-row with Tooltip if selected __other__ */}
+                                            {(item.category === '__other__' || item.category === 'Others' || item.isCustomCategory) && (
+                                                <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-500/[0.08] via-pink-500/[0.05] to-amber-500/[0.08] dark:from-amber-500/[0.12] dark:via-pink-500/[0.08] dark:to-amber-500/[0.12] border border-amber-300/80 dark:border-amber-500/40 shadow-sm space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="flex items-center gap-2">
+                                                            <div className="w-5 h-5 rounded-lg bg-amber-500/15 dark:bg-amber-500/25 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                                                                <Tag className="w-3 h-3" />
+                                                            </div>
+                                                            <label className="text-[11px] font-bold text-slate-800 dark:text-slate-200">
+                                                                Custom Category Name <span className="text-pink-500">*</span>
+                                                            </label>
+
+                                                            {/* Interactive Tooltip */}
+                                                            <div className="relative group inline-flex items-center">
+                                                                <div
+                                                                    tabIndex={0}
+                                                                    role="button"
+                                                                    aria-label="Custom category routing details"
+                                                                    className="w-4 h-4 rounded-full bg-amber-200/90 dark:bg-amber-900/70 text-amber-800 dark:text-amber-200 flex items-center justify-center text-[10px] font-bold cursor-help shadow-sm hover:scale-110 hover:bg-amber-300 dark:hover:bg-amber-800 transition-all focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                                                >
+                                                                    <Info className="w-2.5 h-2.5" />
+                                                                </div>
+
+                                                                {/* Tooltip bubble on hover / focus */}
+                                                                <div className="absolute left-0 bottom-full mb-2 hidden group-hover:flex group-focus-within:flex flex-col z-50 w-72 p-2.5 rounded-xl bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white shadow-xl border border-white/10 pointer-events-none transition-all">
+                                                                    <div className="flex items-center gap-1.5 font-bold text-amber-400 text-[11px] mb-1">
+                                                                        <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
+                                                                        <span>Supplier Discovery</span>
+                                                                    </div>
+                                                                    <p className="text-slate-200 text-[10.5px] leading-relaxed">
+                                                                        Custom category will route to potential supplier discovery if not in active suppliers.
+                                                                    </p>
+                                                                    <div className="absolute top-full left-4 -mt-1 border-4 border-transparent border-t-slate-900/95 dark:border-t-slate-800/95" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                                                            <Sparkles className="w-2.5 h-2.5" />
+                                                            <span>Routes to Discovery</span>
+                                                        </span>
+                                                    </div>
+
                                                     <input
                                                         type="text"
-                                                        className="w-full bg-[#f0f3f8] dark:bg-[#161722] border border-slate-300/80 dark:border-white/[0.12] rounded-2xl px-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 placeholder-slate-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] focus:outline-none"
+                                                        className="w-full bg-[#f0f3f8] dark:bg-[#161722] border border-amber-300/90 dark:border-amber-500/60 rounded-xl px-3.5 py-2 text-xs font-semibold text-slate-900 dark:text-white placeholder-slate-400 shadow-[inset_1.5px_1.5px_3px_rgba(166,175,195,0.35),inset_-1.5px_-1.5px_3px_rgba(255,255,255,0.9)] dark:shadow-[inset_2px_2px_5px_rgba(0,0,0,0.6)] focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+                                                        placeholder="Enter custom category name (e.g. Lab Supplies, Specialty Parts)..."
+                                                        value={item.customCategoryText || ''}
+                                                        onChange={(e) => handleItemChange(idx, 'customCategoryText', e.target.value)}
+                                                        required
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {/* Specs / Notes row */}
+                                            <div className="grid grid-cols-1 gap-2 items-center">
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        className="w-full bg-[#f0f3f8] dark:bg-[#161722] border border-slate-300/80 dark:border-white/[0.12] rounded-2xl pl-8 pr-3.5 py-2 text-xs text-slate-700 dark:text-slate-300 placeholder-slate-400 shadow-[inset_1px_1px_2px_rgba(166,175,195,0.3),inset_-1px_-1px_2px_rgba(255,255,255,0.9)] dark:shadow-[inset_1.5px_1.5px_3px_rgba(0,0,0,0.5)] focus:outline-none focus:border-pink-500/50"
                                                         placeholder="Optional specifications, dimensions, brand preference, or remarks..."
                                                         value={item.specs}
                                                         onChange={(e) => handleItemChange(idx, 'specs', e.target.value)}
                                                     />
+                                                    <FileText className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                                                 </div>
                                             </div>
                                         </div>

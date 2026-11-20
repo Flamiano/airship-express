@@ -44,6 +44,7 @@ interface StageStockShortagesProps {
     onMessageSupplier?: (supplier: any, shortageItem?: StockShortageItem) => void;
     onCreatePO?: (shortageItem: StockShortageItem, supplier?: any) => void;
     onOrderAgainFromSameSupplier?: (shortageItem: StockShortageItem, supplierName: string) => void;
+    onViewPO?: (poOrNumber: any) => void;
 }
 
 const formatCurrency = (amount: number) => `₱${(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -56,6 +57,7 @@ export function StageStockShortages({
     onMessageSupplier,
     onCreatePO,
     onOrderAgainFromSameSupplier,
+    onViewPO,
 }: StageStockShortagesProps) {
     // 1. Search Debouncing State
     const [searchInput, setSearchInput] = useState("");
@@ -362,6 +364,19 @@ export function StageStockShortages({
                                     const poCoverage = isPoDelivered ? 0 : (item.active_po_coverage ?? item.covered_quantity ?? 0);
                                     const remDeficit = item.remaining_deficit !== undefined ? item.remaining_deficit : item.deficit;
 
+                                    const hasActiveUndeliveredPo = Boolean(
+                                        !isPoDelivered && (
+                                            (item.covering_purchase_orders && item.covering_purchase_orders.some(po => {
+                                                const s = (po.status || "").toLowerCase();
+                                                const adm = (po.admin_approval || "").toLowerCase();
+                                                return s !== "delivered" && s !== "completed" && s !== "received" && s !== "fulfilled" && adm !== "delivered" && s !== "rejected" && s !== "cancelled";
+                                            })) ||
+                                            (item.po_status_indicator && item.po_status_indicator !== 'Delivered' && item.po_status_indicator !== 'Rejected Purchase Order') ||
+                                            item.is_bid_awarded ||
+                                            item.has_active_po
+                                        )
+                                    );
+
                                     const isZero = usableStock === 0 || item.status === "out-of-stock";
                                     const supplierName = item.matched_active_supplier?.name || item.supplier || item.previous_supplier || "";
                                     const hasExpandableContent = (item.related_requests && item.related_requests.length > 0) || (item.covering_purchase_orders && item.covering_purchase_orders.length > 0);
@@ -370,7 +385,7 @@ export function StageStockShortages({
                                         <React.Fragment key={rowKey}>
                                             <tr className="hover:bg-white/40 dark:hover:bg-white/[0.02] transition-colors border-b border-slate-200/60 dark:divide-white/[0.05]">
                                                 {/* Column 1: Item Code & Name (With Expandable Toggle) */}
-                                                <td className="py-3.5 px-4 w-[230px]">
+                                                <td data-label="Item Code & Name" className="py-3.5 px-4 w-[230px]">
                                                     <div className="flex items-start gap-2">
                                                         {hasExpandableContent ? (
                                                              <button
@@ -425,31 +440,24 @@ export function StageStockShortages({
                                                                     </span>
                                                                 )}
 
-                                                                {item.po_status_indicator ? (
+                                                                {item.po_status_indicator && item.po_status_indicator !== 'Delivered' ? (
                                                                     <span className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold flex items-center gap-1 border ${
-                                                                        item.po_status_indicator === 'Delivered'
-                                                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                                                            : item.po_status_indicator === 'Waiting for Delivery'
+                                                                        item.po_status_indicator === 'Waiting for Delivery'
                                                                             ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
                                                                             : item.po_status_indicator === 'Rejected Purchase Order'
                                                                             ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                                                             : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                                                                    }`} title={`Purchase Order #${item.matching_po_number || ''}${item.po_status_indicator === 'Approval Pending' ? ' (Awaiting Admin Approval)' : ''}`}>
+                                                                    }`} title={item.po_status_indicator === 'Waiting for Delivery' ? 'In Delivery' : 'PO Pending'}>
                                                                         <span className={`w-1.5 h-1.5 rounded-full ${
-                                                                            item.po_status_indicator === 'Delivered'
-                                                                                ? 'bg-emerald-500'
-                                                                                : item.po_status_indicator === 'Waiting for Delivery'
+                                                                            item.po_status_indicator === 'Waiting for Delivery'
                                                                                 ? 'bg-sky-500'
                                                                                 : item.po_status_indicator === 'Rejected Purchase Order'
                                                                                 ? 'bg-rose-500'
                                                                                 : 'bg-amber-500'
                                                                         }`} />
-                                                                        <span>{item.po_status_indicator}</span>
-                                                                        {item.matching_po_number && (
-                                                                            <span className="font-mono text-[8px] opacity-75">#{item.matching_po_number}</span>
-                                                                        )}
+                                                                        <span>{item.po_status_indicator === 'Waiting for Delivery' ? 'In Delivery' : item.po_status_indicator === 'Approval Pending' ? 'PO Pending' : item.po_status_indicator}</span>
                                                                     </span>
-                                                                ) : item.is_bid_awarded ? (
+                                                                ) : item.is_bid_awarded && item.po_status_indicator !== 'Delivered' ? (
                                                                     <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-0.5">
                                                                         <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600 dark:text-emerald-400" />
                                                                         Awarded
@@ -461,7 +469,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 2: Source Request / Department */}
-                                                <td className="py-3.5 px-3 w-[150px]">
+                                                <td data-label="Source / Dept" className="py-3.5 px-3 w-[150px]">
                                                     {item.related_requests_count && item.related_requests_count > 1 ? (
                                                         <div>
                                                             <button
@@ -495,7 +503,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 3: Supplier & Sourcing */}
-                                                <td className="py-3.5 px-3 w-[180px]">
+                                                <td data-label="Supplier" className="py-3.5 px-3 w-[180px]">
                                                     {item.has_official_active_supplier ? (
                                                         <div>
                                                             <span 
@@ -536,7 +544,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 4: Category (Dedicated Column) */}
-                                                <td className="py-3.5 px-3 w-[130px]">
+                                                <td data-label="Category" className="py-3.5 px-3 w-[130px]">
                                                     <div className="flex items-center gap-1.5">
                                                         <Tag className="w-3 h-3 text-slate-400 shrink-0" />
                                                         <span 
@@ -549,7 +557,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 5: Location (Dedicated Column) */}
-                                                <td className="py-3.5 px-3 w-[120px]">
+                                                <td data-label="Location" className="py-3.5 px-3 w-[120px]">
                                                     <div className="flex items-center gap-1.5">
                                                         <MapPin className="w-3 h-3 text-pink-500 shrink-0" />
                                                         <span 
@@ -562,7 +570,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 6: Stock Level & Severity (Dedicated Column) */}
-                                                <td className="py-3.5 px-3 w-[130px]">
+                                                <td data-label="Stock Level" className="py-3.5 px-3 w-[130px]">
                                                     <div>
                                                         <div className="text-xs font-black text-slate-800 dark:text-slate-200">
                                                             {usableStock} <span className="font-normal text-[11px] text-slate-500">{item.unit}</span>
@@ -584,7 +592,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 7: Approved Demand (Dedicated Column) */}
-                                                <td className="py-3.5 px-3 w-[120px]">
+                                                <td data-label="Approved Demand" className="py-3.5 px-3 w-[120px]">
                                                     <div>
                                                         <div className="text-xs font-bold text-slate-700 dark:text-slate-300">
                                                             {approvedDemand} <span className="font-normal text-[11px] text-slate-500">{item.unit}</span>
@@ -598,9 +606,21 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 8: Deficit & Coverage Status (Dedicated Column) */}
-                                                <td className="py-3.5 px-3 w-[130px]">
+                                                <td data-label="Deficit" className="py-3.5 px-3 w-[130px]">
                                                     <div>
-                                                        {remDeficit > 0 ? (
+                                                        {hasActiveUndeliveredPo ? (
+                                                            <>
+                                                                <div className="text-xs font-black text-sky-600 dark:text-sky-400">
+                                                                    {remDeficit > 0 ? `-${remDeficit}` : "0"} <span className="font-medium text-[11px] text-sky-500/80">{item.unit}</span>
+                                                                </div>
+                                                                <div className="mt-1">
+                                                                    <span className="px-1.5 py-0.5 rounded-md font-bold uppercase text-[9px] text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-950/40 border border-sky-200/50 dark:border-sky-900/30 flex items-center gap-1" title="Active PO in progress">
+                                                                        <ShoppingCart className="w-2.5 h-2.5 text-sky-500" />
+                                                                        <span>PO In Progress</span>
+                                                                    </span>
+                                                                </div>
+                                                            </>
+                                                        ) : remDeficit > 0 ? (
                                                             <>
                                                                 <div className="text-xs font-black text-pink-600 dark:text-pink-400">
                                                                     -{remDeficit} <span className="font-medium text-[11px] text-pink-500/80">{item.unit}</span>
@@ -627,7 +647,7 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 9: Est. Cost */}
-                                                <td className="py-3.5 px-3 w-[120px]">
+                                                <td data-label="Est. Cost" className="py-3.5 px-3 w-[120px]">
                                                     {(() => {
                                                         const hasAnySupplier = Boolean(
                                                             item.has_official_active_supplier ||
@@ -662,8 +682,8 @@ export function StageStockShortages({
                                                 </td>
 
                                                 {/* Column 10: Actions (CrudActionButton) */}
-                                                <td className="py-3.5 px-4 text-right w-[160px]">
-                                                    <div className="flex items-center justify-end gap-1.5">
+                                                <td data-label="Action" className="py-3.5 px-4 text-right w-[180px]">
+                                                    <div className="flex items-center justify-end gap-1.5 flex-wrap">
                                                         {/* Standard View Action */}
                                                         <CrudActionButton
                                                             action="view"
@@ -672,8 +692,25 @@ export function StageStockShortages({
                                                             title="View Details"
                                                         />
 
-                                                        {/* Contextual Procurement Action: Reorder / Covered / Sourcing */}
-                                                        {remDeficit <= 0 ? (
+                                                        {/* When PO is awarded or in progress (not delivered yet): DO NOT show Reorder/Message/Find buttons; only show PO indicator/view */}
+                                                        {hasActiveUndeliveredPo ? (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const poNum = item.matching_po_number || item.awarded_po_number;
+                                                                    if (onViewPO && poNum) {
+                                                                        onViewPO(poNum);
+                                                                    } else {
+                                                                        setViewItem(item);
+                                                                    }
+                                                                }}
+                                                                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] font-black bg-sky-100 hover:bg-sky-200 dark:bg-sky-950/70 dark:hover:bg-sky-900/70 text-sky-700 dark:text-sky-300 border border-sky-300/70 dark:border-sky-800 transition-all cursor-pointer shadow-[-2px_-2px_5px_rgba(255,255,255,0.8),_2px_2px_5px_rgba(163,177,198,0.3)] dark:shadow-[-1px_-1px_3px_rgba(255,255,255,0.02),_2px_2px_4px_rgba(0,0,0,0.5)] active:shadow-[inset_1px_1px_2px_rgba(0,0,0,0.2)]"
+                                                                title="View Purchase Order"
+                                                            >
+                                                                <ShoppingCart className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400 shrink-0" />
+                                                                <span>View PO</span>
+                                                            </button>
+                                                        ) : remDeficit <= 0 ? (
                                                             <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
                                                                 <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                                                                 <span>Covered</span>
@@ -828,65 +865,65 @@ export function StageStockShortages({
                                                                 </div>
 
                                                                 {/* Panel B: Covering Purchase Orders */}
-                                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] space-y-3 shadow-inner">
-                                                                    <div className="flex items-center justify-between">
-                                                                        <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                                                                            <ShoppingCart className="w-3.5 h-3.5 text-sky-500" />
-                                                                            <span>Covering Purchase Orders ({item.covering_purchase_orders?.length || 0})</span>
-                                                                        </h4>
-                                                                        <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
-                                                                            Covered: {poCoverage} {item.unit}
-                                                                        </span>
-                                                                    </div>
+                                                                {(() => {
+                                                                    const activeCoveringPOs = (item.covering_purchase_orders || []).filter(po => {
+                                                                        const s = String(po.status || "").toLowerCase();
+                                                                        const adm = String(po.admin_approval || "").toLowerCase();
+                                                                        return s !== "delivered" && s !== "completed" && s !== "received" && s !== "fulfilled" && adm !== "delivered" && s !== "rejected" && s !== "cancelled";
+                                                                    });
 
-                                                                    {item.covering_purchase_orders && item.covering_purchase_orders.length > 0 ? (
-                                                                        <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
-                                                                            <table className="table-pro w-full text-left text-[11px]">
-                                                                                <thead>
-                                                                                    <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
-                                                                                        <th className="py-2 px-3">PO Number</th>
-                                                                                        <th className="py-2 px-3">Supplier</th>
-                                                                                        <th className="py-2 px-3 text-right">Qty Covered</th>
-                                                                                        <th className="py-2 px-3 text-right">Lifecycle Status</th>
-                                                                                    </tr>
-                                                                                </thead>
-                                                                                <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
-                                                                                    {item.covering_purchase_orders.map((po, pIdx) => {
-                                                                                        const isDelivered = String(po.status || "").toLowerCase() === "delivered" || String(po.status || "").toLowerCase() === "completed";
-                                                                                        return (
-                                                                                            <tr key={`${po.id || po.po_number}-${pIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
-                                                                                                <td data-label="PO Number" className="py-2 px-3 font-mono font-bold text-sky-600 dark:text-sky-400">
-                                                                                                    #{po.po_number || po.id}
-                                                                                                </td>
-                                                                                                <td data-label="Supplier" className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
-                                                                                                    {po.supplier_name || "Supplier"}
-                                                                                                </td>
-                                                                                                <td data-label="Qty Covered" className="py-2 px-3 text-right font-black text-sky-600 dark:text-sky-400">
-                                                                                                    {po.covered_quantity || po.quantity} {item.unit}
-                                                                                                </td>
-                                                                                                <td data-label="Lifecycle Status" className="py-2 px-3 text-right">
-                                                                                                    <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] ${
-                                                                                                        isDelivered
-                                                                                                            ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300"
-                                                                                                            : String(po.status || "").toLowerCase() === "issued"
-                                                                                                            ? "bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300"
-                                                                                                            : "bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300"
-                                                                                                    }`}>
-                                                                                                        {po.status}
-                                                                                                    </span>
-                                                                                                </td>
+                                                                    return (
+                                                                        <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#141624] border border-white/80 dark:border-white/[0.06] space-y-3 shadow-inner">
+                                                                            <div className="flex items-center justify-between">
+                                                                                <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                                                    <ShoppingCart className="w-3.5 h-3.5 text-sky-500" />
+                                                                                    <span>Covering Orders ({activeCoveringPOs.length})</span>
+                                                                                </h4>
+                                                                                <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                                                                                    Covered: {poCoverage} {item.unit}
+                                                                                </span>
+                                                                            </div>
+
+                                                                            {activeCoveringPOs.length > 0 ? (
+                                                                                <div className="overflow-x-auto rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white/60 dark:bg-[#11121d]">
+                                                                                    <table className="table-pro w-full text-left text-[11px]">
+                                                                                        <thead>
+                                                                                            <tr className="bg-slate-100/80 dark:bg-[#161826] text-slate-500 dark:text-slate-400 font-extrabold uppercase text-[9px] border-b border-slate-200/60 dark:border-white/[0.05]">
+                                                                                                <th className="py-2 px-3">Supplier</th>
+                                                                                                <th className="py-2 px-3 text-right">Qty</th>
+                                                                                                <th className="py-2 px-3 text-right">Status</th>
                                                                                             </tr>
-                                                                                        );
-                                                                                    })}
-                                                                                </tbody>
-                                                                            </table>
+                                                                                        </thead>
+                                                                                        <tbody className="divide-y divide-slate-200/50 dark:divide-white/[0.04]">
+                                                                                            {activeCoveringPOs.map((po, pIdx) => {
+                                                                                                const shortStatus = po.status === 'Waiting for Delivery' ? 'In Delivery' : (po.status || 'Active');
+                                                                                                return (
+                                                                                                    <tr key={`${po.id || po.po_number || pIdx}`} className="hover:bg-slate-50 dark:hover:bg-white/[0.02]">
+                                                                                                        <td data-label="Supplier" className="py-2 px-3 text-slate-700 dark:text-slate-300 font-medium">
+                                                                                                            {po.supplier_name || "Supplier"}
+                                                                                                        </td>
+                                                                                                        <td data-label="Qty" className="py-2 px-3 text-right font-black text-sky-600 dark:text-sky-400">
+                                                                                                            {po.covered_quantity || po.quantity} {item.unit}
+                                                                                                        </td>
+                                                                                                        <td data-label="Status" className="py-2 px-3 text-right">
+                                                                                                            <span className="px-1.5 py-0.5 rounded-md font-bold text-[9px] bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300">
+                                                                                                                {shortStatus}
+                                                                                                            </span>
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            })}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="p-4 rounded-xl bg-slate-100/50 dark:bg-[#11121d] text-center text-slate-400 text-xs">
+                                                                                    <span>No active purchase orders in progress.</span>
+                                                                                </div>
+                                                                            )}
                                                                         </div>
-                                                                    ) : (
-                                                                        <div className="p-4 rounded-xl bg-slate-100/50 dark:bg-[#11121d] text-center text-slate-400 text-xs">
-                                                                            <span>No purchase orders currently allocated to this item.</span>
-                                                                        </div>
-                                                                    )}
-                                                                </div>
+                                                                    );
+                                                                })()}
                                                             </div>
                                                         </div>
                                                     </td>
@@ -976,29 +1013,22 @@ export function StageStockShortages({
                                                     </span>
                                                 );
                                             })()}
-                                            {viewItem.po_status_indicator && (
+                                            {viewItem.po_status_indicator && viewItem.po_status_indicator !== 'Delivered' && (
                                                 <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border ${
-                                                    viewItem.po_status_indicator === 'Delivered'
-                                                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                                        : viewItem.po_status_indicator === 'Waiting for Delivery'
+                                                    viewItem.po_status_indicator === 'Waiting for Delivery'
                                                         ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-200 dark:border-sky-800'
                                                         : viewItem.po_status_indicator === 'Rejected Purchase Order'
                                                         ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border-rose-200 dark:border-rose-800'
                                                         : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
                                                 }`}>
                                                     <span className={`w-1.5 h-1.5 rounded-full ${
-                                                        viewItem.po_status_indicator === 'Delivered'
-                                                            ? 'bg-emerald-500'
-                                                            : viewItem.po_status_indicator === 'Waiting for Delivery'
+                                                        viewItem.po_status_indicator === 'Waiting for Delivery'
                                                             ? 'bg-sky-500'
                                                             : viewItem.po_status_indicator === 'Rejected Purchase Order'
                                                             ? 'bg-rose-500'
                                                             : 'bg-amber-500'
                                                     }`} />
-                                                    <span>{viewItem.po_status_indicator}</span>
-                                                    {viewItem.matching_po_number && (
-                                                        <span className="font-mono text-[9px] opacity-75">#{viewItem.matching_po_number}</span>
-                                                    )}
+                                                    <span>{viewItem.po_status_indicator === 'Waiting for Delivery' ? 'In Delivery' : (viewItem.po_status_indicator || 'PO In Progress')}</span>
                                                 </span>
                                             )}
                                         </div>
@@ -1064,11 +1094,6 @@ export function StageStockShortages({
                                                     <span className="text-base font-black text-sky-600 dark:text-sky-400">
                                                         {modalPoCoverage > 0 ? `+${modalPoCoverage}` : "0"} <span className="text-xs font-normal text-sky-500">{viewItem.unit}</span>
                                                     </span>
-                                                    {isModalPoDelivered && (
-                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold block mt-0.5">
-                                                            PO Delivered
-                                                        </span>
-                                                    )}
                                                 </div>
 
                                                 <div className="p-3 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04]">
@@ -1134,43 +1159,50 @@ export function StageStockShortages({
                                                 </div>
                                             )}
 
-                                            {/* Covering Purchase Orders List */}
-                                            {viewItem.covering_purchase_orders && viewItem.covering_purchase_orders.length > 0 && (
-                                                <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
-                                                    <div className="flex items-center justify-between">
-                                                        <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
-                                                            <ShoppingCart className="w-4 h-4 text-sky-500" />
-                                                            <span>Covering Purchase Orders ({viewItem.covering_purchase_orders.length})</span>
-                                                        </h4>
-                                                        <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
-                                                            Covered: {modalPoCoverage} {viewItem.unit}
-                                                        </span>
-                                                    </div>
+                                            {/* Covering Purchase Orders List (Active only) */}
+                                            {(() => {
+                                                const modalActiveCoveringPOs = (viewItem.covering_purchase_orders || []).filter(po => {
+                                                    const s = (po.status || "").toLowerCase();
+                                                    const adm = (po.admin_approval || "").toLowerCase();
+                                                    return s !== "delivered" && s !== "completed" && s !== "received" && s !== "fulfilled" && adm !== "delivered" && s !== "rejected" && s !== "cancelled";
+                                                });
+                                                if (modalActiveCoveringPOs.length === 0) return null;
 
-                                                    <div className="space-y-1.5 pt-1">
-                                                        {viewItem.covering_purchase_orders.map((po, pIdx) => (
-                                                            <div key={pIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-[#161826] border border-slate-200/60 dark:border-white/[0.04] text-xs">
-                                                                <div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
-                                                                            #{po.po_number || po.id}
-                                                                        </span>
-                                                                        <span className="font-medium text-slate-700 dark:text-slate-200">
-                                                                            {po.supplier_name || "Supplier"}
+                                                return (
+                                                    <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
+                                                        <div className="flex items-center justify-between">
+                                                            <h4 className="text-xs font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wide flex items-center gap-1.5">
+                                                                <ShoppingCart className="w-4 h-4 text-sky-500" />
+                                                                <span>Covering Orders ({modalActiveCoveringPOs.length})</span>
+                                                            </h4>
+                                                            <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                                                                Covered: {modalPoCoverage} {viewItem.unit}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="space-y-1.5 pt-1">
+                                                            {modalActiveCoveringPOs.map((po, pIdx) => {
+                                                                const shortStatus = po.status === 'Waiting for Delivery' ? 'In Delivery' : (po.status || 'Active');
+                                                                return (
+                                                                    <div key={pIdx} className="flex items-center justify-between p-2 rounded-xl bg-white/60 dark:bg-[#161826] border border-slate-200/60 dark:border-white/[0.04] text-xs">
+                                                                        <div>
+                                                                            <span className="font-semibold text-slate-700 dark:text-slate-200">
+                                                                                {po.supplier_name || "Supplier"}
+                                                                            </span>
+                                                                            <span className="text-[10px] text-sky-600 dark:text-sky-400 block mt-0.5 font-medium">
+                                                                                {shortStatus}
+                                                                            </span>
+                                                                        </div>
+                                                                        <span className="font-black text-sky-600 dark:text-sky-400">
+                                                                            +{po.covered_quantity || po.quantity} {viewItem.unit}
                                                                         </span>
                                                                     </div>
-                                                                    <span className="text-[10px] text-slate-400 block mt-0.5">
-                                                                        Status: {po.status}
-                                                                    </span>
-                                                                </div>
-                                                                <span className="font-black text-sky-600 dark:text-sky-400">
-                                                                    +{po.covered_quantity || po.quantity} {viewItem.unit}
-                                                                </span>
-                                                            </div>
-                                                        ))}
+                                                                );
+                                                            })}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                );
+                                            })()}
 
                                             {/* Requisition & Department Details */}
                                             <div className="p-4 rounded-2xl bg-[#ebf0f7] dark:bg-[#12131b] border border-white/70 dark:border-white/[0.04] space-y-2">
@@ -1292,6 +1324,53 @@ export function StageStockShortages({
                                 <div className="flex items-center gap-2 flex-wrap">
                                     {(() => {
                                         const modalDeficit = viewItem.remaining_deficit !== undefined ? viewItem.remaining_deficit : viewItem.deficit;
+                                        const modalIsPoDelivered =
+                                            viewItem.po_status_indicator === 'Delivered' ||
+                                            (viewItem.covering_purchase_orders && viewItem.covering_purchase_orders.length > 0 && viewItem.covering_purchase_orders.every(po => {
+                                                const s = (po.status || "").toLowerCase();
+                                                return s === "delivered" || s === "completed" || s === "received" || s === "fulfilled";
+                                            }));
+                                        const modalHasActiveUndeliveredPo = Boolean(
+                                            !modalIsPoDelivered && (
+                                                (viewItem.covering_purchase_orders && viewItem.covering_purchase_orders.some(po => {
+                                                    const s = (po.status || "").toLowerCase();
+                                                    const adm = (po.admin_approval || "").toLowerCase();
+                                                    return s !== "delivered" && s !== "completed" && s !== "received" && s !== "fulfilled" && adm !== "delivered" && s !== "rejected" && s !== "cancelled";
+                                                })) ||
+                                                (viewItem.po_status_indicator && viewItem.po_status_indicator !== 'Delivered' && viewItem.po_status_indicator !== 'Rejected Purchase Order') ||
+                                                viewItem.is_bid_awarded ||
+                                                viewItem.has_active_po
+                                            )
+                                        );
+
+                                        if (modalHasActiveUndeliveredPo) {
+                                            const poNum = viewItem.matching_po_number || viewItem.awarded_po_number;
+                                            return (
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <div className="px-3 py-1.5 rounded-lg bg-sky-500/10 border border-sky-500/20 text-sky-700 dark:text-sky-300 font-bold text-xs flex items-center gap-1.5">
+                                                        <ShoppingCart className="w-4 h-4 text-sky-500" />
+                                                        <span>PO In Progress</span>
+                                                    </div>
+                                                    {onViewPO && poNum && (
+                                                        <AppButton
+                                                            type="button"
+                                                            variant="pink"
+                                                            size="md"
+                                                            pill={false}
+                                                            className="!rounded-lg"
+                                                            onClick={() => {
+                                                                setViewItem(null);
+                                                                onViewPO(poNum);
+                                                            }}
+                                                        >
+                                                            <Eye className="w-4 h-4 mr-1.5" />
+                                                            <span>View PO</span>
+                                                        </AppButton>
+                                                    )}
+                                                </div>
+                                            );
+                                        }
+
                                         if (modalDeficit <= 0) {
                                             return (
                                                 <div className="px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 font-bold text-xs flex items-center gap-1.5">

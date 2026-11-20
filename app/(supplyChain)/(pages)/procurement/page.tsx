@@ -907,6 +907,27 @@ function ProcurementContent() {
                                 onMessageSupplier={handleMessageSupplier}
                                 onCreatePO={handleCreatePOFromShortage}
                                 onOrderAgainFromSameSupplier={handleOrderAgainFromSameSupplier}
+                                onViewPO={(poOrNumber) => {
+                                    const poNumStr = typeof poOrNumber === "string" ? poOrNumber.trim() : (poOrNumber?.po_number || poOrNumber?.id || "");
+                                    const foundPo = purchaseOrders.find((p) =>
+                                        String(p.id) === poNumStr ||
+                                        String(p.po_number || "").toLowerCase() === poNumStr.toLowerCase()
+                                    );
+                                    if (foundPo) {
+                                        setReceiptModalPO(foundPo);
+                                        setIsReceiptModalOpen(true);
+                                    } else if (typeof poOrNumber === "object" && poOrNumber !== null) {
+                                        setReceiptModalPO(poOrNumber);
+                                        setIsReceiptModalOpen(true);
+                                    } else if (poNumStr) {
+                                        setReceiptModalPO({
+                                            po_number: poNumStr,
+                                            status: "Pending",
+                                            created_at: new Date().toISOString(),
+                                        });
+                                        setIsReceiptModalOpen(true);
+                                    }
+                                }}
                             />
                         )}
 

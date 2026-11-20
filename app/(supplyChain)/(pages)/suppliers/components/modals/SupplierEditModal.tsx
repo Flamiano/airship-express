@@ -157,6 +157,87 @@ export function SupplierEditModal({
             setIsLoadingContract(true);
             (async () => {
                 try {
+                    // 1. If supplier does not yet have other_products_offer catalog items, hydrate from quotation(s)
+                    const currentCatalog = Array.isArray(editingSupplier.other_products_offer)
+                        ? editingSupplier.other_products_offer
+                        : (typeof editingSupplier.other_products_offer === "string"
+                            ? (() => { try { return JSON.parse(editingSupplier.other_products_offer); } catch { return []; } })()
+                            : []);
+
+                    if (currentCatalog.length === 0) {
+                        const supName = (editingSupplier.name || "").trim();
+                        const supId = editingSupplier.id ? Number(editingSupplier.id) : null;
+                        const { data: quotesData } = await supabase
+                            .from("supplier_quotations")
+                            .select("*")
+                            .or(supId ? `supplier_id.eq.${supId},supplier_name.ilike.%${supName}%` : `supplier_name.ilike.%${supName}%`)
+                            .order("created_at", { ascending: false });
+
+                        if (quotesData && quotesData.length > 0) {
+                            const hydratedList: any[] = [];
+                            quotesData.forEach((quote: any) => {
+                                const primaryItem = (quote?.item_name || quote?.products || "").trim();
+                                if (primaryItem && !hydratedList.find(p => (p.item_name || "").toLowerCase() === primaryItem.toLowerCase())) {
+                                    const price = Number(quote?.unit_price || 0);
+                                    const disc = Number(quote?.discount || 0);
+                                    const ship = Number(quote?.shipping_fee || 0);
+                                    const taxRate = Number(quote?.tax_rate ?? 12);
+                                    const taxable = Math.max(0, price - disc);
+                                    const tax = Number(((taxable * taxRate) / 100).toFixed(2));
+                                    hydratedList.push({
+                                        id: `quote_${quote.id || Date.now()}`,
+                                        item_name: primaryItem,
+                                        unit: quote.unit || "unit",
+                                        unit_price: price,
+                                        discount: disc,
+                                        shipping_fee: ship,
+                                        tax_rate: taxRate,
+                                        tax_classification: quote.tax_type || "vatable",
+                                        total_amount: Number((taxable + tax + ship).toFixed(2)),
+                                        notes: quote.notes || "From awarded quotation",
+                                    });
+                                }
+
+                                const quoteOthers = Array.isArray(quote?.other_products_offer)
+                                    ? quote.other_products_offer
+                                    : (typeof quote?.other_products_offer === "string"
+                                        ? (() => { try { return JSON.parse(quote.other_products_offer); } catch { return []; } })()
+                                        : []);
+
+                                if (Array.isArray(quoteOthers)) {
+                                    quoteOthers.forEach((item: any, idx: number) => {
+                                        const itemName = (item?.item_name || item?.name || item?.product_name || "").trim();
+                                        if (itemName && !hydratedList.find(p => (p.item_name || "").toLowerCase() === itemName.toLowerCase())) {
+                                            const price = Number(item.unit_price ?? item.price ?? 0);
+                                            const disc = Number(item.discount || 0);
+                                            const ship = Number(item.shipping_fee || 0);
+                                            const taxRate = item.tax_rate !== undefined ? Number(item.tax_rate) : 12;
+                                            const taxable = Math.max(0, price - disc);
+                                            const tax = Number(((taxable * taxRate) / 100).toFixed(2));
+                                            hydratedList.push({
+                                                id: item.id || `quote_other_${quote.id}_${idx}`,
+                                                item_name: itemName,
+                                                unit: item.unit || "unit",
+                                                unit_price: price,
+                                                discount: disc,
+                                                shipping_fee: ship,
+                                                tax_rate: taxRate,
+                                                tax_classification: item.tax_classification || item.tax_type || "vatable",
+                                                total_amount: Number((taxable + tax + ship).toFixed(2)),
+                                                notes: item.notes || "",
+                                            });
+                                        }
+                                    });
+                                }
+                            });
+
+                            if (hydratedList.length > 0) {
+                                setEditingSupplier((prev) => prev ? { ...prev, other_products_offer: hydratedList } : null);
+                            }
+                        }
+                    }
+
+                    // 2. Fetch contract data
                     const { data: contractData, error } = await supabase
                         .from("supplier_contracts")
                         .select("*")
@@ -214,7 +295,7 @@ export function SupplierEditModal({
                 }
             })();
         }
-    }, [isOpen, editingSupplier?.id, rawCatalog]);
+    }, [isOpen, editingSupplier?.id]);
 
     if (!isOpen || !editingSupplier) return null;
 
@@ -226,11 +307,17 @@ export function SupplierEditModal({
         });
     };
 
-    // Form submit that also persists contract to supplier_contracts
+    // Form submit that also persists contract to supplier_contracts & other_products_offer
     const handleFormSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (editingSupplier) {
             try {
+                // Ensure other_products_offer is persisted to suppliers table
+                await supabase.from("suppliers").update({
+                    other_products_offer: rawCatalog,
+                    updated_at: new Date().toISOString(),
+                }).eq("id", editingSupplier.id);
+
                 const effDate = effectiveDate || new Date().toISOString().split("T")[0];
                 const cNum = contractNumber || `AGR-${new Date().getFullYear()}-${String(editingSupplier.id).padStart(4, "0")}`;
                 await supabase.from("supplier_contracts").upsert(
