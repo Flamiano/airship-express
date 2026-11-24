@@ -444,7 +444,7 @@ export function proxy(request: NextRequest) {
     if (!subdomain) {
       // Local FTM rewrites re-enter Proxy with the subdomain reduced to localhost.
       if (
-        process.env.NODE_ENV === "development" &&
+        // process.env.NODE_ENV === "development" &&
         request.nextUrl.hostname.toLowerCase() === "localhost" &&
         request.headers.get("x-airship-ftm-embedded") === "1"
       ) {
