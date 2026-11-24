@@ -442,6 +442,15 @@ export function proxy(request: NextRequest) {
     });
 
     if (!subdomain) {
+      // Local FTM rewrites re-enter Proxy with the subdomain reduced to localhost.
+      if (
+        process.env.NODE_ENV === "development" &&
+        request.nextUrl.hostname.toLowerCase() === "localhost" &&
+        request.headers.get("x-airship-ftm-embedded") === "1"
+      ) {
+        return applySecurityHeaders(NextResponse.next(), protocol);
+      }
+
       const portalWithLoginPath = SUBDOMAIN_PORTALS.find(
         (p) =>
           normalizedPath === p.loginPath ||
@@ -499,12 +508,21 @@ export function proxy(request: NextRequest) {
         );
       }
 
+      if (
+        currentPortal.primarySubdomain === "ftm" &&
+        request.headers.get("x-airship-ftm-embedded") === "1" &&
+        (normalizedPath === "/ftm-dashboard" ||
+          normalizedPath.startsWith("/ftm-dashboard/"))
+      ) {
+        return applySecurityHeaders(NextResponse.next(), protocol);
+      }
+
       if (normalizedPath === "/api" || normalizedPath.startsWith("/api/")) {
-        if (currentPortal.primarySubdomain === "ftm") {
-          const rewriteUrl = new URL(
-            `/web/app${normalizedPath}${search}`,
-            request.url
-          );
+        if (
+          currentPortal.primarySubdomain === "ftm" &&
+          normalizedPath === "/api/health"
+        ) {
+          const rewriteUrl = new URL(`/api/ftm-health${search}`, request.url);
           const requestHeaders = new Headers(request.headers);
           requestHeaders.set("x-airship-ftm-embedded", "1");
           return applySecurityHeaders(
@@ -516,6 +534,35 @@ export function proxy(request: NextRequest) {
         }
 
         return applySecurityHeaders(NextResponse.next(), protocol);
+      }
+
+      if (
+        currentPortal.primarySubdomain === "ftm" &&
+        normalizedPath === "/passkey-enroll"
+      ) {
+        const rewriteUrl = new URL(
+          `/ftmAuth/passkey-enroll${search}`,
+          request.url
+        );
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set("x-airship-ftm-embedded", "1");
+        return applySecurityHeaders(
+          NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } }),
+          protocol
+        );
+      }
+
+      if (
+        currentPortal.primarySubdomain === "ftm" &&
+        normalizedPath === "/bookings"
+      ) {
+        const rewriteUrl = new URL(`/vrds/bookings${search}`, request.url);
+        const requestHeaders = new Headers(request.headers);
+        requestHeaders.set("x-airship-ftm-embedded", "1");
+        return applySecurityHeaders(
+          NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } }),
+          protocol
+        );
       }
 
       if (
@@ -538,17 +585,10 @@ export function proxy(request: NextRequest) {
 
       if (
         currentPortal.primarySubdomain === "ftm" &&
-        /\.(?:svg|png|jpe?g|gif|webp|ico|css|js|woff2?|ttf|eot|mp4|webm|ogg|mp3|wav|glb|gltf)$/i.test(
-          normalizedPath
-        )
+        (normalizedPath === "/dashboard" || normalizedPath.startsWith("/dashboard/"))
       ) {
-        const assetPath = normalizedPath.startsWith("/ftm-media/")
-          ? normalizedPath.slice("/ftm-media".length)
-          : normalizedPath;
-        const rewriteUrl = new URL(
-          `/web/app/ftm-media${assetPath}`,
-          request.url
-        );
+        const internalPath = normalizedPath.replace(/^\/dashboard/, "/ftm-dashboard");
+        const rewriteUrl = new URL(`${internalPath}${search}`, request.url);
         const requestHeaders = new Headers(request.headers);
         requestHeaders.set("x-airship-ftm-embedded", "1");
         return applySecurityHeaders(
@@ -589,7 +629,7 @@ export function proxy(request: NextRequest) {
 
       if (shouldRewriteFtmRoute) {
         const rewriteUrl = new URL(
-          `/web/app${normalizedPath}${search}`,
+          `${normalizedPath}${search}`,
           request.url
         );
         const requestHeaders = new Headers(request.headers);
@@ -606,24 +646,26 @@ export function proxy(request: NextRequest) {
         return applySecurityHeaders(NextResponse.next(), protocol);
       }
 
-      const isForeignRoute = SUBDOMAIN_PORTALS.some((otherPortal) => {
-        if (otherPortal === currentPortal) return false;
+      const isForeignRoute =
+        !isValidPortalRoute &&
+        SUBDOMAIN_PORTALS.some((otherPortal) => {
+          if (otherPortal === currentPortal) return false;
 
-        const isForeignLogin =
-          normalizedPath === otherPortal.loginPath ||
-          normalizedPath.startsWith(otherPortal.loginPath + "/");
+          const isForeignLogin =
+            normalizedPath === otherPortal.loginPath ||
+            normalizedPath.startsWith(otherPortal.loginPath + "/");
 
-        const isForeignAuth = otherPortal.authPaths?.some(
-          (p) => normalizedPath === p || normalizedPath.startsWith(p + "/")
-        );
+          const isForeignAuth = otherPortal.authPaths?.some(
+            (p) => normalizedPath === p || normalizedPath.startsWith(p + "/")
+          );
 
-        const isForeignPageRoute = otherPortal.routes.some(
-          (route) =>
-            normalizedPath === route || normalizedPath.startsWith(route + "/")
-        );
+          const isForeignPageRoute = otherPortal.routes.some(
+            (route) =>
+              normalizedPath === route || normalizedPath.startsWith(route + "/")
+          );
 
-        return isForeignLogin || isForeignAuth || isForeignPageRoute;
-      });
+          return isForeignLogin || isForeignAuth || isForeignPageRoute;
+        });
 
       if (
         isForeignRoute ||

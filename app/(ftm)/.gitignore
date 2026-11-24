@@ -5,7 +5,9 @@ dist/
 coverage/
 *.log
 .env
-.env.local
-.env.*.local
+.env.*
 !.env.example
 *.pem
+__pycache__/
+*.pyc
+.venv/
