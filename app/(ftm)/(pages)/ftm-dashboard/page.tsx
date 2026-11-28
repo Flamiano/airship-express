@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import GlobalNavbar from "../../components/global/GlobalNavbar";
 import GlobalFooter from "../../components/global/GlobalFooter";
+import { firstNameOf, useFtmProfile } from "../../components/global/useFtmProfile";
+import { getAllowedNavPaths } from "../../lib/permissions";
 import { fetchJson } from "../../lib/api";
 import SpecializedLogistics from "./components/SpecializedLogistics";
 import PerformanceMetrics from "./components/PerformanceMetrics";
@@ -369,6 +372,130 @@ const calculateDriverPerformanceData = (trips: DashboardTrip[], drivers: Dashboa
     .map(([driver, data]) => ({ driver: driver.length > 16 ? `${driver.slice(0, 13)}...` : driver, ...data }));
 };
 
+
+// ---- Side-menu dashboard helpers (sparklines, week-over-week, fleet status donut) ----
+function parseDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function tripCreatedAt(trip: DashboardTrip) {
+  return parseDate(trip.createdAt ?? trip.created_at ?? null);
+}
+
+function inRange(date: Date | null, start: Date, end: Date) {
+  return !!date && date >= start && date < end;
+}
+
+/** One value per calendar day, oldest first, ending today. */
+function dailySeries<T>(now: Date, days: number, valueFor: (start: Date, end: Date) => T): T[] {
+  return Array.from({ length: days }, (_, index) => {
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1 - index));
+    const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+    return valueFor(start, end);
+  });
+}
+
+function carryForward(values: Array<number | null>): number[] {
+  let last = 0;
+  return values.map((value) => {
+    if (value != null) last = value;
+    return last;
+  });
+}
+
+/** Last 7 days vs the 7 before; null when there is nothing to compare against. */
+function weekOverWeek(series: number[], average = false) {
+  const recent = series.slice(-7);
+  const previous = series.slice(-14, -7);
+  const total = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / (average ? Math.max(values.length, 1) : 1);
+  const before = total(previous);
+  if (!before) return null;
+  const change = ((total(recent) - before) / before) * 100;
+  const rounded = Math.round(change * 10) / 10;
+  return `${rounded >= 0 ? "+" : "−"}${Math.abs(rounded)}%`;
+}
+
+function Sparkline({ values, title }: { values: number[]; title: string }) {
+  const data = values.slice(-8);
+  const width = 120;
+  const height = 36;
+  const max = Math.max(...data, 0);
+  const min = Math.min(...data, 0);
+  const points = data.map((value, index) => [
+    index * (width / Math.max(data.length - 1, 1)),
+    height - 4 - ((value - min) / (max - min || 1)) * (height - 8),
+  ]);
+  const path = points.map((point, index) => `${index ? "L" : "M"}${point[0].toFixed(1)} ${point[1].toFixed(1)}`).join(" ");
+  return (
+    <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="shrink-0" role="img" aria-label={title}>
+      <title>{title}</title>
+      <defs>
+        <linearGradient id="ftmSparkFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0" stopColor="#b80049" stopOpacity="0.25" />
+          <stop offset="1" stopColor="#b80049" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={`${path} L${width} ${height} L0 ${height}Z`} fill="url(#ftmSparkFill)" />
+      <path d={path} fill="none" stroke="#b80049" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+type DonutPart = { label: string; count: number; percent: number; color: string };
+
+function Donut({ parts, size, thickness }: { parts: DonutPart[]; size: number; thickness: number }) {
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = parts.reduce((sum, part) => sum + part.count, 0) || 1;
+  const segments = parts.map((part, index) => ({
+    part,
+    length: (circumference * part.count) / total,
+    offset: (circumference * parts.slice(0, index).reduce((sum, previous) => sum + previous.count, 0)) / total,
+  }));
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#f6e9ef" strokeWidth={thickness} />
+      {segments.map(({ part, length, offset }) => (
+        <circle
+          key={part.label}
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={part.color}
+          strokeWidth={thickness}
+          strokeDasharray={`${length} ${circumference - length}`}
+          strokeDashoffset={-offset}
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+      ))}
+    </svg>
+  );
+}
+
+/** Same status buckets as calculateFleetUtilizationData, across the whole fleet. */
+function calculateFleetStatus(vehicles: DashboardVehicle[]) {
+  const counts = { inUse: 0, available: 0, maintenance: 0, other: 0 };
+  vehicles.forEach((vehicle) => {
+    const status = String(vehicle.status || vehicle.availability || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+    if (/maintenance|service|repair|out of service/.test(status)) counts.maintenance += 1;
+    else if (/available|idle|ready|standby|free/.test(status)) counts.available += 1;
+    else if (/active|moving|in transit|assigned|on trip|in use/.test(status)) counts.inUse += 1;
+    else counts.other += 1;
+  });
+  const total = vehicles.length;
+  const pct = (count: number) => (total ? Math.round((count / total) * 100) : 0);
+  const parts: DonutPart[] = [
+    { label: "In use", count: counts.inUse, percent: pct(counts.inUse), color: "#b80049" },
+    { label: "Available", count: counts.available, percent: pct(counts.available), color: "#10b981" },
+    { label: "Maintenance", count: counts.maintenance, percent: pct(counts.maintenance), color: "#f59e0b" },
+  ];
+  if (counts.other) parts.push({ label: "Other", count: counts.other, percent: pct(counts.other), color: "#cbd5e1" });
+  return { total, utilized: pct(counts.inUse), parts };
+}
+
 const KPI_IDS = [
   "active-vehicles",
   "in-transit",
@@ -389,6 +516,7 @@ const KPI_IDS = [
 
 export default function Home() {
   const [dashboardFullscreen, setDashboardFullscreen] = useState(false);
+  const profile = useFtmProfile();
   const [hiddenKPIs, setHiddenKPIs] = useState<Set<string>>(new Set(KPI_IDS));
 
   const [snapshot, setSnapshot] = useState<DashboardSnapshot>({
@@ -579,6 +707,23 @@ export default function Home() {
     </span>
   );
 
+  const allowedNavPaths = profile.role ? getAllowedNavPaths(profile.role) : [];
+  const now = new Date();
+  const vehiclesOnTripsSeries = dailySeries(now, 14, (start, end) => new Set(uniqueTrips
+    .filter((trip) => inRange(tripCreatedAt(trip), start, end))
+    .map((trip) => trip.vehicleId || trip.vehicle_id)
+    .filter(Boolean)).size);
+  const tripsPerDaySeries = dailySeries(now, 14, (start, end) => uniqueTrips.filter((trip) => inRange(tripCreatedAt(trip), start, end)).length);
+  const bookingsPerDaySeries = dailySeries(now, 14, (start, end) => snapshot.bookings.filter((booking) => inRange(parseDate(booking.created_at), start, end)).length);
+  const onTimeSeries = carryForward(dailySeries(now, 14, (start, end) => {
+    const outcomes = completedTripRows
+      .filter((trip) => inRange(tripCompletionTime(trip), start, end))
+      .map(onTimeOutcome)
+      .filter((value): value is boolean => value !== null);
+    return outcomes.length ? Math.round((outcomes.filter(Boolean).length / outcomes.length) * 1000) / 10 : null;
+  }));
+  const fleetStatus = calculateFleetStatus(uniqueVehicles);
+
   if (dashboardFullscreen) {
     return (
       <div className="fixed inset-0 z-[9998] bg-background text-on-background">
@@ -596,236 +741,185 @@ export default function Home() {
     );
   }
 
+  const featuredKPIs: Array<{ id: string; label: string; icon: string; badge: string; badgeClass: string; value: string | number; series: number[]; change: string | null; caption: string }> = [
+    { id: "active-vehicles", label: "Active Vehicles", icon: "directions_car", badge: "Live", badgeClass: "bg-pink-50 text-pink-700", value: activeVehiclesCount, series: vehiclesOnTripsSeries, change: weekOverWeek(vehiclesOnTripsSeries), caption: "vehicles on trips / day" },
+    { id: "in-transit", label: "Active Trips", icon: "alt_route", badge: "Active", badgeClass: "bg-emerald-50 text-emerald-700", value: activeTripsCount, series: tripsPerDaySeries, change: weekOverWeek(tripsPerDaySeries), caption: "trips created / day" },
+    { id: "pending-bookings", label: "Pending Bookings", icon: "book_online", badge: "Queue", badgeClass: "bg-amber-50 text-amber-700", value: pendingBookingsCount, series: bookingsPerDaySeries, change: weekOverWeek(bookingsPerDaySeries), caption: "bookings created / day" },
+    { id: "on-time-rate", label: "On-Time Rate", icon: "trending_up", badge: "KPI", badgeClass: "bg-pink-50 text-pink-700", value: onTimeRate != null ? `${onTimeRate}%` : "No data", series: onTimeSeries, change: weekOverWeek(onTimeSeries, true), caption: "on-time % / day" },
+  ];
+
+  const compactKPIs: Array<{ id: string; label: string; icon: string; badge: string; badgeClass: string; value: string | number }> = [
+    { id: "total-vehicles", label: "Total Vehicles", icon: "local_shipping", badge: "Fleet", badgeClass: "bg-pink-50 text-pink-700", value: totalVehiclesCount },
+    { id: "completed-trips", label: "Completed Trips", icon: "done", badge: "Done", badgeClass: "bg-emerald-50 text-emerald-700", value: completedTrips },
+    { id: "total-bookings", label: "Total Bookings", icon: "receipt_long", badge: "Orders", badgeClass: "bg-pink-50 text-pink-700", value: totalBookingsCount },
+    { id: "total-drivers", label: "Drivers Assigned", icon: "badge", badge: "Staff", badgeClass: "bg-pink-50 text-pink-700", value: totalDriversCount },
+    { id: "fleet-efficiency", label: "Fleet Efficiency", icon: "bolt", badge: "Avg", badgeClass: "bg-emerald-50 text-emerald-700", value: efficiencyFuelLiters > 0 ? `${fleetEfficiency} km/L` : fleetEfficiency },
+    { id: "system-health", label: "System Health", icon: "health_and_safety", badge: "100%", badgeClass: "bg-emerald-50 text-emerald-700", value: systemHealth },
+    { id: "total-parcels", label: "Total Parcels", icon: "local_shipping", badge: "Count", badgeClass: "bg-blue-50 text-blue-700", value: totalParcelsCount },
+    { id: "total-fuel", label: "Reported Fuel Volume", icon: "local_gas_station", badge: "Fuel log", badgeClass: "bg-amber-50 text-amber-700", value: `${totalFuelReported.toFixed(1)}L` },
+    { id: "operating-cost", label: "Operating Cost", icon: "account_balance", badge: "Cost", badgeClass: "bg-red-50 text-red-700", value: `₱${totalOperatingCost.toFixed(2)}` },
+    { id: "driver-allowance", label: "Driver Allowance", icon: "payments", badge: "Driver", badgeClass: "bg-violet-50 text-violet-700", value: `₱${driverAllowanceCost.toFixed(2)}` },
+    { id: "mobile-data", label: "Data & Internet", icon: "wifi", badge: "Data", badgeClass: "bg-sky-50 text-sky-700", value: `₱${mobileDataCost.toFixed(2)}` },
+  ];
+
+  const heroActions = [
+    { label: "Plan Route", href: "/vrds/route-planning", icon: "route", primary: true },
+    { label: "Assign Booking", href: "/vrds/bookings", icon: "assignment", primary: false },
+    { label: "View Alerts", href: "/alerts", icon: "notifications", primary: false },
+  ].filter((action) => allowedNavPaths.includes(action.href));
+
   return (
-    <div className="min-h-screen flex flex-col bg-background text-on-background font-sans w-full">
+    <div className="min-h-screen flex flex-col text-on-background font-sans w-full">
       <GlobalNavbar />
 
-      <main className="flex-1 w-full px-4 sm:px-6 py-6 space-y-6 bg-background">
+      <main className="ftm-dash-v1 flex-1 w-full space-y-5 px-4 pb-8 pt-1 sm:px-6 lg:px-8">
         {sourceErrors.length > 0 && <div role="status" className="flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900 sm:flex-row sm:items-start sm:justify-between"><div><p className="font-bold">Some dashboard sources could not be loaded</p><ul className="mt-1 list-inside list-disc">{sourceErrors.map((sourceError) => <li key={sourceError}>{sourceError}</li>)}</ul><p className="mt-1 text-[10px]">Available trip and vehicle data is still shown; affected module metrics may be incomplete.</p></div><button type="button" onClick={() => window.location.reload()} className="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-[10px] font-bold hover:bg-amber-100">Retry</button></div>}
-        
-        {/* Top Header Command Banner */}
-        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 bg-surface-container-lowest backdrop-blur-md rounded-2xl p-6 border border-outline-variant shadow-soft w-full">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-                Logistics Command Center
-              </h1>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-pink-50 px-3 py-1 text-xs font-semibold text-pink-700 border border-pink-200/80">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                Live Telemetry
-              </span>
-            </div>
-            <p className="mt-1 text-xs sm:text-sm text-slate-500">
-              Full-width real-time dispatch overview, vehicle tracking, comprehensive cost analysis, and advanced fleet optimization analytics.
-            </p>
-          </div>
-        </div>
 
-        {/* Top KPI Cards - Clean Essentials Only (15 Cards) */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-2.5 w-full">
-          
-          {/* Card 1: Active Vehicles */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('active-vehicles')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">directions_car</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Live</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('active-vehicles', activeVehiclesCount)}{renderKPITrend('active-vehicles')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Active Vehicles</div>
-            </div>
+        {/* Hero */}
+        <section id="ftm-dashboard-top" className="ftm-hero relative flex scroll-mt-24 flex-col gap-6 overflow-hidden rounded-[24px] p-7 text-white xl:flex-row xl:items-center xl:justify-between">
+          <svg aria-hidden="true" className="pointer-events-none absolute right-0 top-0 h-full opacity-20" width="420" viewBox="0 0 420 180" fill="none">
+            <circle cx="330" cy="40" r="120" stroke="#fff" strokeWidth="1.5" />
+            <circle cx="330" cy="40" r="80" stroke="#fff" strokeWidth="1.5" />
+            <circle cx="330" cy="40" r="40" stroke="#fff" strokeWidth="1.5" />
+          </svg>
+          <div className="relative">
+            <span className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/15 px-3 py-1 text-[11px] font-bold">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+              Live Telemetry
+            </span>
+            <h1 className="mt-3 text-3xl font-extrabold tracking-tight">Welcome back, {firstNameOf(profile.name)} 👋</h1>
+            <p className="mt-1 max-w-xl text-sm text-white/80">Logistics Command Center — real-time dispatch overview, vehicle tracking, cost analysis and fleet optimization at a glance.</p>
           </div>
+          {heroActions.length > 0 && (
+            <div className="relative flex shrink-0 flex-wrap gap-3">
+              {heroActions.map((action) => (
+                <Link
+                  key={action.href}
+                  href={action.href}
+                  className={action.primary
+                    ? "flex h-11 items-center gap-2 rounded-full bg-[#ffffff] px-5 text-sm font-bold text-[#b80049] hover:bg-pink-50"
+                    : "flex h-11 items-center gap-2 rounded-full border border-white/30 bg-white/15 px-5 text-sm font-bold text-white hover:bg-white/25"}
+                >
+                  <span className="material-symbols-outlined text-[20px]">{action.icon}</span>
+                  {action.label}
+                </Link>
+              ))}
+            </div>
+          )}
+        </section>
 
-          {/* Card 2: Active Trips */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('in-transit')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">alt_route</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Active</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('in-transit', activeTripsCount)}{renderKPITrend('in-transit')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Active Trips</div>
-            </div>
+        {/* Featured KPIs (click a card to hide/show its value; Ctrl+S shows all, Ctrl+H hides all) */}
+        <section className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {featuredKPIs.map((kpi) => (
+            <button key={kpi.id} type="button" onClick={() => toggleKPIVisibility(kpi.id)} className="ftm-card p-5 text-left transition-colors hover:border-pink-300">
+              <div className="flex items-center justify-between">
+                <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#fff0f6] text-[#b80049]">
+                  <span className="material-symbols-outlined text-[20px]">{kpi.icon}</span>
+                </span>
+                <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${kpi.badgeClass}`}>{kpi.badge}</span>
+              </div>
+              <div className="mt-4 text-sm font-semibold text-slate-500">{kpi.label}</div>
+              <div className="mt-1 flex items-end justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-3xl font-extrabold tracking-tight text-slate-900">{renderKPIValue(kpi.id, kpi.value)}{renderKPITrend(kpi.id)}</div>
+                  <div className="mt-0.5 text-xs font-bold">
+                    {kpi.change
+                      ? <span className={kpi.change.startsWith("−") ? "text-red-500" : "text-emerald-600"}>{kpi.change}</span>
+                      : <span className="text-slate-400">—</span>}
+                    <span className="ml-1 font-medium text-slate-500">vs last wk</span>
+                  </div>
+                </div>
+                <Sparkline values={kpi.series} title={`Last 8 days: ${kpi.caption}`} />
+              </div>
+            </button>
+          ))}
+        </section>
+
+        {/* Remaining KPIs */}
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-lg font-extrabold text-slate-900">More fleet KPIs</h2>
+            <span className="text-xs text-slate-500">Click a card to hide/show its value</span>
           </div>
-
-          {/* Card 3: Pending Bookings */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('pending-bookings')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">book_online</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Queue</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('pending-bookings', pendingBookingsCount)}{renderKPITrend('pending-bookings')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Pending Bookings</div>
-            </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {compactKPIs.map((kpi) => (
+              <button key={kpi.id} type="button" onClick={() => toggleKPIVisibility(kpi.id)} className="ftm-card ftm-card-sm p-3.5 text-left transition-colors hover:border-pink-300">
+                <div className="flex items-center justify-between text-[#b80049]">
+                  <span className="material-symbols-outlined text-[20px]">{kpi.icon}</span>
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${kpi.badgeClass}`}>{kpi.badge}</span>
+                </div>
+                <div className="mt-2 text-[17px] font-extrabold leading-tight text-slate-900">{renderKPIValue(kpi.id, kpi.value)}{renderKPITrend(kpi.id)}</div>
+                <div className="mt-0.5 text-[11px] font-semibold text-slate-500">{kpi.label}</div>
+              </button>
+            ))}
           </div>
+        </section>
 
-          {/* Card 4: Total Vehicles */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-vehicles')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">local_shipping</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Fleet</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-vehicles', totalVehiclesCount)}{renderKPITrend('total-vehicles')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Vehicles</div>
-            </div>
-          </div>
-
-          {/* Card 5: Completed Trips */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('completed-trips')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">done</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Done</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('completed-trips', completedTrips)}{renderKPITrend('completed-trips')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Completed Trips</div>
-            </div>
-          </div>
-
-          {/* Card 6: Total Bookings */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-bookings')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">receipt_long</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Orders</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-bookings', totalBookingsCount)}{renderKPITrend('total-bookings')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Bookings</div>
-            </div>
-          </div>
-
-          {/* Card 7: Registered Drivers */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-drivers')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">badge</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">Staff</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-drivers', totalDriversCount)}{renderKPITrend('total-drivers')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Drivers Assigned</div>
-            </div>
+        {/* Live Fleet Map + Fleet Utilization + Fuel Consumption */}
+        <section id="ftm-live-map" className="grid scroll-mt-24 grid-cols-1 gap-5 xl:grid-cols-12">
+          <div className="ftm-card p-5 xl:col-span-7">
+            <MapSection 
+              trips={snapshot.trips}
+              vehicles={snapshot.vehicles}
+              bookings={snapshot.bookings}
+              parcels={parcels}
+              drivers={snapshot.drivers}
+              routePlans={snapshot.routePlans ?? []}
+              isFullscreen={false}
+              onToggleFullscreen={() => setDashboardFullscreen(true)}
+            />
           </div>
 
-          {/* Card 8: Fleet Efficiency */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('fleet-efficiency')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">bolt</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">Avg</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('fleet-efficiency', fleetEfficiency)} km/L{renderKPITrend('fleet-efficiency')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Fleet Efficiency</div>
-            </div>
-          </div>
-
-          {/* Card 9: On-Time Rate */}
-          {onTimeRate != null && <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('on-time-rate')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">trending_up</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-pink-50 text-pink-700">KPI</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('on-time-rate', onTimeRate)}%{renderKPITrend('on-time-rate')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">On-Time Rate</div>
-            </div>
-          </div>}
-
-          {/* Card 10: System Health */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('system-health')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">health_and_safety</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">100%</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('system-health', systemHealth)}{renderKPITrend('system-health')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">System Health</div>
-            </div>
-          </div>
-
-          {/* Card 11: Total Parcels */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-parcels')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">local_shipping</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Count</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-parcels', totalParcelsCount)}{renderKPITrend('total-parcels')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Total Parcels</div>
-            </div>
-          </div>
-
-          {/* Card 12: Reported Fuel Volume */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('total-fuel')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">local_gas_station</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">Fuel log</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('total-fuel', totalFuelReported.toFixed(1))}L{renderKPITrend('total-fuel')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Reported Fuel Volume</div>
-            </div>
-          </div>
-
-          {/* Card 15: Total Operating Cost */}
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('operating-cost')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">account_balance</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-red-50 text-red-700">Cost</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('operating-cost', `₱${totalOperatingCost.toFixed(2)}`)}{renderKPITrend('operating-cost')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Operating Cost</div>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('driver-allowance')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">payments</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-violet-50 text-violet-700">Driver</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('driver-allowance', `₱${driverAllowanceCost.toFixed(2)}`)}{renderKPITrend('driver-allowance')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Driver Allowance</div>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-slate-200 bg-white p-3 cursor-pointer hover:border-pink-300 transition-colors" onClick={() => toggleKPIVisibility('mobile-data')}>
-            <div className="flex items-center justify-between text-[#b80049]">
-              <span className="material-symbols-outlined text-[20px]">wifi</span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-sky-50 text-sky-700">Data</span>
-            </div>
-            <div className="mt-2">
-              <div className="text-lg font-black text-slate-900">{renderKPIValue('mobile-data', `₱${mobileDataCost.toFixed(2)}`)}{renderKPITrend('mobile-data')}</div>
-              <div className="text-[11px] font-medium text-slate-500 leading-tight mt-0.5">Data &amp; Internet</div>
-            </div>
-          </div>
-
-        </div>
-
-        {/* 12-Column Full-Width Responsive Dashboard Grid - Map Centered with Charts on Sides */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch w-full">
-          
-          {/* Left Column: Fuel Consumption & Fleet Utilization Charts */}
-          <section className="col-span-12 lg:col-span-3 flex flex-col gap-6">
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <SpecializedLogistics 
-                trips={snapshot.trips} 
-                vehicles={snapshot.vehicles} 
-                bookings={snapshot.bookings} 
-              />
+          <div className="flex flex-col gap-5 xl:col-span-5">
+            <div className="ftm-card p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Fleet Utilization</h3>
+                  <p className="text-xs text-slate-500">Status across categories</p>
+                </div>
+                <span className="rounded-xl bg-pink-50 p-2 text-[#b80049]">
+                  <span className="material-symbols-outlined text-[18px]">bar_chart</span>
+                </span>
+              </div>
+              {fleetStatus.total > 0 ? (
+                <div className="mt-3 flex items-center gap-6">
+                  <div className="relative shrink-0">
+                    <Donut parts={fleetStatus.parts} size={132} thickness={18} />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <div className="text-2xl font-extrabold text-slate-900">{fleetStatus.utilized}%</div>
+                      <div className="text-[10px] font-semibold text-slate-500">utilized</div>
+                    </div>
+                  </div>
+                  <div className="flex-1 space-y-2 text-sm">
+                    {fleetStatus.parts.map((part) => (
+                      <div key={part.label} className="flex items-center gap-2">
+                        <span className="h-3 w-3 rounded-full" style={{ background: part.color }} />
+                        <span className="font-semibold text-slate-700">{part.label}</span>
+                        <span className="ml-auto font-extrabold text-slate-900">{part.count} · {part.percent}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-xs text-slate-500">No vehicle status data available yet.</div>
+              )}
+              {fleetUtilizationData.length > 0 && (
+                <div className="mt-4 h-[150px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={fleetUtilizationData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                      <XAxis dataKey="category" tick={{ fontSize: 9, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" height={30} />
+                      <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+                      <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                      <Bar dataKey="active" name="Active" fill="#b80049" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="idle" name="Idle" fill="#f472b6" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
             </div>
 
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <PerformanceMetrics 
-                trips={snapshot.trips} 
-                vehicles={snapshot.vehicles} 
-              />
-            </div>
-
-            {/* Fuel Consumption & Efficiency Chart - Left Side */}
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
+            <div className="ftm-card p-5 flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Fuel Consumption</h3>
@@ -855,201 +949,164 @@ export default function Home() {
                 }
               </div>
             </div>
+          </div>
+        </section>
 
-            {/* Fleet Utilization Chart */}
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Fleet Utilization</h3>
-                  <p className="text-xs text-slate-500">Status across categories</p>
-                </div>
-                <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                  <span className="material-symbols-outlined text-[18px]">bar_chart</span>
-                </span>
+        {/* Charts row */}
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="ftm-card p-5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Warehouse Throughput</h3>
+                <p className="text-xs text-slate-500">Inbound vs outbound</p>
               </div>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={fleetUtilizationData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="category" tick={{ fontSize: 9, fill: "#64748b" }} interval={0} angle={-15} textAnchor="end" height={30} />
-                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
-                    <Bar dataKey="active" name="Active" fill="#b80049" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="idle" name="Idle" fill="#f472b6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+              <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
+                <span className="material-symbols-outlined text-[18px]">warehouse</span>
+              </span>
             </div>
-          </section>
-
-          {/* Center Column: Live Fleet Map */}
-          <section className="col-span-12 lg:col-span-6 flex flex-col gap-6">
-            {/* Live Fleet Map Section - Center Focus */}
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex-grow">
-              <MapSection 
-                trips={snapshot.trips}
-                vehicles={snapshot.vehicles}
-                bookings={snapshot.bookings}
-                parcels={parcels}
-                drivers={snapshot.drivers}
-                routePlans={snapshot.routePlans ?? []}
-                isFullscreen={false}
-                onToggleFullscreen={() => setDashboardFullscreen(true)}
-              />
+            <div className="h-[180px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={warehouseThroughputData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 10, fill: "#64748b" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                  <Legend wrapperStyle={{ fontSize: "10px" }} />
+                  <Bar dataKey="inbound" name="Inbound" fill="#b80049" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="outbound" name="Outbound" fill="#f472b6" radius={[4, 4, 0, 0]} />
+                </ComposedChart>
+              </ResponsiveContainer>
             </div>
-
-            {/* Center column secondary charts below map */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-              {/* Warehouse Throughput */}
-              <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">Warehouse Throughput</h3>
-                    <p className="text-xs text-slate-500">Inbound vs outbound</p>
-                  </div>
-                  <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                    <span className="material-symbols-outlined text-[18px]">warehouse</span>
-                  </span>
-                </div>
-                <div className="h-[180px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart data={warehouseThroughputData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                      <XAxis dataKey="hour" tick={{ fontSize: 10, fill: "#64748b" }} />
-                      <YAxis tick={{ fontSize: 10, fill: "#64748b" }} />
-                      <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
-                      <Legend wrapperStyle={{ fontSize: "10px" }} />
-                      <Bar dataKey="inbound" name="Inbound" fill="#b80049" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="outbound" name="Outbound" fill="#f472b6" radius={[4, 4, 0, 0]} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Driver Performance */}
-              <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">Driver Performance</h3>
-                    <p className="text-xs text-slate-500">Completed, active, and delayed trips</p>
-                  </div>
-                  <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                    <span className="material-symbols-outlined text-[18px]">badge</span>
-                  </span>
-                </div>
-                <div className="h-[180px] w-full">
-                  {driverPerformanceData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={driverPerformanceData} layout="vertical" margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                        <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#64748b" }} />
-                        <YAxis dataKey="driver" type="category" tick={{ fontSize: 9, fill: "#64748b" }} width={80} />
-                        <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
-                        <Bar dataKey="completed" name="Completed" fill="#10b981" radius={[0, 4, 4, 0]} />
-                        <Bar dataKey="active" name="Active" fill="#ec2188" radius={[0, 4, 4, 0]} />
-                        <Bar dataKey="delayed" name="Delayed" fill="#f43f5e" radius={[0, 4, 4, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-xs text-slate-500">
-                      No driver trip data available yet.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-          </section>
-
-          {/* Right Column: Delivery Performance & Driver Safety Charts */}
-          <aside className="col-span-12 lg:col-span-3 flex flex-col gap-6">
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <ResourceData 
-                bookings={snapshot.bookings} 
-                trips={snapshot.trips}
-              />
-            </div>
-
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <SensorHub 
-                vehicles={snapshot.vehicles}
-                trips={snapshot.trips}
-              />
-            </div>
-
-            {/* Delivery Performance Chart - Right Side */}
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5 flex flex-col justify-between">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Delivery Performance</h3>
-                  <p className="text-xs text-slate-500">On-time vs delayed %</p>
-                </div>
-                <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                  <span className="material-symbols-outlined text-[18px]">trending_up</span>
-                </span>
-              </div>
-              <div className="h-[210px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={deliveryPerformanceData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748b" }} />
-                    <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
-                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
-                    <Legend wrapperStyle={{ fontSize: "10px" }} />
-                    <Bar dataKey="onTime" name="On-Time %" fill="#ec2188" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="delayed" name="Delayed %" fill="#fda4af" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Fleet Cost Breakdown moved to Right Column */}
-            <div className="rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-900">Fleet Cost Breakdown</h3>
-                  <p className="text-xs text-slate-500">OpEx distribution</p>
-                </div>
-                <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
-                  <span className="material-symbols-outlined text-[18px]">pie_chart</span>
-                </span>
-              </div>
-              <div className="h-[180px] w-full flex items-center justify-center">
-                {costBreakdownData.length > 0 ? <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={costBreakdownData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={40}
-                      outerRadius={65}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {costBreakdownData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }}
-                      formatter={(value, _name, item) => [
-                        `${value ?? 0}% (${Number(item?.payload?.amount || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" })})`,
-                        "Share",
-                      ]}
-                    />
-                    <Legend iconSize={7} wrapperStyle={{ fontSize: "10px" }} />
-                  </PieChart>
-                </ResponsiveContainer> : <div className="flex h-full items-center justify-center text-center text-xs text-slate-500">No cost data available.</div>}
-              </div>
-            </div>
-          </aside>
-
-          <div className="col-span-12 rounded-2xl border border-pink-100 bg-white/90 backdrop-blur-md p-5 shadow-sm shadow-pink-500/5">
-            <MissionLogs trips={snapshot.trips} />
           </div>
 
-        </div>
+          <div className="ftm-card p-5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Driver Performance</h3>
+                <p className="text-xs text-slate-500">Completed, active, and delayed trips</p>
+              </div>
+              <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
+                <span className="material-symbols-outlined text-[18px]">badge</span>
+              </span>
+            </div>
+            <div className="h-[180px] w-full">
+              {driverPerformanceData.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={driverPerformanceData} layout="vertical" margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 10, fill: "#64748b" }} />
+                    <YAxis dataKey="driver" type="category" tick={{ fontSize: 9, fill: "#64748b" }} width={80} />
+                    <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                    <Bar dataKey="completed" name="Completed" fill="#10b981" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="active" name="Active" fill="#ec2188" radius={[0, 4, 4, 0]} />
+                    <Bar dataKey="delayed" name="Delayed" fill="#f43f5e" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-xs text-slate-500">
+                  No driver trip data available yet.
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="ftm-card p-5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delivery Performance</h3>
+                <p className="text-xs text-slate-500">On-time vs delayed %</p>
+              </div>
+              <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
+                <span className="material-symbols-outlined text-[18px]">trending_up</span>
+              </span>
+            </div>
+            <div className="h-[210px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={deliveryPerformanceData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10, fill: "#64748b" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "#64748b" }} />
+                  <Tooltip contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }} />
+                  <Legend wrapperStyle={{ fontSize: "10px" }} />
+                  <Bar dataKey="onTime" name="On-Time %" fill="#ec2188" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="delayed" name="Delayed %" fill="#fda4af" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="ftm-card p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Fleet Cost Breakdown</h3>
+                <p className="text-xs text-slate-500">OpEx distribution</p>
+              </div>
+              <span className="p-2 rounded-xl bg-pink-50 text-[#b80049]">
+                <span className="material-symbols-outlined text-[18px]">pie_chart</span>
+              </span>
+            </div>
+            <div className="h-[180px] w-full flex items-center justify-center">
+              {costBreakdownData.length > 0 ? <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={costBreakdownData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={40}
+                    outerRadius={65}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {costBreakdownData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#ffffff", borderRadius: 12, border: "1px solid #fbcfe8" }}
+                    formatter={(value, _name, item) => [
+                      `${value ?? 0}% (${Number(item?.payload?.amount || 0).toLocaleString("en-PH", { style: "currency", currency: "PHP" })})`,
+                      "Share",
+                    ]}
+                  />
+                  <Legend iconSize={7} wrapperStyle={{ fontSize: "10px" }} />
+                </PieChart>
+              </ResponsiveContainer> : <div className="flex h-full items-center justify-center text-center text-xs text-slate-500">No cost data available.</div>}
+            </div>
+          </div>
+        </section>
+
+        {/* Logistics widgets row */}
+        <section className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
+          <div className="ftm-card p-5">
+            <SpecializedLogistics 
+              trips={snapshot.trips} 
+              vehicles={snapshot.vehicles} 
+              bookings={snapshot.bookings} 
+            />
+          </div>
+          <div className="ftm-card p-5">
+            <PerformanceMetrics 
+              trips={snapshot.trips} 
+              vehicles={snapshot.vehicles} 
+            />
+          </div>
+          <div className="ftm-card p-5">
+            <ResourceData 
+              bookings={snapshot.bookings} 
+              trips={snapshot.trips}
+            />
+          </div>
+          <div className="ftm-card p-5">
+            <SensorHub 
+              vehicles={snapshot.vehicles}
+              trips={snapshot.trips}
+            />
+          </div>
+        </section>
+
+        <section id="ftm-mission-logs" className="ftm-card scroll-mt-24 p-5">
+          <MissionLogs trips={snapshot.trips} />
+        </section>
       </main>
 
       <GlobalFooter />

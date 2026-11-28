@@ -1170,3 +1170,49 @@ html[data-ftm-density="compact"] .ftm-soft-app [class*="p-6"] {
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
   border: 1px solid rgba(226, 232, 240, 0.8);
 }
+
+/* ===== FTM side menu shell (GlobalNavbar) ===== */
+@media (min-width: 1024px) {
+  .ftm-soft-app:has(.ftm-sidebar) {
+    padding-left: 272px;
+    transition: padding-left 200ms ease-out;
+  }
+  .ftm-soft-app:has(.ftm-sidebar[data-collapsed="true"]) {
+    padding-left: 84px;
+  }
+}
+
+.ftm-sidebar-scroll::-webkit-scrollbar { width: 6px; }
+.ftm-sidebar-scroll::-webkit-scrollbar-thumb { background: #f1d3df; border-radius: 6px; }
+.ftm-sidebar-scroll { scrollbar-width: thin; scrollbar-color: #f1d3df transparent; }
+
+/* ===== Operations Center (dashboard home) — side-menu design ===== */
+.ftm-soft-app:has(.ftm-dash-v1) {
+  background: #fbf6f8;
+}
+.dark .ftm-soft-app:has(.ftm-dash-v1) {
+  background: radial-gradient(circle at 8% 4%, rgba(51, 65, 85, 0.34), transparent 34%), linear-gradient(135deg, #111827, #0f172a 58%, #172033);
+}
+.ftm-dash-v1 .ftm-card {
+  background: #ffffff;
+  border: 1px solid #f1e4ea;
+  border-radius: 20px;
+  box-shadow: 0 6px 24px rgba(184, 0, 73, 0.06);
+}
+.dark .ftm-dash-v1 .ftm-card {
+  background: linear-gradient(145deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.9));
+  border-color: rgba(148, 163, 184, 0.12);
+  box-shadow: 14px 14px 28px rgba(2, 6, 23, 0.32);
+}
+.ftm-dash-v1 .ftm-card-sm { border-radius: 16px; }
+.ftm-dash-v1 .ftm-hero {
+  background: linear-gradient(120deg, #8f0038 0%, #b80049 55%, #e5167e 130%);
+}
+/* Embedded legacy widgets sit on the white v1 cards without their own panel chrome. */
+.ftm-dash-v1 .ftm-card .panel,
+.ftm-dash-v1 .ftm-card .bg-panel-gradient {
+  background: transparent !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}

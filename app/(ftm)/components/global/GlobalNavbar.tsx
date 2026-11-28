@@ -1,63 +1,16 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
-import { startTransition, useEffect, useRef, useState } from "react";
-import { AppRole, getCurrentRole, getDashboardRouteForRole } from "../../lib/roleAccess";
-import { getAllowedNavPaths, getProfileActions } from "../../lib/permissions";
-import { normalizeRole } from "../../lib/roleAccess";
-import { supabase } from "../../lib/supabase/supabaseClient";
+import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { AppRole, getDashboardRouteForRole } from "../../lib/roleAccess";
+import { getAllowedNavPaths, getProfileActions, hasPermission } from "../../lib/permissions";
 import { signOut } from "../../lib/auth";
-import airshipLogo from "../../../../public/ftm/airship-logo.png";
-import ThemeToggle from "./ThemeToggle";
+import { getAlerts } from "../../lib/api";
+import { useTheme } from "../providers/ThemeProvider";
 import FtmProfileAvatar from "./FtmProfileAvatar";
-
-type Child = { label: string; path: string; description: string };
-type Item = { label: string; path: string; children?: Child[] };
-
-const ITEMS: Item[] = [
-  { label: "Operations Center", path: "/dashboard" },
-  { label: "Alerts", path: "/alerts", children: [
-  { label: "Active Alerts", path: "/alerts?tab=active", description: "Review current operational alerts." },
-    { label: "Maintenance Notifications", path: "/alerts?tab=maintenance", description: "Review maintenance notices." },
-    { label: "Safety Events", path: "/alerts?tab=safety", description: "Inspect recent safety events." },
-    { label: "System History", path: "/alerts?tab=history", description: "Review historical system events." },
-    { label: "Manage Users", path: "/users", description: "Manage FTM accounts and roles." },
-  ] },
-  { label: "Cost Analysis", path: "/cost" },
-  { label: "Driver Performance", path: "/driver/overview", children: [
-    { label: "Overview", path: "/driver/overview", description: "Monitor driver performance." },
-    { label: "Performance", path: "/driver/performance", description: "Inspect efficiency and trends." },
-    { label: "Safety Scores", path: "/driver/safety", description: "Review safety signals." },
-    { label: "Leaderboard", path: "/driver/leaderboard", description: "Compare driver rankings." },
-  ] },
-  { label: "Fuel Management", path: "/fuel", children: [
-    { label: "Fuel Overview", path: "/fuel", description: "See current fuel health." },
-    { label: "Consumption", path: "/fuel/consumption", description: "Track consumption patterns." },
-    { label: "Efficiency", path: "/fuel/efficiency", description: "Measure fleet efficiency." },
-    { label: "Refueling Log", path: "/fuel/refueling-log", description: "Review refueling records." },
-  ] },
-  { label: "Gallery", path: "/fuel/receipts", children: [
-    { label: "Receipt Gallery", path: "/fuel/receipts", description: "Browse driver expense receipts." },
-    { label: "Fuel Photo Log", path: "/fuel/photo-log", description: "Review recent image submissions." },
-    { label: "Proof of Pickup", path: "/fuel/proof-pickup", description: "Verify pickup confirmations and image proof." },
-    { label: "Destination Gallery", path: "/fuel/destination-gallery", description: "Review destination photo submissions." },
-    { label: "Parcel History", path: "/fuel/parcel-history", description: "Review parcel status and movement history." },
-  ] },
-  { label: "FVM", path: "/fvm", children: [
-    { label: "Fleet Overview", path: "/fvm", description: "View fleet status." },
-    { label: "Inventory", path: "/fvm/inventory", description: "Browse vehicles and assets." },
-    { label: "Analytics", path: "/fvm/analytics", description: "Inspect fleet analytics." },
-    { label: "Maintenance", path: "/fvm/maintenance", description: "Manage service schedules." },
-  ] },
-  { label: "VRDS", path: "/vrds/dashboard", children: [
-    { label: "Dashboard", path: "/vrds/dashboard", description: "Live dispatch overview." },
-    { label: "Parcels", path: "/vrds/parcels", description: "Receive and group parcels." },
-    { label: "Bookings", path: "/vrds/bookings", description: "Assign and confirm dispatches." },
-    { label: "Active Deliveries", path: "/vrds/missions", description: "Track active deliveries." },
-    { label: "Route Planning", path: "/vrds/route-planning", description: "Build optimized routes." },
-    { label: "History", path: "/vrds/history", description: "Review completed deliveries." },
-  ] },
-];
+import { FTM_NAV_GROUPS, basePath, type FtmNavChild, type FtmNavGroup, type FtmNavItem } from "./ftmNavConfig";
+import { firstNameOf, formatRoleLabel, useFtmProfile } from "./useFtmProfile";
 
 const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
   fleet_manager: [
@@ -141,232 +94,453 @@ const ROLE_NAV_PATHS: Record<AppRole, string[]> = {
   ],
 };
 
-function formatRoleLabel(role: AppRole | null | undefined): string {
-  if (!role) return "User";
-  return role.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+const SIDEBAR_STORAGE_KEY = "ftm.sidebarCollapsed";
+const DASHBOARD_PATHS = ["/dashboard", "/ftm-dashboard"];
+
+type DashboardTab = { label: string; target: string };
+const DASHBOARD_TABS: DashboardTab[] = [
+  { label: "Overview", target: "ftm-dashboard-top" },
+  { label: "Live Map", target: "ftm-live-map" },
+  { label: "Activity", target: "ftm-mission-logs" },
+];
+
+function Icon({ name, className = "" }: { name: string; className?: string }) {
+  return <span aria-hidden="true" className={`material-symbols-outlined shrink-0 text-[20px] leading-none ${className}`}>{name}</span>;
+}
+
+function greeting(now: Date) {
+  const hour = now.getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
 }
 
 export default function GlobalNavbar() {
-  const pathname = usePathname();
+  const pathname = usePathname() || "/";
+  const searchParams = useSearchParams();
   const router = useRouter();
-  const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const profile = useFtmProfile();
+  const currentRole = profile.role;
+
+  const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [mobileChild, setMobileChild] = useState<string | null>(null);
-  const [profileOpen, setProfileOpen] = useState(false);
-  const [currentRole, setCurrentRole] = useState<AppRole | null>(null);
-  const [profileName, setProfileName] = useState("Account");
-  const [profileEmail, setProfileEmail] = useState("account@airship.com");
-  const navRef = useRef<HTMLElement | null>(null);
-  const profileRef = useRef<HTMLDivElement | null>(null);
+  const [openKeys, setOpenKeys] = useState<Set<string>>(new Set());
+  const [alertCount, setAlertCount] = useState(0);
+  const [query, setQuery] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [dashboardTab, setDashboardTab] = useState(DASHBOARD_TABS[0].target);
+  const [greetingText, setGreetingText] = useState("Welcome");
+  const searchRef = useRef<HTMLDivElement | null>(null);
+
   const homeDashboardPath = getDashboardRouteForRole(currentRole) || "/ftmAuth";
+  const profileActions = getProfileActions(currentRole);
+  const canViewAlerts = hasPermission(currentRole, "alerts", "view");
+  const isDashboard = DASHBOARD_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
+
+  // Visible menu = same rule as the old top navbar: getAllowedNavPaths(role).
+  const visibleGroups = useMemo<FtmNavGroup[]>(() => {
+    const allowedPaths = currentRole ? getAllowedNavPaths(currentRole) : [];
+    const allowed = (path: string) => allowedPaths.includes(basePath(path));
+    return FTM_NAV_GROUPS.map((group) => ({
+      ...group,
+      items: group.items
+        .map((item) => {
+          const children = item.children?.filter((child) => allowed(child.path));
+          if (allowed(item.path)) return children ? { ...item, children } : item;
+          return children?.length ? { ...item, path: children[0].path, children } : null;
+        })
+        .filter((item): item is FtmNavItem => item !== null),
+    })).filter((group) => group.items.length > 0);
+  }, [currentRole]);
+
+  const flatLinks = useMemo(() => visibleGroups.flatMap((group) => group.items.flatMap((item) => (
+    item.children?.length
+      ? item.children.map((child) => ({ label: child.label, path: child.path, section: item.label, icon: item.icon }))
+      : [{ label: item.label, path: item.path, section: group.title, icon: item.icon }]
+  ))), [visibleGroups]);
+
+  // Longest matching route wins, so /fuel/receipts lights up Gallery, not Fuel Management.
+  const active = useMemo(() => {
+    const current = isDashboard ? "/dashboard" : pathname;
+    const tab = searchParams?.get("tab");
+    let best: { key: string; childPath: string | null; length: number } | null = null;
+    for (const group of visibleGroups) {
+      for (const item of group.items) {
+        const candidates: Array<{ path: string; child: FtmNavChild | null }> = [
+          { path: item.path, child: null },
+          ...(item.children ?? []).map((child) => ({ path: child.path, child })),
+        ];
+        for (const candidate of candidates) {
+          const candidateBase = basePath(candidate.path);
+          if (current !== candidateBase && !current.startsWith(`${candidateBase}/`)) continue;
+          const candidateTab = new URLSearchParams(candidate.path.split("?")[1] ?? "").get("tab");
+          const tabScore = candidateTab ? (candidateTab === (tab ?? "active") ? 1 : -1) : 0;
+          if (tabScore < 0) continue;
+          const length = candidateBase.length * 2 + tabScore + (candidate.child ? 0 : -1);
+          if (!best || length > best.length) {
+            best = { key: item.key, childPath: candidate.child?.path ?? null, length };
+          }
+        }
+      }
+    }
+    return best;
+  }, [isDashboard, pathname, searchParams, visibleGroups]);
+
+  const activeItem = visibleGroups.flatMap((group) => group.items).find((item) => item.key === active?.key) ?? null;
 
   useEffect(() => {
-    let active = true;
-    const hydrateProfile = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const { data } = sessionData.session?.user
-        ? { data: { user: sessionData.session.user } }
-        : await supabase.auth.getUser();
-      if (!active) return;
-      const authUser = data.user;
-      const role = normalizeRole(authUser?.app_metadata?.role ?? authUser?.user_metadata?.role) ?? getCurrentRole();
-      const storedEmail = window.localStorage.getItem("email");
-      setCurrentRole(role);
-      setProfileName(authUser?.user_metadata?.full_name || authUser?.email || window.localStorage.getItem("displayName") || storedEmail || "Account");
-      setProfileEmail(authUser?.email || storedEmail || "account@airship.com");
-    };
-    void hydrateProfile();
-    const { data: subscription } = supabase.auth.onAuthStateChange(() => void hydrateProfile());
-    return () => {
-      active = false;
-      subscription.subscription.unsubscribe();
-    };
+    const stored = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    startTransition(() => {
+      setCollapsed(stored === "true");
+      setGreetingText(greeting(new Date()));
+    });
   }, []);
 
-  const allowedPaths = currentRole ? getAllowedNavPaths(currentRole) : [];
-  const profileActions = getProfileActions(currentRole);
-  const isAllowedPath = (path: string) => allowedPaths.includes(path.split("?")[0]);
-  const primaryNavPath = currentRole === "fleet_manager" ? "/dashboard" : homeDashboardPath;
-  const visibleItems = ITEMS.map((item) => {
-    const visibleChildren = item.children?.filter((child) => isAllowedPath(child.path));
+  useEffect(() => {
+    startTransition(() => {
+      setMobileOpen(false);
+      setSearchOpen(false);
+      setQuery("");
+      if (active?.key) setOpenKeys((keys) => (keys.has(active.key) ? keys : new Set([...keys, active.key])));
+    });
+  }, [pathname, active?.key]);
 
-    if (isAllowedPath(item.path)) {
-      return visibleChildren ? { ...item, children: visibleChildren } : item;
-    }
-
-    return visibleChildren?.length ? { ...item, children: visibleChildren } : null;
-  }).filter((item): item is Item => item !== null).sort((left, right) => {
-    const homePath = primaryNavPath.split("?")[0];
-    const leftIsHome = left.path === homePath;
-    const rightIsHome = right.path === homePath;
-    if (leftIsHome === rightIsHome) return 0;
-    return leftIsHome ? -1 : 1;
-  });
+  // Real badge: number of ACTIVE alerts from /api/alerts (same source as the Alerts page).
+  useEffect(() => {
+    if (!canViewAlerts) return;
+    let alive = true;
+    const load = () => {
+      getAlerts({ status: "ACTIVE" })
+        .then((items: unknown) => { if (alive) setAlertCount(Array.isArray(items) ? items.length : 0); })
+        .catch(() => { if (alive) setAlertCount(0); });
+    };
+    load();
+    const id = window.setInterval(load, 60_000);
+    return () => { alive = false; window.clearInterval(id); };
+  }, [canViewAlerts]);
 
   useEffect(() => {
     const close = (event: PointerEvent) => {
-      if (!navRef.current?.contains(event.target as Node)) setOpenMenu(null);
-      if (profileRef.current && !profileRef.current.contains(event.target as Node)) setProfileOpen(false);
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) setSearchOpen(false);
     };
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
 
-  useEffect(() => {
-    startTransition(() => {
-      setOpenMenu(null);
-      setMobileOpen(false);
-      setMobileChild(null);
-      setProfileOpen(false);
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(!value));
+      return !value;
     });
-  }, [pathname]);
+  };
 
-  const activePath = (() => {
-    const currentPath = pathname.split("?")[0];
-    let bestMatch: string | null = null;
-
-    for (const item of visibleItems) {
-      const candidates = [item.path, ...(item.children ?? []).map((child) => child.path)];
-
-      for (const candidate of candidates) {
-        const candidatePath = candidate.split("?")[0];
-
-        if (currentPath === candidatePath || currentPath.startsWith(`${candidatePath}/`)) {
-          if (!bestMatch || candidatePath.length > bestMatch.length) {
-            bestMatch = candidatePath;
-          }
-        }
-      }
-    }
-
-    return bestMatch;
-  })();
-
-  const active = (item: Item) => {
-    if (!activePath) {
-      return false;
-    }
-
-    if (item.path.split("?")[0] === activePath) {
-      return true;
-    }
-
-    return !!item.children?.some((child) => child.path.split("?")[0] === activePath);
+  const toggleOpen = (key: string) => {
+    setOpenKeys((keys) => {
+      const next = new Set(keys);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   };
 
   const handleLogout = async () => {
     await signOut();
-    setProfileOpen(false);
     router.replace("/ftmAuth");
   };
 
-  return (
-    <header className="ftm-global-nav relative z-[1101] w-full">
-      <div className="hidden border-b border-white/70 bg-slate-100/70 text-xs text-slate-500 lg:block">
-        <div className="mx-auto flex h-9 max-w-[1700px] items-center justify-between px-7">
-          <div className="flex gap-5"><a href="tel:+639454418789" className="hover:text-white">☎ 0945 441 8789</a><a href="mailto:airshipexpress.s@gmail.com" className="hover:text-white">✉ airshipexpress.s@gmail.com</a></div>
-          <span className="flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full bg-pink-500" />Live network · Manila</span>
-        </div>
-      </div>
-      <div className="ftm-soft-nav-surface border-b border-white/80 bg-slate-100/80 shadow-[0_8px_30px_rgba(148,163,184,0.14)] backdrop-blur-xl">
-        <div className="mx-auto flex h-[48px] max-w-[1700px] items-center gap-5 px-4 sm:px-7">
-          <a href={homeDashboardPath} className="shrink-0 h-full flex items-center" aria-label="Go to your home dashboard">
-            <img src={airshipLogo.src} alt="Airship Express logo" className="h-full w-auto object-contain" />
-          </a>
-          <nav ref={navRef} className="hidden min-w-0 flex-1 items-center justify-center gap-2 lg:flex" aria-label="Main navigation">
-            {visibleItems.map((item) => (
-              <div key={item.path} className="relative shrink-0" onMouseEnter={() => item.children && setOpenMenu(item.path)} onMouseLeave={() => item.children && setOpenMenu(null)}>
-                {item.children ? (
-                  <div className={`flex items-center whitespace-nowrap rounded-lg text-xs font-semibold transition-colors ${active(item) || openMenu === item.path ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>
-                    <a href={item.path} className="rounded-l-lg px-3 py-2">{item.label}</a>
-                    <button type="button" onClick={() => setOpenMenu(openMenu === item.path ? null : item.path)} aria-haspopup="menu" aria-expanded={openMenu === item.path} aria-label={`Open ${item.label} menu`} className="rounded-r-lg px-1.5 py-2">
-                      <span className={`material-symbols-outlined text-[16px] transition-transform ${openMenu === item.path ? "rotate-180" : ""}`}>expand_more</span>
-                    </button>
-                  </div>
-                ) : <a href={item.path} className={`block whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${active(item) ? "bg-[#b80049] text-white" : "text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]"}`}>{item.label}</a>}
-                {item.children && openMenu === item.path && (
-                  <div className={`absolute top-full z-[1200] pt-2 ${item.children.length > 4 ? "left-1/2 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2" : "left-0 w-72"}`} role="menu">
-                    <div className="rounded-2xl border border-pink-200 bg-white p-2 shadow-[0_18px_45px_rgba(20,29,35,0.16)]">
-                      <div className="border-b border-pink-100 px-3 pb-2 pt-1 text-[10px] font-bold uppercase tracking-[0.2em] text-[#b80049]">{item.label}</div>
-                      <div className={item.children.length > 4 ? "grid grid-cols-2 gap-1" : ""}>
-                        {item.children.map((child) => <a key={child.path} href={child.path} role="menuitem" className="mt-1 flex min-w-0 flex-col rounded-xl px-3 py-2.5 hover:bg-pink-50"><span className="text-sm font-bold text-[#141d23]">{child.label}</span><span className="mt-0.5 text-xs text-[#6e6870]">{child.description}</span></a>)}
-                      </div>
-                    </div>
+  const searchResults = query.trim()
+    ? flatLinks.filter((link) => `${link.label} ${link.section}`.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 8)
+    : [];
+
+  const scrollToSection = (target: string) => {
+    setDashboardTab(target);
+    document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const canCreateBooking = currentRole ? getAllowedNavPaths(currentRole).includes("/vrds/bookings") : false;
+  const sectionTabs = !isDashboard && activeItem?.children && activeItem.children.length > 1 ? activeItem.children : null;
+
+  const renderNav = (isCollapsed: boolean) => (
+    <nav aria-label="Main navigation" className="ftm-sidebar-scroll -mx-1 flex-1 overflow-y-auto px-1">
+      {visibleGroups.map((group, groupIndex) => (
+        <div key={group.title}>
+          {isCollapsed ? (
+            groupIndex > 0 && <div className="mx-[18px] my-2.5 h-px bg-[#ead3dc] dark:bg-slate-700" />
+          ) : (
+            <div className={`px-3 pb-1.5 text-[10px] font-extrabold uppercase tracking-[.18em] text-[#a8939c] ${groupIndex ? "mt-4" : "mt-1"}`}>{group.title}</div>
+          )}
+          {group.items.map((item) => {
+            const isActive = active?.key === item.key;
+            const children = item.children ?? [];
+            const hasChildren = children.length > 1;
+            const isOpen = hasChildren && openKeys.has(item.key) && !isCollapsed;
+            const badge = item.key === "alerts" && alertCount > 0 ? alertCount : null;
+            const rowClass = `ftm-nav-item relative flex h-11 w-full items-center gap-3 rounded-[14px] text-sm font-semibold transition-colors ${isCollapsed ? "justify-center px-0" : "px-3"} ${isActive
+              ? "bg-[#b80049] text-white shadow-[0_8px_18px_rgba(184,0,73,0.28)]"
+              : "text-[#5b6b79] hover:bg-[#fff0f6] hover:text-[#b80049] dark:text-slate-300 dark:hover:bg-slate-800"}`;
+            const inner = (
+              <>
+                <Icon name={item.icon} />
+                {!isCollapsed && <span className="truncate">{item.label}</span>}
+                {badge != null && (isCollapsed
+                  ? <span className="absolute right-[18px] top-1.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" aria-label={`${badge} active alerts`} />
+                  : <span className={`ml-auto flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-extrabold ${isActive ? "bg-white text-[#b80049]" : "bg-red-500 text-white"}`}>{badge > 99 ? "99+" : badge}</span>)}
+                {hasChildren && !isCollapsed && (
+                  <Icon name="expand_more" className={`${badge != null ? "ml-2" : "ml-auto"} text-[18px] transition-transform ${isOpen ? "rotate-180" : ""}`} />
+                )}
+              </>
+            );
+            return (
+              <div key={item.key} className="mb-0.5">
+                {hasChildren && !isCollapsed ? (
+                  <button type="button" className={rowClass} onClick={() => toggleOpen(item.key)} aria-expanded={isOpen}>{inner}</button>
+                ) : (
+                  <Link href={item.path} className={rowClass} title={isCollapsed ? item.label : undefined} aria-label={isCollapsed ? item.label : undefined} aria-current={isActive ? "page" : undefined}>{inner}</Link>
+                )}
+                {isOpen && (
+                  <div className="mb-2 mt-1">
+                    {children.map((child) => {
+                      const childActive = isActive && active?.childPath === child.path;
+                      return (
+                        <Link
+                          key={child.path}
+                          href={child.path}
+                          aria-current={childActive ? "page" : undefined}
+                          className={`ml-[22px] flex h-[34px] items-center rounded-r-[10px] border-l-2 pl-[22px] pr-3 text-[13px] transition-colors ${childActive
+                            ? "border-[#b80049] bg-[#fff0f6] font-bold text-[#b80049] dark:bg-slate-800"
+                            : "border-[#f1e4ea] font-medium text-[#5b6b79] hover:bg-[#fff0f6] hover:text-[#b80049] dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"}`}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            ))}
-          </nav>
+            );
+          })}
+        </div>
+      ))}
+    </nav>
+  );
 
-          <div className="hidden shrink-0 items-center gap-2 lg:flex">
-            <ThemeToggle className="ml-2" />
-          </div>
-
-          <div ref={profileRef} className="relative hidden lg:block">
+  const renderSidebarBody = (isCollapsed: boolean, inDrawer: boolean) => (
+    <>
+      <div className="mb-3 flex h-12 items-center gap-3 px-1">
+        <button
+          type="button"
+          onClick={inDrawer ? () => setMobileOpen(false) : toggleCollapsed}
+          title={inDrawer ? "Close menu" : isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-label={inDrawer ? "Close menu" : isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#b80049] text-sm font-extrabold text-white shadow-lg shadow-[#b80049]/30"
+        >
+          AX
+        </button>
+        {!isCollapsed && (
+          <>
+            <Link href={homeDashboardPath} className="min-w-0 leading-tight" aria-label="Go to your home dashboard">
+              <div className="text-[15px] font-extrabold tracking-tight text-[#141d23] dark:text-white">AIRSHIP EXPRESS</div>
+              <div className="text-[10px] font-bold tracking-[.14em] text-[#b80049]">FLEET &amp; TRANSPORT</div>
+            </Link>
             <button
               type="button"
-              onClick={() => setProfileOpen((current) => !current)}
-              className={`group flex min-w-[214px] items-center gap-2.5 rounded-xl px-1.5 py-1 text-left transition-all duration-200 ${profileOpen ? "bg-pink-50" : "hover:bg-pink-50/70"}`}
-              aria-haspopup="menu"
-              aria-expanded={profileOpen}
+              onClick={inDrawer ? () => setMobileOpen(false) : toggleCollapsed}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-xl text-[#5b6b79] hover:bg-[#fff0f6] dark:text-slate-400 dark:hover:bg-slate-800"
+              aria-label={inDrawer ? "Close menu" : "Collapse sidebar"}
             >
-              <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white shadow-[inset_0_-3px_0_rgba(0,0,0,0.12)]">
-                <FtmProfileAvatar name={profileName} className="h-full w-full rounded-full object-cover" />
-                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
-              </span>
-              <span className="hidden min-w-0 flex-1 xl:block">
-                <span className="block text-[10px] font-extrabold uppercase tracking-[0.2em] leading-none text-pink-700">{formatRoleLabel(currentRole)}</span>
-                <span className="mt-1 block max-w-[132px] truncate text-[13px] font-extrabold leading-none text-[#141d23]">{profileName}</span>
-              </span>
-              <span className={`material-symbols-outlined text-[20px] text-[#5b6b79] transition-transform duration-200 group-hover:text-[#b80049] ${profileOpen ? "rotate-180 text-[#b80049]" : ""}`}>expand_more</span>
+              <Icon name={inDrawer ? "close" : "left_panel_close"} />
             </button>
+          </>
+        )}
+      </div>
 
-            {profileOpen && (
-              <div className="absolute right-0 top-full z-[1201] mt-3 w-64 overflow-hidden rounded-2xl border border-pink-100 bg-white shadow-[0_20px_50px_rgba(20,29,35,0.18)]">
-                <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3.5">
-                  <div className="flex items-center gap-3">
-                    <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#b80049] text-sm font-black text-white">
-                      <FtmProfileAvatar name={profileName} className="h-full w-full rounded-full object-cover" />
-                      <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
+      {renderNav(isCollapsed)}
+
+      <div className="mt-2 space-y-1 border-t border-[#f1e4ea] pt-3 dark:border-slate-700">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={isCollapsed ? "Dark mode" : undefined}
+          aria-label="Toggle dark mode"
+          className={`flex h-11 w-full items-center gap-3 rounded-[14px] text-sm font-semibold text-[#5b6b79] transition-colors hover:bg-[#fff0f6] hover:text-[#b80049] dark:text-slate-300 dark:hover:bg-slate-800 ${isCollapsed ? "justify-center" : "px-3"}`}
+        >
+          <Icon name={theme === "dark" ? "light_mode" : "dark_mode"} />
+          {!isCollapsed && (
+            <>
+              <span>Dark mode</span>
+              <span className={`relative ml-auto h-5 w-9 rounded-full transition-colors ${theme === "dark" ? "bg-[#b80049]" : "bg-[#f1e4ea]"}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-[#ffffff] shadow transition-all ${theme === "dark" ? "left-[18px]" : "left-0.5"}`} />
+              </span>
+            </>
+          )}
+        </button>
+        {profileActions.settings && (
+          <Link
+            href="/account/settings?tab=overview"
+            title={isCollapsed ? "Account Settings" : undefined}
+            aria-label={isCollapsed ? "Account Settings" : undefined}
+            className={`flex h-11 w-full items-center gap-3 rounded-[14px] text-sm font-semibold transition-colors ${pathname.startsWith("/account/settings") ? "bg-[#fff0f6] text-[#b80049]" : "text-[#5b6b79] hover:bg-[#fff0f6] hover:text-[#b80049] dark:text-slate-300 dark:hover:bg-slate-800"} ${isCollapsed ? "justify-center" : "px-3"}`}
+          >
+            <Icon name="settings" />
+            {!isCollapsed && <span>Account Settings</span>}
+          </Link>
+        )}
+        <div className={`mt-2 flex items-center gap-3 rounded-2xl ${isCollapsed ? "flex-col bg-transparent p-0" : "bg-[#fff0f6] p-2 dark:bg-slate-800"}`}>
+          <Link href="/account/profile" title="Profile" aria-label="Open profile" className="relative shrink-0">
+            <FtmProfileAvatar name={profile.name} className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#b80049] text-sm font-extrabold text-white" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" aria-label="Online" />
+          </Link>
+          {!isCollapsed && (
+            <Link href="/account/profile" className="min-w-0 flex-1 leading-tight">
+              <div className="truncate text-sm font-bold text-[#141d23] dark:text-white">{profile.name}</div>
+              <div className="truncate text-[10px] font-extrabold uppercase tracking-[.16em] text-[#b80049]">{formatRoleLabel(currentRole)}</div>
+            </Link>
+          )}
+          <button
+            type="button"
+            onClick={handleLogout}
+            title="Logout"
+            aria-label="Logout"
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[#b80049] hover:bg-[#ffffff] dark:hover:bg-slate-700 ${isCollapsed ? "" : "ml-auto"}`}
+          >
+            <Icon name="logout" />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <aside
+        className="ftm-sidebar fixed inset-y-0 left-0 z-[1102] hidden flex-col border-r border-[#f1e4ea] bg-[#ffffff] px-3 py-4 transition-[width] duration-200 ease-out dark:border-slate-800 dark:bg-slate-950 lg:flex"
+        data-collapsed={collapsed ? "true" : "false"}
+        style={{ width: collapsed ? 84 : 272 }}
+      >
+        {renderSidebarBody(collapsed, false)}
+      </aside>
+
+      {mobileOpen && (
+        <div className="fixed inset-0 z-[1200] lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="Close menu" onClick={() => setMobileOpen(false)} />
+          <aside className="relative flex h-full w-[min(86vw,300px)] flex-col bg-[#ffffff] px-3 py-4 shadow-2xl dark:bg-slate-950">
+            {renderSidebarBody(false, true)}
+          </aside>
+        </div>
+      )}
+
+      <header className="ftm-topbar sticky top-0 z-[1101] w-full bg-[#fbf6f8]/90 backdrop-blur-md dark:bg-slate-950/85">
+        <div className="flex h-[76px] items-center gap-3 px-4 sm:px-6 lg:gap-4 lg:px-8">
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#f1e4ea] bg-[#ffffff] text-[#141d23] lg:hidden dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            aria-label="Open menu"
+          >
+            <Icon name="menu" />
+          </button>
+
+          {(isDashboard || sectionTabs) && (
+            <div className="hidden max-w-[46%] shrink-0 items-center overflow-x-auto rounded-full bg-[#f6e9ef] p-1 md:flex dark:bg-slate-800">
+              {isDashboard ? (
+                <>
+                  {DASHBOARD_TABS.map((tab) => (
+                    <button
+                      key={tab.target}
+                      type="button"
+                      onClick={() => scrollToSection(tab.target)}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold ${dashboardTab === tab.target ? "bg-[#ffffff] text-[#b80049] shadow-[0_2px_8px_rgba(184,0,73,0.12)] dark:bg-slate-900" : "text-[#5b6b79] hover:text-[#b80049] dark:text-slate-300"}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                  {canViewAlerts && (
+                    <Link href="/alerts" className="whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold text-[#5b6b79] hover:text-[#b80049] dark:text-slate-300">Alerts</Link>
+                  )}
+                </>
+              ) : (
+                sectionTabs?.map((child) => {
+                  const on = active?.childPath === child.path;
+                  return (
+                    <Link
+                      key={child.path}
+                      href={child.path}
+                      className={`whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold ${on ? "bg-[#ffffff] text-[#b80049] shadow-[0_2px_8px_rgba(184,0,73,0.12)] dark:bg-slate-900" : "text-[#5b6b79] hover:text-[#b80049] dark:text-slate-300"}`}
+                    >
+                      {child.label}
+                    </Link>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          <div ref={searchRef} className="relative min-w-0 max-w-md flex-1 lg:ml-2">
+            <Icon name="search" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#5b6b79]" />
+            <input
+              value={query}
+              onChange={(event) => { setQuery(event.target.value); setSearchOpen(true); }}
+              onFocus={() => setSearchOpen(true)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && searchResults[0]) router.push(searchResults[0].path);
+                if (event.key === "Escape") setSearchOpen(false);
+              }}
+              placeholder="Search modules and pages…"
+              aria-label="Search FTM modules"
+              className="h-11 w-full rounded-full border border-[#f1e4ea] bg-[#ffffff] pl-12 pr-4 text-sm text-[#141d23] outline-none placeholder:text-[#94a3b8] focus:border-[#b80049] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            />
+            {searchOpen && query.trim() && (
+              <div className="absolute left-0 right-0 top-full z-[1203] mt-2 overflow-hidden rounded-2xl border border-[#f1e4ea] bg-[#ffffff] p-1.5 shadow-[0_18px_45px_rgba(20,29,35,0.16)] dark:border-slate-700 dark:bg-slate-900">
+                {searchResults.length ? searchResults.map((result) => (
+                  <Link key={result.path} href={result.path} className="flex items-center gap-3 rounded-xl px-3 py-2 hover:bg-[#fff0f6] dark:hover:bg-slate-800">
+                    <Icon name={result.icon} className="text-[#b80049]" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-bold text-[#141d23] dark:text-white">{result.label}</span>
+                      <span className="block truncate text-[11px] text-[#5b6b79] dark:text-slate-400">{result.section}</span>
                     </span>
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-extrabold text-[#141d23]">{profileName}</div>
-                      <div className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-[0.16em] text-pink-700">{formatRoleLabel(currentRole)}</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="p-2">
-                  <a href="/account/profile" onClick={() => setProfileOpen(false)} className="flex w-full items-center gap-3 rounded-lg bg-pink-50 px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-100">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">person</span>
-                    <span>Profile</span>
-                  </a>
-                  <a href={homeDashboardPath} onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">dashboard</span>
-                    <span>Dashboard</span>
-                  </a>
-                  {profileActions.userManagement && <a href="/users" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">manage_accounts</span>
-                    <span>User Management</span>
-                  </a>}
-                  {profileActions.settings && <a href="/account/settings?tab=overview" onClick={() => setProfileOpen(false)} className="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">settings</span>
-                    <span>Settings</span>
-                  </a>}
-                  <div className="my-1.5 border-t border-slate-100" />
-                  <button type="button" onClick={handleLogout} className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-semibold text-[#141d23] transition hover:bg-pink-50">
-                    <span className="material-symbols-outlined text-[20px] text-[#5b6b79]">logout</span>
-                    <span>Logout</span>
-                  </button>
-                </div>
+                  </Link>
+                )) : <div className="px-3 py-2 text-xs text-[#5b6b79]">No matching page.</div>}
               </div>
             )}
           </div>
 
-          <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="ml-auto flex h-10 w-10 items-center justify-center rounded-full text-[#141d23] hover:bg-pink-50 lg:hidden" aria-label="Toggle menu" aria-expanded={mobileOpen}><span className="material-symbols-outlined">{mobileOpen ? "close" : "menu"}</span></button>
+          <div className="ml-auto flex shrink-0 items-center gap-3">
+            <span className="hidden h-9 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 text-[11px] font-bold uppercase tracking-wider text-[#5b6b79] lg:flex dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.2)]" />
+              Live
+            </span>
+            {canViewAlerts && (
+              <Link
+                href="/alerts"
+                className="relative flex h-11 w-11 items-center justify-center rounded-full border border-[#f1e4ea] bg-[#ffffff] text-[#141d23] hover:text-[#b80049] dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                aria-label={alertCount > 0 ? `${alertCount} active alerts` : "Alerts"}
+                title={alertCount > 0 ? `${alertCount} active alerts` : "Alerts"}
+              >
+                <Icon name="notifications" />
+                {alertCount > 0 && <span className="absolute right-2.5 top-2 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500" />}
+              </Link>
+            )}
+            {canCreateBooking && (
+              <Link
+                href="/vrds/bookings"
+                className="hidden h-11 items-center gap-2 rounded-full bg-[#b80049] px-5 text-sm font-bold text-white shadow-lg shadow-[#b80049]/30 hover:bg-[#9a003c] sm:flex"
+              >
+                <Icon name="add" />
+                New Booking
+              </Link>
+            )}
+            <Link href="/account/profile" className="flex items-center gap-3 pl-1" aria-label="Open profile">
+              <FtmProfileAvatar name={profile.name} className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[#b80049] text-sm font-extrabold text-white" />
+              <span className="hidden leading-tight 2xl:block">
+                <span className="block text-[11px] text-[#5b6b79] dark:text-slate-400">{greetingText}</span>
+                <span className="block max-w-[140px] truncate text-sm font-bold text-[#141d23] dark:text-white">{firstNameOf(profile.name)}</span>
+              </span>
+            </Link>
+          </div>
         </div>
-      </div>
-      {mobileOpen && <div className="border-b border-pink-200 bg-white px-5 py-4 shadow-lg lg:hidden"><nav className="flex flex-col" aria-label="Mobile navigation">{visibleItems.map((item) => <div key={item.path} className="border-b border-dashed border-pink-100 last:border-0"><div className="flex items-center"><a href={item.path} className="flex-1 py-3 text-base font-bold text-[#141d23]">{item.label}</a>{item.children && <button type="button" onClick={() => setMobileChild(mobileChild === item.path ? null : item.path)} className="p-3 text-[#b80049]" aria-label={`Expand ${item.label}`}><span className={`material-symbols-outlined transition-transform ${mobileChild === item.path ? "rotate-180" : ""}`}>expand_more</span></button>}</div>{item.children && mobileChild === item.path && <div className="mb-3 flex flex-col gap-1 pl-4">{item.children.map((child) => <a key={child.path} href={child.path} className="rounded-lg px-3 py-2 text-sm text-[#5b6b79] hover:bg-pink-50 hover:text-[#b80049]">{child.label}</a>)}</div>}</div>)}</nav><div className="mt-4 space-y-2 border-t border-pink-100 pt-4">{profileActions.userManagement && <a href="/users" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>User management</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}{profileActions.settings && <a href="/account/settings?tab=overview" onClick={() => setMobileOpen(false)} className="flex w-full items-center justify-between rounded-full border border-pink-200 px-4 py-3 text-left text-sm font-bold text-[#141d23]"><span>Account settings</span><span className="material-symbols-outlined text-base">manage_accounts</span></a>}<button type="button" onClick={handleLogout} className="flex w-full items-center justify-between rounded-full bg-[#b80049] px-4 py-3 text-left text-sm font-bold text-white"><span>Logout</span><span className="material-symbols-outlined text-base">logout</span></button></div></div>}
-</header>
+      </header>
+    </>
   );
 }
+
